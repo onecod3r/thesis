@@ -8,3 +8,8 @@ wheels/
 
 # Virtual environments
 .venv
+data/cache/dataframes/test.csv
+data/cache/dataframes/train.csv
+.env
+data/dataframes/train.csv
+data/tools/mediapipe/tasks/holistic_landmarker.task
