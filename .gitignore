@@ -7,3 +7,9 @@ wheels/
 .venv
 .env
 data/
+cache/train_data.npy
+cache/train_offsets.npy
+cache/val_data.npy
+cache/val_offsets.npy
+.gitignore
+gru_best.pt
