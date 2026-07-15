@@ -1,14 +1,53 @@
 # TODO — sign2speech
 
 Living project TODO, organized by workstream so new tasks can be filed under an
-existing section or a new one added without restructuring. Mirrors the sections in
-`Project_Structure` / `ASL_Recognition_Pipeline_Report`.
+existing section or a new one added without restructuring.
 
 **Status legend:** `[ ]` open · `[~]` in progress · `[x]` done · `[?]` open question / decision needed
 
 **How to add a task:** file it under the matching workstream section below. If it
 doesn't fit an existing one, add a new `## N. <Workstream Name>` section at the end
 (before "Backlog / Someday") rather than bolting it onto an unrelated section.
+
+---
+
+## 0. Repo Restructure Follow-ups & Tooling
+
+Cleanup left over from the move to the flat `src/` layout (notebooks renamed to
+`<dataset>.<stage>.<topic>.ipynb`, `modules/` slimmed to `paths.py` + `data/`,
+checkpoints+metrics merged into one per-run folder).
+
+### 0.1 Stale imports / references broken by the restructure
+
+- [ ] `src/gislr.1.model.gru.ipynb` imports `from modules.dataset import ...` —
+  actual module is now `modules.data.dataset`.
+- [ ] `src/popsign.1.mediapipe.ipynb` imports `from modules.datasets import DATASETS`
+  and uses `DATASETS["ISLR"]` — `datasets/` was deleted; it's now
+  `modules.paths.DATASETS` with key `"GISLR"`.
+- [ ] `src/modules/` has no `__init__.py` files (the old ones were deleted) — either
+  restore them or confirm namespace-package imports work from the `src/` kernel CWD.
+- [ ] `src/popsign.1.mediapipe.ipynb` currently contains early **GISLR** motion-energy
+  exploration code, not POPSIGN extraction — retire that content (superseded by
+  `gislr.0.dataset.motion-energy.ipynb`) and rebuild the notebook as the extraction
+  driver (§2).
+
+### 0.2 Packaging / config
+
+- [ ] `pyproject.toml`: torch/torchvision/torchaudio sit under an invalid top-level
+  `[dependencies]` table — uv expects the index pinning under `[tool.uv.sources]`
+  and the packages listed in `[project].dependencies`. As written, **torch is not a
+  declared dependency at all** despite being the training framework.
+- [ ] `pyproject.toml`: placeholder `description = "Add your description here"`.
+- [ ] Type checker: `pyrefly.toml` was deleted but `pyrefly` is still a runtime
+  dependency, and the dev group also pulls in `ty` — pick one, drop the other, and
+  move it to the dev group.
+- [ ] `.gitignore`: the bare `data/` pattern also ignores `src/data/external/`
+  (the MediaPipe `holistic_landmarker.task`) and `src/data/cache/dataframes/`
+  (POPSIGN manifests) — decide whether to narrow the ignore and commit those, or
+  document them as download/generate-on-setup.
+- [ ] `.gitignore`: still ignores old root-level paths (`cache/train_data.npy`, bare
+  `gru_best.pt`) — update patterns to the `src/` layout (e.g. `src/cache/`,
+  `src/checkpoints/**/*.pt`).
 
 ---
 
@@ -19,48 +58,47 @@ over time, at three scopes: per-video, per-category, global. Builds on existing
 motion-energy pipeline findings (RMS speed, `["type","landmark_index"]` grouping,
 Savitzky-Golay filtering) rather than re-deriving them.
 
-**Suggested location:** `notebooks/gislr/00_landmark_motion_analysis.ipynb`
-(pre-`01_preprocess` — diagnostic/exploratory, not part of the train pipeline)
+**Location:** `src/gislr.0.dataset.motion-energy.ipynb` (exists; core drafted but
+not yet executed end-to-end — statuses below reflect the drafted-vs-validated split)
 
 ### 1.0 Decision to lock in
 
-- [?] **Confirm DuckDB as the loading layer.** Querying parquet directly via
-  `CREATE VIEW ... glob` avoids materializing all 30K videos in memory; aggregation
-  happens before pulling into pandas, so peak memory stays bounded by one query's
-  result, not dataset size. Resolves the previously "exploratory, not finalized"
-  DuckDB decision from the report — accept going forward unless a blocker turns up.
+- [x] **Confirm DuckDB as the loading layer.** Adopted — `gislr.0` builds on
+  `get_duckdb_conn()` querying parquet via `CREATE VIEW ... glob`, so aggregation
+  happens before pulling into pandas and peak memory stays bounded by one query's
+  result, not dataset size. Revisit only if a blocker turns up.
 
 ### 1.1 Reusable core (build once, use in all three scopes)
 
-- [ ] `get_duckdb_conn()` — in-memory DuckDB connection, `CREATE VIEW meta_holistic`
-  joining `train.csv` metadata to parquet landmarks via glob pattern (path
-  normalization: strip `islr_str`, normalize `\\` → `/`).
-- [ ] `load_landmarks_for_paths(paths: list[str]) -> pd.DataFrame` — single
-  parameterized query; the one function all three scopes call.
-- [ ] `compute_motion_energy(df: pd.DataFrame) -> pd.DataFrame` — group by
+- [~] `get_duckdb_conn()` — drafted in notebook with smoke test; not yet validated
+  end-to-end. Path normalization: strip `islr_str`, normalize `\\` → `/`.
+- [~] `load_landmarks_for_paths(paths: list[str]) -> pd.DataFrame` — drafted with
+  single-video smoke test; the one function all three scopes call.
+- [~] `compute_motion_energy(df: pd.DataFrame) -> pd.DataFrame` — drafted: group by
   `["type", "landmark_index"]` → Savitzky-Golay (window=7, polyorder=2) → RMS speed
   (not mean-squared) → tidy long format: `type, landmark_index, rms_speed, video_id[, sign]`.
-- [ ] `plot_motion_gridspec(df, title)` — reuse gridspec layout (combined overview
-  ordered pose → left_hand → right_hand → face, plus per-type panels). Parameterize
-  for single-video, category-aggregate, and global use without three separate
-  plotting functions.
+- [~] `plot_motion_gridspec(df, title)` — drafted: gridspec layout (combined overview
+  ordered pose → left_hand → right_hand → face, plus per-type panels), parameterized
+  for single-video / category-aggregate / global use.
+- [ ] Run the reusable-core cells against real data and fix whatever falls out.
 
 ### 1.2 Resumable caching / state management
 
-- [ ] Manifest per scope: `cache/motion_analysis/<scope>_manifest.json` — tracks
-  item id, status (`pending`/`done`/`failed`), timestamp, output artifact path.
-- [ ] Idempotent write pattern: write per-unit result file
+- [~] Manifest per scope: `cache/motion_analysis/<scope>_manifest.json` — helpers
+  drafted (`load_manifest` / `save_manifest` / `_mark`).
+- [~] Idempotent write pattern: write per-unit result file
   (`cache/motion_analysis/<scope>/<id>.parquet`) **before** marking `done` in the
-  manifest — a crash mid-write never leaves a `done` entry pointing at a corrupt file.
-- [ ] Resume check at notebook start: skip ids already `done`, retry `failed`.
-- [ ] Final aggregation reads only cached per-unit files, never recomputes from raw
-  parquet.
-- [ ] Wrap per-unit processing in `tqdm` + try/except; log failures to manifest
-  instead of raising.
+  manifest — drafted in `process_units()`.
+- [~] Resume check at notebook start (skip `done`, retry `failed`) + per-unit
+  try/except with failures logged to manifest — drafted in `process_units()`;
+  verify behavior with a forced mid-run interrupt.
+- [ ] Final aggregation reads only cached per-unit files (`load_cached_units`),
+  never recomputes from raw parquet — validate once a scope has real cached output.
 
 ### 1.3 Scope 1 — Per-video (50 random samples)
 
-- [ ] Sample 50 video paths (fixed seed, recorded in output for reproducibility).
+- [~] Sample 50 video paths (fixed seed, recorded in output for reproducibility) —
+  sampling cell drafted.
 - [ ] Per video: load → compute → cache → plot (save PNG, don't just display inline).
 - [ ] Output: `cache/motion_analysis/per_video/summary.parquet`
   (`video_id, sign, type, landmark_index, rms_speed`).
@@ -103,9 +141,31 @@ Savitzky-Golay filtering) rather than re-deriving them.
 
 ## 2. Bulk Landmark Extraction (POPSIGN)
 
-- [ ] Resumable bulk extraction with QC manifests (interruption-safe over ~30K videos)
-- [ ] `landmark_worker.py` / `run_extraction.py` split already in place — extend
-  with manifest-based resume once extraction begins in earnest
+**Decision (resolved):** extracted landmarks go to a **separate drive** configured
+via `POPSIGN_LANDMARKS_DRIVE` in `.env` — too large to live next to the code.
+
+### 2.1 Fix `modules/data/landmark_worker.py` before any bulk run
+
+- [ ] **Bug: landmarks are never saved.** `process_video()` collects
+  `pose_frames` / `lh_frames` / `rh_frames` but `np.savez_compressed()` writes only
+  `fps` and `num_frames` — a full extraction run would produce empty archives.
+- [ ] `MODEL_PATH_STRING` points at `tools/mediapipe/tasks/holistic_landmarker.task`,
+  but the task file lives at `src/data/external/mediapipe/tasks/` — resolve via
+  `modules.paths` instead of a hardcoded stale string.
+- [ ] `OUTPUT_DIR` is hardcoded to `./data/landmarks/` — wire it to
+  `POPSIGN_LANDMARKS_DRIVE` from `.env` (and actually populate `.env`, currently empty).
+
+### 2.2 Bulk run
+
+- [ ] Rebuild `src/popsign.1.mediapipe.ipynb` as the extraction driver (its current
+  contents are stale GISLR exploration — see §0.1). The old `run_extraction.py`
+  driver was dropped in the restructure.
+- [ ] Resumable bulk extraction with QC manifests (interruption-safe over ~30K
+  videos) — reuse the manifest pattern from §1.2 rather than inventing a second one.
+- [ ] Regenerate/verify the video manifests (`src/data/cache/dataframes/train.csv`,
+  `test.csv`) from `popsign.0.dataset.ipynb` — currently only 1 of 4 POPSIGN train
+  datasets is enabled in `modules/paths.py` (the other three downloads are
+  commented out).
 
 ---
 
@@ -120,7 +180,9 @@ Savitzky-Golay filtering) rather than re-deriving them.
 
 ## 4. Architecture Benchmarking
 
-- [ ] ST-GCN, TCN, Transformer, Conformer — evaluate against BiLSTM/GRU baselines
+- [ ] LSTM / BiLSTM baselines vs the existing GRU (BiLSTM offline-only — accuracy
+  reference, never a deployment candidate)
+- [ ] ST-GCN, TCN, Transformer, Conformer — evaluate against the recurrent baselines
 - [ ] Caution: 1st-place GISLR Kaggle solution found hand-crafted angle/distance
   features didn't help and GCNs underperformed simpler sequence models — keep this
   in mind when scoping the ST-GCN evaluation
@@ -143,4 +205,4 @@ Savitzky-Golay filtering) rather than re-deriving them.
 
 ---
 
-*Last updated: July 14, 2026*
+*Last updated: July 15, 2026*
