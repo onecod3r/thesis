@@ -1,0 +1,161 @@
+"""Per-class evaluation of a StreamingGRU checkpoint on the canonical val split.
+
+Reproduces the val split from gislr.1.model.gru.ipynb (stratified 10%, seed 42)
+and the dataset preprocessing (NaN->0, uniform subsample to max_seq_len frames).
+Evaluates straight from the raw parquet files — no memmap cache needed.
+
+Usage:
+    python eval_gru.py <checkpoint.pt> <out_run_dir> [--landmarks <npy-file>]
+
+If --landmarks is given (a .npy int array of landmark indices into 0..542),
+only those landmarks' xyz are fed to the model (must match the checkpoint's
+feature_dim = 3 * n_landmarks).
+"""
+import argparse
+import json
+import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+import kagglehub
+import numpy as np
+import pandas as pd
+import pyarrow.parquet as pq
+import torch
+import torch.nn as nn
+from sklearn.model_selection import train_test_split
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+
+ROWS_PER_FRAME = 543
+MAX_SEQ_LEN = 128
+BATCH = 256
+
+
+class StreamingGRU(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers, num_classes, dropout=0.3):
+        super().__init__()
+        self.input_norm = nn.LayerNorm(input_size)
+        self.gru = nn.GRU(input_size, hidden_size, num_layers, batch_first=True,
+                          dropout=dropout if num_layers > 1 else 0.0, bidirectional=False)
+        self.head = nn.Sequential(nn.LayerNorm(hidden_size), nn.Dropout(dropout),
+                                  nn.Linear(hidden_size, num_classes))
+
+    def forward(self, x, lengths):
+        x = self.input_norm(x)
+        packed = pack_padded_sequence(x, lengths.cpu(), batch_first=True, enforce_sorted=True)
+        packed_out, _ = self.gru(packed)
+        out, _ = pad_packed_sequence(packed_out, batch_first=True)
+        idx = (lengths - 1).view(-1, 1, 1).expand(-1, 1, out.size(-1)).to(out.device)
+        return self.head(out.gather(1, idx).squeeze(1))
+
+
+def load_video(path, landmarks=None):
+    table = pq.read_table(path, columns=["x", "y", "z"])
+    data = np.column_stack([table.column(c).to_numpy() for c in ("x", "y", "z")])
+    n = data.shape[0] // ROWS_PER_FRAME
+    arr = data.reshape(n, ROWS_PER_FRAME, 3).astype(np.float32)
+    arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
+    if landmarks is not None:
+        arr = arr[:, landmarks, :]
+    T = arr.shape[0]
+    if T > MAX_SEQ_LEN:
+        arr = arr[np.linspace(0, T - 1, MAX_SEQ_LEN).astype(int)]
+        T = MAX_SEQ_LEN
+    return arr.reshape(T, -1), T
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("checkpoint")
+    ap.add_argument("out_run_dir")
+    ap.add_argument("--landmarks", default=None)
+    args = ap.parse_args()
+
+    device = torch.device("cuda")
+    landmarks = np.load(args.landmarks) if args.landmarks else None
+
+    data_dir = Path(kagglehub.competition_download("asl-signs"))
+    sign2idx = json.loads((data_dir / "sign_to_prediction_index_map.json").read_text())
+    idx2sign = {v: k for k, v in sign2idx.items()}
+
+    train_df = pd.read_csv(data_dir / "train.csv")
+    train_df["label"] = train_df["sign"].map(sign2idx)
+    _, val_split = train_test_split(train_df, test_size=0.1,
+                                    stratify=train_df["sign"], random_state=42)
+    val_split = val_split.reset_index(drop=True)
+    print(f"val split: {len(val_split)} videos")
+
+    ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
+    hyp = ckpt["hyp"]
+    model = StreamingGRU(ckpt["feature_dim"], hyp["hidden_size"], hyp["num_layers"],
+                         len(sign2idx), hyp["dropout"]).to(device)
+    model.load_state_dict(ckpt["model_state"])
+    model.eval()
+    print(f"checkpoint: feature_dim={ckpt['feature_dim']} best_val_acc={ckpt['best_val_acc']:.4f}")
+
+    paths = [data_dir / p for p in val_split["path"]]
+    labels_all = val_split["label"].to_numpy()
+    preds_all = np.zeros(len(val_split), dtype=np.int64)
+
+    t0 = time.time()
+    with ThreadPoolExecutor(8) as ex, torch.no_grad():
+        for b0 in range(0, len(paths), BATCH):
+            chunk = list(ex.map(lambda p: load_video(p, landmarks), paths[b0:b0 + BATCH]))
+            order = np.argsort([-t for _, t in chunk])
+            lengths = torch.tensor([chunk[i][1] for i in order])
+            padded = torch.zeros(len(chunk), int(lengths[0]), chunk[0][0].shape[1])
+            for j, i in enumerate(order):
+                padded[j, : chunk[i][1]] = torch.from_numpy(chunk[i][0])
+            logits = model(padded.to(device), lengths)
+            pred = logits.argmax(-1).cpu().numpy()
+            inv = np.empty_like(order); inv[order] = np.arange(len(order))
+            preds_all[b0:b0 + len(chunk)] = pred[inv]
+            if (b0 // BATCH) % 10 == 0:
+                print(f"  {b0 + len(chunk)}/{len(paths)}  ({time.time() - t0:.0f}s)", flush=True)
+
+    correct = preds_all == labels_all
+    overall = correct.mean()
+    df = pd.DataFrame({"label": labels_all, "correct": correct})
+    per_class = (df.groupby("label")["correct"].agg(["mean", "count"])
+                 .rename(columns={"mean": "accuracy", "count": "n_val"}))
+    per_class["sign"] = per_class.index.map(idx2sign)
+    per_class = per_class[["sign", "accuracy", "n_val"]].sort_values("accuracy")
+    macro = per_class["accuracy"].mean()
+
+    out = Path(args.out_run_dir)
+    (out / "cache").mkdir(parents=True, exist_ok=True)
+    (out / "assets").mkdir(parents=True, exist_ok=True)
+    per_class.to_csv(out / "cache" / "per_class_accuracy.csv", index_label="label")
+
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    fig, axes = plt.subplots(1, 2, figsize=(14, 4.5))
+    axes[0].hist(per_class["accuracy"], bins=25, color="tab:blue", edgecolor="white")
+    axes[0].axvline(overall, color="black", ls="--", label=f"overall {overall:.3f}")
+    axes[0].axvline(macro, color="tab:red", ls=":", label=f"macro {macro:.3f}")
+    axes[0].set_xlabel("per-class accuracy"); axes[0].set_ylabel("# classes")
+    axes[0].set_title("Distribution of per-class accuracy (250 signs)"); axes[0].legend()
+    worst = per_class.head(15)
+    axes[1].barh(worst["sign"], worst["accuracy"], color="tab:red")
+    axes[1].set_title("15 worst classes"); axes[1].set_xlabel("accuracy")
+    axes[1].invert_yaxis()
+    fig.tight_layout()
+    fig.savefig(out / "assets" / "per_class_accuracy.png", dpi=110)
+
+    summary = {
+        "overall_accuracy": float(overall),
+        "macro_accuracy": float(macro),
+        "n_val": int(len(val_split)),
+        "worst5": per_class.head(5)[["sign", "accuracy"]].values.tolist(),
+        "best5": per_class.tail(5)[["sign", "accuracy"]].values.tolist(),
+        "n_classes_below_50pct": int((per_class["accuracy"] < 0.5).sum()),
+        "median_class_accuracy": float(per_class["accuracy"].median()),
+    }
+    (out / "cache" / "eval_summary.json").write_text(json.dumps(summary, indent=2))
+    print(json.dumps(summary, indent=2))
+
+
+if __name__ == "__main__":
+    main()

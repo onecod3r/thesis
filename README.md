@@ -15,8 +15,10 @@ POPSIGN's extracted landmarks (the large intermediate artifact, pre-feature-cach
 
 ## Models
 
-- **GRU** (unidirectional `StreamingGRU`) — the implemented baseline, built in `src/gislr.1.model.gru.ipynb`. Chosen because it supports true causal/streaming inference. Trained checkpoint lives in `src/checkpoints/gislr/gru/0001/`.
-- **Planned benchmarks** — LSTM, BiLSTM (offline-only accuracy reference), ST-GCN, TCN, Transformer, Conformer. See `TODO.md` §4 for scoping notes.
+- **GRU** (unidirectional `StreamingGRU`) — the implemented baseline, built in `src/gislr.1.model.gru.ipynb`. Chosen because it supports true causal/streaming inference.
+- **Trained runs** live under `src/models/<dataset>/<architecture>/<timestamp>/` — one folder per run, each with a `README.md` (training conditions, performance, evaluation metrics), a `data.md` (exact dataset/subset/split the model was trained on), an `assets/` folder (all PNGs: learning curves, per-class accuracy) and a `cache/` folder (misc artifacts backing the README: per-class CSVs, landmark index lists). `src/models/README.md` is the leaderboard of best-scoring models across datasets and architectures.
+- **Landmark-subset ablations** — motivated by the motion-energy analysis and the Kaggle 1st-place cross-check (`docs/2026-07-15.md`): the **ME-126** subset (hands + upper-body pose + lips + eyes/nose) beats the full-543 baseline **73.73% vs 70.59% val accuracy with half the parameters**. Remaining ablations in `TODO.md` §3.1.
+- **Planned benchmarks** — 1D-CNN + Transformer (the GISLR 1st-place architecture), LSTM, BiLSTM (offline-only accuracy reference), ST-GCN, TCN, Conformer. See `TODO.md` §4 for scoping notes.
 
 ## Project structure
 
@@ -24,13 +26,19 @@ POPSIGN's extracted landmarks (the large intermediate artifact, pre-feature-cach
 sign2speech/
 ├── README.md
 ├── TODO.md                   # living task list, organized by workstream
-├── pyproject.toml            # uv-managed dependencies (Python >= 3.12)
+├── pyproject.toml            # uv-managed dependencies (Python >= 3.12, incl. torch cu130 via [tool.uv.sources])
 ├── uv.lock
 ├── .env                      # machine-specific config (POPSIGN_LANDMARKS_DRIVE) — not committed
+├── docs/                     # dated analysis/experiment reports
+│   ├── <YYYY-MM-DD>.md       # one report per analysis day (e.g. 2026-07-15.md: motion-energy + 1st-place cross-check)
+│   └── assets/<YYYY-MM-DD>/  # figures referenced by that report
 ├── scripts/
+│   ├── eval_gru.py           # per-class val evaluation of a StreamingGRU checkpoint (run with CWD anywhere; reads raw parquet)
 │   └── sys_disk_usage.ps1    # disk-usage helper (POPSIGN raw video is ~870GB)
 └── src/                      # all code; notebooks assume the kernel CWD is src/
-    ├── gislr.0.dataset.motion-energy.ipynb  # diagnostic: landmark motion-over-time analysis (TODO §1)
+    ├── gislr.0.dataset.motion-energy.ipynb  # diagnostic: landmark motion-over-time analysis (TODO §1) — executed, see docs/2026-07-15.md
+    ├── gislr.0.competition.entry.1st.ipynb  # reference: Kaggle GISLR 1st-place solution (1D-CNN + Transformer, 118-landmark subset).
+    │                                        #   NOTE: 15MB of animation outputs stripped for repo size; full copy in src/cache/ (gitignored) or Kaggle discussion 406978
     ├── gislr.1.model.gru.ipynb              # feature cache build → GRU training → ONNX → TF → TFLite export
     ├── popsign.0.dataset.ipynb              # dataset download + video manifests (stub)
     ├── popsign.1.mediapipe.ipynb            # landmark extraction stage (currently holds early motion-energy exploration)
@@ -44,17 +52,22 @@ sign2speech/
     ├── data/                                # gitignored — caches & external assets, never raw datasets
     │   ├── cache/dataframes/                # POPSIGN video manifests (train.csv / test.csv: file_path, label, id)
     │   └── external/mediapipe/tasks/holistic_landmarker.task
-    ├── cache/                               # gitignored, created at runtime — GISLR memmapped feature cache, motion-analysis cache
-    └── checkpoints/
-        └── <dataset>/<architecture>/<run_id>/   # one folder per training run
-            ├── gru_best.pt                      # weights (gitignored)
-            └── LearningLossAccuracy.png         # metrics/plots for the same run
+    ├── cache/                               # gitignored, created at runtime — GISLR memmapped feature caches, motion-analysis cache
+    └── models/
+        ├── README.md                        # leaderboard: best-scoring model per dataset × architecture
+        └── <dataset>/<architecture>/<timestamp>/   # one folder per training run (timestamp = run start, YYYYMMDD-HHMMSS)
+            ├── README.md                    # training conditions in detail + performance & evaluation metrics
+            ├── data.md                      # exact dataset / landmark subset / split the model was trained on
+            ├── gru_best.pt                  # weights (gitignored)
+            ├── assets/                      # PNGs referenced by the README (learning curves, per-class accuracy)
+            └── cache/                       # misc items backing the README (per-class CSV, landmark list, eval summary)
 ```
 
 ### Conventions
 
 - **Notebooks are flat in `src/`, named `<dataset>.<stage>.<topic>.ipynb`** — dataset first, then a stage number ordering the pipeline, then what the stage does. No nested notebook folders.
-- **One folder per training run** at `src/checkpoints/<dataset>/<architecture>/<run_id>/`, holding weights *and* metrics/plots together. A run's artifacts are never split across parallel trees.
+- **One folder per training run** at `src/models/<dataset>/<architecture>/<timestamp>/`, holding weights, docs (`README.md` + `data.md`), plots (`assets/`) and eval artifacts (`cache/`) together. A run's artifacts are never split across parallel trees. `src/models/README.md` tracks the best run per dataset × architecture.
+- **Dated reports in `docs/`** — every substantial analysis/experiment gets a `docs/<YYYY-MM-DD>.md` write-up with its figures under `docs/assets/<YYYY-MM-DD>/`.
 - **`data/raw/` doesn't exist.** Raw GISLR/POPSIGN data lives in `kagglehub`'s cache and is resolved at runtime by `modules/paths.py` — never duplicated into the repo.
 - **POPSIGN's extracted landmarks go to a separate drive** (configured via `.env`), since that intermediate artifact is far too large to keep alongside the code.
 - **Everything runs from `src/`** — `modules/paths.py` and the notebooks use relative paths (`data/`, `cache/`, `checkpoints/`), and `import modules...` resolves because the notebooks sit next to `modules/`. Point your Jupyter kernel's working directory at `src/`.
@@ -78,8 +91,9 @@ Make sure your Jupyter kernel uses this project's `uv`-managed virtual environme
 
 **GISLR** (landmarks already extracted by Kaggle):
 
-1. `src/gislr.0.dataset.motion-energy.ipynb` — *optional diagnostic*: per-video / per-category / global landmark motion-energy analysis. Not part of the training pipeline.
-2. `src/gislr.1.model.gru.ipynb` — end-to-end: builds the memmapped feature cache (`cache/`, one-time, resumable), trains the `StreamingGRU` with auto-resume checkpointing, plots learning curves, then exports ONNX → TensorFlow SavedModel → TFLite and validates the TFLite model with the grader's exact calling convention.
+1. `src/gislr.0.dataset.motion-energy.ipynb` — *optional diagnostic*: per-video / per-category / global landmark motion-energy analysis. Not part of the training pipeline. Executed end-to-end; findings and the landmark keep/discard recommendation are in `docs/2026-07-15.md`.
+2. `src/gislr.0.competition.entry.1st.ipynb` — *reference*: the Kaggle 1st-place solution (1D-CNN + Transformer). Kept for the planned architecture port (TODO §4) and for its 118-landmark subset, which the motion-energy findings are cross-checked against.
+3. `src/gislr.1.model.gru.ipynb` — end-to-end: builds the memmapped feature cache (`cache/`, one-time, resumable), trains the `StreamingGRU` with auto-resume checkpointing, plots learning curves, then exports ONNX → TensorFlow SavedModel → TFLite and validates the TFLite model with the grader's exact calling convention.
 
 **POPSIGN** (raw video, requires extraction first — in progress):
 

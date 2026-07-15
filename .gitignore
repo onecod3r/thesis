@@ -1,16 +1,24 @@
 __pycache__/
 *.py[oc]
+.ipynb_checkpoints/
 build/
 dist/
 wheels/
 *.egg-info
 .venv
 .env
+
+# data & caches — raw datasets live in kagglehub's cache, never in the repo;
+# src/cache/ holds the memmapped feature caches (GBs) and motion-analysis output
 data/
-cache/train_data.npy
-cache/train_offsets.npy
-cache/val_data.npy
-cache/val_offsets.npy
-.gitignore
-gru_best.pt
 src/cache/
+
+# model weights & export artifacts — run folders under src/models/ keep
+# README.md / data.md / assets/ / cache/ tracked, binary artifacts out
+src/models/**/*.pt
+gru_best.pt
+gru_latest.pt
+*.onnx
+*.tflite
+src/saved_model_dir/
+src/final_saved_model/

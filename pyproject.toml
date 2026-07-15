@@ -1,7 +1,7 @@
 [project]
     name = "sign2speech"
     version = "0.1.0"
-    description = "Add your description here"
+    description = "Streaming sign language recognition — landmark-sequence models (GISLR/POPSIGN) with real-time, frame-by-frame inference as the deployment target"
     readme = "README.md"
     requires-python = ">=3.12"
     dependencies = [
@@ -19,6 +19,7 @@
         "scikit-learn>=1.9.0",
         "seaborn>=0.13.2",
         "tensorflow>=2.21.0",
+        "torch>=2.13.0",
     ]
 
 [dependency-groups]
@@ -30,10 +31,8 @@
     url      = "https://download.pytorch.org/whl/cu130"
     explicit = true
 
-[dependencies]
-    torch       = { index = "pytorch-cuda" }
-    torchvision = { index = "pytorch-cuda" }
-    torchaudio  = { index = "pytorch-cuda" }
+[tool.uv.sources]
+    torch = { index = "pytorch-cuda" }
 
 [tool.ty.environment]
     python = "./.venv"

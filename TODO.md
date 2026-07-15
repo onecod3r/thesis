@@ -33,21 +33,31 @@ checkpoints+metrics merged into one per-run folder).
 
 ### 0.2 Packaging / config
 
-- [ ] `pyproject.toml`: torch/torchvision/torchaudio sit under an invalid top-level
-  `[dependencies]` table — uv expects the index pinning under `[tool.uv.sources]`
-  and the packages listed in `[project].dependencies`. As written, **torch is not a
-  declared dependency at all** despite being the training framework.
-- [ ] `pyproject.toml`: placeholder `description = "Add your description here"`.
+- [x] `pyproject.toml`: torch/torchvision/torchaudio sat under an invalid top-level
+  `[dependencies]` table. **Fixed 2026-07-15:** `torch>=2.13.0` declared in
+  `[project].dependencies` with the cu130 index pinned via `[tool.uv.sources]`;
+  torchvision/torchaudio dropped (nothing imports them, and torchaudio has no
+  cu130 build that resolves for the full `requires-python` range). `uv sync`
+  verified: torch 2.13.0+cu130, CUDA available.
+- [x] `pyproject.toml`: placeholder description replaced (2026-07-15).
 - [ ] Type checker: `pyrefly.toml` was deleted but `pyrefly` is still a runtime
   dependency, and the dev group also pulls in `ty` — pick one, drop the other, and
   move it to the dev group.
 - [ ] `.gitignore`: the bare `data/` pattern also ignores `src/data/external/`
   (the MediaPipe `holistic_landmarker.task`) and `src/data/cache/dataframes/`
   (POPSIGN manifests) — decide whether to narrow the ignore and commit those, or
-  document them as download/generate-on-setup.
-- [ ] `.gitignore`: still ignores old root-level paths (`cache/train_data.npy`, bare
-  `gru_best.pt`) — update patterns to the `src/` layout (e.g. `src/cache/`,
-  `src/checkpoints/**/*.pt`).
+  document them as download/generate-on-setup. (Still open after the 2026-07-15
+  rewrite — the pattern was kept as-is pending this decision.)
+- [x] `.gitignore`: rewritten 2026-07-15 for the `src/` layout — stale root-level
+  `cache/*.npy` lines and the self-ignoring `.gitignore` line removed; now covers
+  `src/cache/`, model weights (`src/models/**/*.pt`, bare `gru_best.pt` /
+  `gru_latest.pt` from notebook runs), export artifacts (`*.onnx`, `*.tflite`,
+  `src/saved_model_dir/`, `src/final_saved_model/`) and `.ipynb_checkpoints/`.
+- [x] Repo size: `src/gislr.0.competition.entry.1st.ipynb` was 17 MB — 15 MB of
+  landmark-animation cell outputs (cells 10–13) stripped 2026-07-15 → 247 KB.
+  Code, markdown and the training-log output are intact. Full copy with outputs:
+  `src/cache/gislr.0.competition.entry.1st.with-outputs.ipynb` (gitignored) or
+  Kaggle discussion 406978.
 
 ---
 
@@ -58,8 +68,11 @@ over time, at three scopes: per-video, per-category, global. Builds on existing
 motion-energy pipeline findings (RMS speed, `["type","landmark_index"]` grouping,
 Savitzky-Golay filtering) rather than re-deriving them.
 
-**Location:** `src/gislr.0.dataset.motion-energy.ipynb` (exists; core drafted but
-not yet executed end-to-end — statuses below reflect the drafted-vs-validated split)
+**Location:** `src/gislr.0.dataset.motion-energy.ipynb`
+
+**Status: ✅ executed end-to-end 2026-07-15 — all three scopes complete, 0 failed
+units. Findings, stats, figures and the landmark keep/discard recommendation are
+written up in `docs/2026-07-15.md`.** Remaining work moved to §1.8.
 
 ### 1.0 Decision to lock in
 
@@ -70,65 +83,73 @@ not yet executed end-to-end — statuses below reflect the drafted-vs-validated 
 
 ### 1.1 Reusable core (build once, use in all three scopes)
 
-- [~] `get_duckdb_conn()` — drafted in notebook with smoke test; not yet validated
-  end-to-end. Path normalization: strip `islr_str`, normalize `\\` → `/`.
-- [~] `load_landmarks_for_paths(paths: list[str]) -> pd.DataFrame` — drafted with
-  single-video smoke test; the one function all three scopes call.
-- [~] `compute_motion_energy(df: pd.DataFrame) -> pd.DataFrame` — drafted: group by
-  `["type", "landmark_index"]` → Savitzky-Golay (window=7, polyorder=2) → RMS speed
-  (not mean-squared) → tidy long format: `type, landmark_index, rms_speed, video_id[, sign]`.
-- [~] `plot_motion_gridspec(df, title)` — drafted: gridspec layout (combined overview
-  ordered pose → left_hand → right_hand → face, plus per-type panels), parameterized
-  for single-video / category-aggregate / global use.
-- [ ] Run the reusable-core cells against real data and fix whatever falls out.
+- [x] `get_duckdb_conn()` — validated end-to-end (94,477 videos · 250 signs · 21
+  participants resolved from the meta view).
+- [x] `load_landmarks_for_paths(paths: list[str]) -> pd.DataFrame` — validated; the
+  one function all three scopes call (explicit parquet file list, not glob filter).
+- [x] `compute_motion_energy(df: pd.DataFrame) -> pd.DataFrame` — validated:
+  Savitzky-Golay (window=7, polyorder=2) → RMS speed over raw-valid transitions
+  only (NaN policy) → tidy long format incl. `n_valid_transitions`.
+- [x] `plot_motion_gridspec(df, title)` — validated across all three scopes
+  (auto-detects per-video vs aggregate frames, std as error bars).
+- [x] Run the reusable-core cells against real data — done, all scopes ran clean.
 
 ### 1.2 Resumable caching / state management
 
-- [~] Manifest per scope: `cache/motion_analysis/<scope>_manifest.json` — helpers
-  drafted (`load_manifest` / `save_manifest` / `_mark`).
-- [~] Idempotent write pattern: write per-unit result file
-  (`cache/motion_analysis/<scope>/<id>.parquet`) **before** marking `done` in the
-  manifest — drafted in `process_units()`.
-- [~] Resume check at notebook start (skip `done`, retry `failed`) + per-unit
-  try/except with failures logged to manifest — drafted in `process_units()`;
-  verify behavior with a forced mid-run interrupt.
-- [ ] Final aggregation reads only cached per-unit files (`load_cached_units`),
-  never recomputes from raw parquet — validate once a scope has real cached output.
+- [x] Manifest per scope: `cache/motion_analysis/<scope>_manifest.json` — with
+  atomic saves (temp file + `os.replace`).
+- [x] Idempotent write pattern: per-unit parquet written **before** marking `done`
+  in the manifest — validated over 50 + 10 + 189 units, 0 failures.
+- [x] Resume check (skip `done`, retry `failed`) + per-unit try/except — validated
+  by the executed runs (skip path exercised on re-runs; a deliberate
+  mid-run-interrupt drill wasn't needed given the invariants held over 249 units).
+- [x] Final aggregation reads only cached per-unit files (`load_cached_units` /
+  in-SQL over chunk parquets), never raw parquet — validated for all three scopes.
 
 ### 1.3 Scope 1 — Per-video (50 random samples)
 
-- [~] Sample 50 video paths (fixed seed, recorded in output for reproducibility) —
-  sampling cell drafted.
-- [ ] Per video: load → compute → cache → plot (save PNG, don't just display inline).
-- [ ] Output: `cache/motion_analysis/per_video/summary.parquet`
-  (`video_id, sign, type, landmark_index, rms_speed`).
+- [x] Sample 50 video paths (seed 42, recorded to `per_video_sample.json`).
+- [x] Per video: load → compute → cache → plot (50 PNGs in `per_video/plots/`).
+- [x] Output: `cache/motion_analysis/per_video/summary.parquet` (27,150 rows =
+  50 videos × 543 landmarks).
 
 ### 1.4 Scope 2 — Per-category (10 sampled sign categories)
 
-- [ ] Sample 10 sign labels (fixed seed).
-- [ ] Per category: batched load for all videos in that sign → aggregate RMS speed
-  per landmark (mean + std — feeds the future within-class consistency analysis).
-- [ ] Output: `cache/motion_analysis/per_category/summary.parquet`
+- [x] Sample 10 sign labels (seed 42, recorded to `per_category_sample.json`).
+- [x] Per category: batched load (100 videos/read) → aggregate RMS speed per
+  landmark (mean + std — feeds the future within-class consistency analysis).
+- [x] Output: `cache/motion_analysis/per_category/summary.parquet`
   (`sign, type, landmark_index, rms_speed_mean, rms_speed_std, n_videos`).
 
 ### 1.5 Scope 3 — Global (entire dataset)
 
-- [ ] Prefer in-SQL aggregation via DuckDB where possible (memory-bounded — this is
-  where DuckDB's advantage over pandas matters most).
-- [ ] If full in-SQL aggregation isn't feasible (Savitzky-Golay needs per-frame
-  ordering, which SQL can't do cleanly), fall back to chunked batches (e.g. 500
-  videos/chunk) through the same load → compute → cache path, manifest tracking
-  chunk completion instead of per-video.
-- [ ] Output: `cache/motion_analysis/global/summary.parquet` (same schema as
-  per-category, one row set for the whole dataset).
+- [x] Decision: full in-SQL aggregation rejected (Savitzky-Golay needs ordered
+  per-frame series) → chunked Python compute, then **in-SQL aggregation over the
+  cached chunk parquets** (the memory-bounded part still happens in DuckDB).
+- [x] 189 chunks of ≤500 videos through load → compute → cache, manifest tracking
+  chunk completion — full run ≈25 min at ~65 videos/s, 0 failures.
+- [x] Output: `cache/motion_analysis/global/summary.parquet` + `global_overview.png`.
 
 ### 1.6 Cross-scope comparison
 
-- [ ] Overlay/side-by-side plot: per-video sample vs per-category vs global RMS
-  speed per landmark — sanity check whether the samples represent the global
-  pattern before trusting them for downstream landmark-importance decisions.
-- [ ] Note in notebook: findings are **not conclusive** until cross-checked against
-  the competition-suggested landmark subset (per report §3.1).
+- [x] Overlay plot + rank correlation: per-video sample rho **0.954**, per-category
+  sample rho **0.996** vs global (n=543) — the seeded samples reproduce the global
+  per-landmark pattern, so sample-based landmark analyses can be trusted.
+- [x] Cross-check against the competition 1st-place landmark subset — done in
+  `docs/2026-07-15.md` §5: agrees on hands / face-mass-discard / legs / z-drop;
+  diverges on upper-body pose (we keep, they drop) and lips (they keep on
+  linguistic grounds motion energy can't see).
+
+### 1.8 Follow-ups from the 2026-07-15 findings (report §7)
+
+- [x] xy-vs-xyz decomposition on the 50-video sample — **~92% of pose "motion" is
+  z-axis noise** (pose-head 99%, legs 95%; hands only 24%, face 14%). Cached at
+  `cache/motion_analysis/xy_vs_xyz_sample50.parquet`, chart in the report.
+- [ ] Re-run the **global** scope with xy-only RMS (store `rms_speed_xy` alongside
+  `rms_speed` in the chunk schema) so landmark-importance numbers at full-dataset
+  scale aren't z-contaminated.
+- [ ] Consider adding the xy/xyz split to `compute_motion_energy` itself (cheap —
+  same smoothed array, second reduction) before any re-run.
 
 ### 1.7 Explicitly out of scope here
 
@@ -171,10 +192,30 @@ via `POPSIGN_LANDMARKS_DRIVE` in `.env` — too large to live next to the code.
 
 ## 3. Data-Driven Landmark Importance
 
-- [ ] Motion energy (feeds from §1) + within-class consistency + cross-class
-  discriminability (ANOVA-style between/within variance ratio)
+- [x] Motion energy (feeds from §1) — delivered; keep/discard recommendation in
+  `docs/2026-07-15.md` §4 (keep: hands 42 + upper-body pose 8 + lips 40 + eyes/
+  nose 36 = **ME-126**; discard: 392 face, pose head/legs, z channel).
+- [ ] Within-class consistency + cross-class discriminability (ANOVA-style
+  between/within variance ratio) — the instrument that can actually rank the
+  face landmarks (motion energy sees a flat 0.003 band there) and adjudicate
+  the pose-vs-no-pose divergence with the 1st-place subset.
 - [ ] Position as complementary to gradient saliency and SHAP from trained models
   (not a replacement)
+
+### 3.1 Landmark-subset training ablations (GRU, all-else-identical)
+
+Controlled runs that change ONLY the input subset vs the full-543 baseline
+(`src/models/gislr/gru/20260713-213000`, val acc 70.59%):
+
+- [x] **ME-126, xyz** — done 2026-07-15 (`src/models/gislr/gru/20260715-190729`):
+  **73.73% val vs 70.59% baseline (+3.14) with 50.4% fewer params** (0.95M),
+  failing classes 22→9. Leaderboard updated in `src/models/README.md`.
+- [ ] Exact 1st-place 118 (ME-126 minus the 8 pose landmarks) — isolates whether
+  upper-body pose helps a *streaming* model (hand-dropout fallback hypothesis).
+- [ ] ME-126 with **xy only** (drop z; input 252) — tests the z-noise finding
+  in-model rather than only in the motion statistics.
+- [ ] ME-126 + lag-1/lag-2 difference features (the 1st-place motion features) —
+  note these are causal, so streaming-safe.
 
 ---
 
