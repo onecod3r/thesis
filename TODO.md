@@ -219,12 +219,14 @@ Replaces the deleted `popsign.0.dataset.ipynb` stub as the extraction driver
 - [x] Motion energy (feeds from §1) — delivered; keep/discard recommendation in
   `docs/2026-07-15.md` §4 (keep: hands 42 + upper-body pose 8 + lips 40 + eyes/
   nose 36 = **ME-126**; discard: 392 face, pose head/legs, z channel).
-- [~] Within-class consistency + cross-class discriminability (2026-07-16) —
-  the instrument that can actually rank the face landmarks (motion energy sees
-  a flat 0.003 band there) and adjudicate the pose-vs-no-pose divergence with
-  the 1st-place subset. Methods chosen: per-landmark **ANOVA F-ratio** and
-  **mutual information** on per-video landmark descriptors, plus a **probe
-  classifier** (logistic regression on descriptors) as the subset-level score.
+- [x] Within-class consistency + cross-class discriminability — **delivered
+  2026-07-16** (`docs/2026-07-16.md`): per-landmark **ANOVA F-ratio** +
+  **mutual information** on per-video descriptors, **probe classifier** as the
+  subset score. Verdict: **ME-126 wins** (49.9% global probe; FP-118 48.6%,
+  FULL-543 last at 40.6%); pose divergence adjudicated in ME's favor;
+  discriminability is ~uncorrelated with motion energy (rho −0.12). Caveat
+  discovered: marginal F cannot rank face landmarks either (rigid-head
+  redundancy) — the subset-level probe is the instrument that prices it.
 - [ ] Position as complementary to gradient saliency and SHAP from trained models
   (not a replacement)
 
@@ -234,14 +236,19 @@ Replaces the deleted `popsign.0.dataset.ipynb` stub as the extraction driver
   landmark subset in play (FULL_543, FP_118 = 1st-place, ME_126, ME_132,
   HANDS_42, HANDS_POSE_50, plus component groups) with holistic row indices —
   `ME_126.array` verified equal to the trained run's `landmarks.npy`.
-- [~] `src/gislr.0.dataset.subset-comparison.ipynb` — built + executing
-  2026-07-16: §3 comparison methods at three scopes: (a) 10 random videos of
-  one random sign class (within-class consistency), (b) all videos of 10 random
-  classes (the motion-energy sample), (c) global (all videos, all classes,
-  per-class stats). Scores every registered subset; results go back into
-  `subsets.py` (`probe_acc_global`).
+- [x] `src/gislr.0.dataset.subset-comparison.ipynb` — **executed end-to-end
+  2026-07-16** (scope A 10 videos / scope B 10 classes / scope C global 189
+  chunks, 0 failures; global descriptors ≈50 min, probes ≈7 min). All 6
+  registered subsets scored; `probe_acc_global` written back into
+  `subsets.py`; report `docs/2026-07-16.md`.
 - [ ] Feed the winning subset + per-landmark rankings into the §3.1 training
-  ablations.
+  ablations (probe predicts: pose helps, pose-wrist points {17-22} don't).
+- [ ] Candidate new subset: **face-anchor reduction** (eyes/nose 36 → ~8 rigid
+  anchors) — the face's discriminative signal is one rigid transform; needs a
+  trained ablation before admission to the registry (report §4).
+- [ ] Note for feature work: `x_std` is the most discriminative descriptor
+  (median F 25.1 vs 17.3 for speed) — causal running-std features are
+  streamable and worth a §3.1-style ablation.
 
 ### 3.1 Landmark-subset training ablations (GRU, all-else-identical)
 

@@ -16,7 +16,7 @@ POPSIGN's extracted landmarks (the large intermediate artifact, pre-feature-cach
 ## Models
 
 - **GRU** (unidirectional `StreamingGRU`) — the implemented baseline, built in `src/gislr.1.model.gru.ipynb`. Chosen because it supports true causal/streaming inference.
-- **Landmark-subset ablations** — motivated by the motion-energy analysis and the Kaggle 1st-place cross-check ([docs/2026-07-15.md](docs/2026-07-15.md)): the **ME-126** subset (hands + upper-body pose + lips + eyes/nose) beats the full-543 baseline **73.73% vs 70.59% val accuracy with half the parameters**. Remaining ablations in `TODO.md` §3.1.
+- **Landmark-subset ablations** — motivated by the motion-energy analysis and the Kaggle 1st-place cross-check ([docs/2026-07-15.md](docs/2026-07-15.md)): the **ME-126** subset (hands + upper-body pose + lips + eyes/nose) beats the full-543 baseline **73.73% vs 70.59% val accuracy with half the parameters**, and is independently confirmed by the discriminability probe comparison ([docs/2026-07-16.md](docs/2026-07-16.md), best of 6 registered subsets). Canonical subset index lists: `src/modules/dataset/landmark/subsets.py`. Remaining ablations in `TODO.md` §3.1.
 - **Planned benchmarks** — 1D-CNN + Transformer (the GISLR 1st-place architecture), LSTM, BiLSTM (offline-only accuracy reference), ST-GCN, TCN, Conformer. See `TODO.md` §4 for scoping notes.
 
 ## Model registry
@@ -41,6 +41,7 @@ Dated analysis/experiment reports live in [docs/](docs/) — one `docs/<YYYY-MM-
 | date | report | contents |
 |---|---|---|
 | 2026-07-15 | [docs/2026-07-15.md](docs/2026-07-15.md) | GISLR landmark motion-energy analysis (z-noise finding, keep/discard recommendation) · 1st-place solution landmark cross-check · GRU training in detail: full-543 baseline vs ME-126 subset (+3.1 pts at half the parameters) |
+| 2026-07-16 | [docs/2026-07-16.md](docs/2026-07-16.md) | Landmark-subset discriminability comparison (F-ratio / MI / probe classifier, 3 scopes): **ME-126 wins**; discriminability ≠ motion energy (rho −0.12); FULL-543 worst even for a linear probe · POPSIGN extraction module + driver notebook (resource-capped, resumable) built & validated |
 
 ## Project structure
 

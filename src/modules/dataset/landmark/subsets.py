@@ -137,42 +137,60 @@ def _make(name: str, indices: list[int], description: str, provenance: str,
                           provenance, probe_acc_global)
 
 
+# probe_acc_global = multinomial-logistic-probe val accuracy on per-video
+# descriptors, canonical 90/10 split, 250 classes (docs/2026-07-16.md).
+# Ranking: ME_126 > ME_132 > FP_118 > HANDS_POSE_50 > HANDS_42 > FULL_543.
 SUBSETS: dict[str, LandmarkSubset] = {s.name: s for s in [
     _make(
         "FULL_543",
         list(range(N_LANDMARKS)),
-        "All holistic landmarks — the no-selection baseline.",
+        "All holistic landmarks — the no-selection baseline. Worst probe "
+        "score of all subsets: the 417 redundant/noisy landmarks actively "
+        "hurt, mirroring the GRU result.",
         "GRU baseline run 20260713-213000 (70.59% val acc).",
+        probe_acc_global=0.4063,
     ),
     _make(
         "FP_118",
         LIPS_40 + HANDS_42 + EYES_NOSE_36,
         "Kaggle 1st-place subset: lips + hands + eyes/nose, no pose.",
         "gislr.0.competition.entry.1st.ipynb POINT_LANDMARKS (hoyso48).",
+        probe_acc_global=0.4860,
     ),
     _make(
         "ME_126",
         LIPS_40 + HANDS_42 + EYES_NOSE_36 + UPPER_BODY_POSE_8,
-        "FP_118 ∪ upper-body pose {11-16,23,24} — motion-energy keep set.",
-        "docs/2026-07-15.md §4; GRU run 20260715-190729 (73.73% val acc).",
+        "FP_118 ∪ upper-body pose {11-16,23,24} — motion-energy keep set. "
+        "WINNER of the 2026-07-16 discriminability comparison (+1.3 pts over "
+        "FP_118: upper-body pose adds real information).",
+        "docs/2026-07-15.md §4; GRU run 20260715-190729 (73.73% val acc); "
+        "docs/2026-07-16.md verdict.",
+        probe_acc_global=0.4994,
     ),
     _make(
         "ME_132",
         LIPS_40 + HANDS_42 + EYES_NOSE_36 + UPPER_BODY_POSE_8 + POSE_HAND_POINTS_6,
-        "ME_126 + pose wrist-adjacent hand points {17-22} (the 'optional' row).",
+        "ME_126 + pose wrist-adjacent hand points {17-22} (the 'optional' "
+        "row) — adds nothing over ME_126 once hands+arms are in.",
         "docs/2026-07-15.md §4 optional row.",
+        probe_acc_global=0.4978,
     ),
     _make(
         "HANDS_42",
         HANDS_42,
-        "Both hand meshes only — primary articulators, minimal subset.",
+        "Both hand meshes only — primary articulators, minimal subset. "
+        "Carries most of the signal at 10 classes; loses ~6 pts to ME_126 "
+        "at 250 classes.",
         "Component ablation floor.",
+        probe_acc_global=0.4373,
     ),
     _make(
         "HANDS_POSE_50",
         HANDS_42 + UPPER_BODY_POSE_8,
-        "Hands + upper-body pose, no face at all — tests what face adds.",
+        "Hands + upper-body pose, no face at all — face (lips/eyes/nose) is "
+        "worth ~3 pts on top of this at 250 classes.",
         "Component ablation.",
+        probe_acc_global=0.4671,
     ),
 ]}
 
