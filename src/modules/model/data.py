@@ -25,10 +25,10 @@ from torch.utils.data import Dataset
 
 from modules.paths import CACHE_DIR
 
-SEED = 42             # canonical project seed (split + training)
+SEED = 42  # canonical project seed (split + training)
 ROWS_PER_FRAME = 543  # holistic rows per frame (GISLR parquet layout)
-MAX_SEQ_LEN = 128     # uniform-subsample cap, identical across every run
-N_VAL = 9448          # canonical val-set size — asserted, never assumed
+MAX_SEQ_LEN = 128  # uniform-subsample cap, identical across every run
+N_VAL = 9448  # canonical val-set size — asserted, never assumed
 
 FEATURES_DIR = CACHE_DIR / "gislr" / "features"
 
@@ -39,8 +39,9 @@ def load_label_map(data_dir: Path) -> dict[str, int]:
     return json.loads((data_dir / "sign_to_prediction_index_map.json").read_text())
 
 
-def get_canonical_split(data_dir: Path, sign2idx: dict[str, int]
-                        ) -> tuple[pd.DataFrame, pd.DataFrame]:
+def get_canonical_split(
+    data_dir: Path, sign2idx: dict[str, int]
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Stratified 90/10 split, random_state=42 — identical to every leaderboard
     run and to modules/scripts/eval_gru.py (the canonical evaluation).
     Deterministic and cheap, so consumers call it instead of sharing live state."""
@@ -71,8 +72,9 @@ def load_video_subset(path, rows: np.ndarray, coords: str = "xyz") -> np.ndarray
     return np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
 
 
-def build_subset_cache(df: pd.DataFrame, prefix: str, subset, coords: str,
-                       data_dir: Path, progress=None) -> tuple[Path, Path]:
+def build_subset_cache(
+    df: pd.DataFrame, prefix: str, subset, coords: str, data_dir: Path, progress=None
+) -> tuple[Path, Path]:
     """Decode every parquet of one split once into one flat float32 array +
     frame offsets under data/cache/gislr/features/. Skip-if-exists; atomic.
 
@@ -90,19 +92,25 @@ def build_subset_cache(df: pd.DataFrame, prefix: str, subset, coords: str,
     rows = subset.array
     chunks, offsets = [], [0]
     with ThreadPoolExecutor(12) as ex:
-        for i, arr in enumerate(ex.map(lambda p: load_video_subset(p, rows, coords), paths)):
+        for i, arr in enumerate(
+            ex.map(lambda p: load_video_subset(p, rows, coords), paths)
+        ):
             chunks.append(arr.reshape(-1))
             offsets.append(offsets[-1] + arr.shape[0])
             if progress is not None and i % 500 == 0:
                 progress(i, len(paths))
     flat = np.concatenate(chunks)
-    for target, payload in ((data_path, flat),
-                            (off_path, np.asarray(offsets, dtype=np.int64))):
+    for target, payload in (
+        (data_path, flat),
+        (off_path, np.asarray(offsets, dtype=np.int64)),
+    ):
         tmp = target.with_suffix(".tmp.npy")
         np.save(tmp, payload)
         os.replace(tmp, target)
-    print(f"{prefix}/{tag}: cached {len(df)} videos, {flat.nbytes/1e9:.2f} GB "
-          f"({time.time()-t0:.0f}s)")
+    print(
+        f"{prefix}/{tag}: cached {len(df)} videos, {flat.nbytes / 1e9:.2f} GB "
+        f"({time.time() - t0:.0f}s)"
+    )
     return data_path, off_path
 
 
@@ -114,7 +122,7 @@ class SubsetArrayDataset(Dataset):
 
     def __init__(self, df, data_path, off_path, feature_dim, max_seq_len=MAX_SEQ_LEN):
         self.labels = df["label"].to_numpy()
-        self.data = np.load(data_path)   # ~5 GB for an ME-126-sized train split
+        self.data = np.load(data_path)  # ~5 GB for an ME-126-sized train split
         self.offsets = np.load(off_path)
         self.feature_dim = feature_dim
         self.max_seq_len = max_seq_len

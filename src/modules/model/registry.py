@@ -31,15 +31,31 @@ from modules.paths import CACHE_DIR, MODELS_DIR, SRC_DIR
 SCHEMA_VERSION = 2
 CKPT_BEST = "best.pt"
 CKPT_LAST = "last.pt"
-RUN_PTR_DIR = CACHE_DIR / "runs"   # <dataset>_<arch>_<tag>.txt -> active run dir
+RUN_PTR_DIR = CACHE_DIR / "runs"  # <dataset>_<arch>_<tag>.txt -> active run dir
 
 # top-level keys every meta.json must carry (README.md § "meta.json schema" is
 # the human-readable source of truth; this tuple is the machine check)
 REQUIRED_KEYS = (
-    "schema_version", "run_id", "created", "dataset", "architecture",
-    "model_name", "streaming", "subset", "coords", "n_landmarks",
-    "feature_dim", "n_classes", "n_params", "split", "training",
-    "hyperparameters", "metrics", "checkpoints", "assets", "notes",
+    "schema_version",
+    "run_id",
+    "created",
+    "dataset",
+    "architecture",
+    "model_name",
+    "streaming",
+    "subset",
+    "coords",
+    "n_landmarks",
+    "feature_dim",
+    "n_classes",
+    "n_params",
+    "split",
+    "training",
+    "hyperparameters",
+    "metrics",
+    "checkpoints",
+    "assets",
+    "notes",
 )
 
 
@@ -91,8 +107,13 @@ def write_meta(run_dir: Path, meta: dict) -> Path:
     if path.exists():
         prev = json.loads(path.read_text())
         if prev.get("metrics", {}).get("eval_status") == "canonical":
-            for k in ("eval_status", "overall_accuracy", "macro_accuracy",
-                      "median_class_accuracy", "n_classes_below_50pct"):
+            for k in (
+                "eval_status",
+                "overall_accuracy",
+                "macro_accuracy",
+                "median_class_accuracy",
+                "n_classes_below_50pct",
+            ):
                 meta["metrics"][k] = prev["metrics"][k]
         meta["assets"] = {**prev.get("assets", {}), **meta["assets"]}
         if prev.get("notes") and meta["notes"] == "":
