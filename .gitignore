@@ -8,16 +8,17 @@ wheels/
 .venv
 .env
 
-# data & caches — raw datasets live in kagglehub's cache, never in the repo;
-# src/cache/ holds the memmapped feature caches (GBs) and motion-analysis output
-data/
-src/cache/
+# data tree (src/data/) — raw datasets live in kagglehub's cache or on the
+# POPSIGN_LANDMARKS_DRIVE, derived caches in src/data/cache/, scratch in
+# src/data/temp/ (deleted after use). None of it enters the repo.
+# The one committed subtree is the model registry (src/data/models/):
+# index.csv + per-run meta.json + assets/ are tracked, weights (*.pt) are not.
+src/data/*
+!src/data/models/
+src/data/models/**/*.pt
+src/data/models/*/export/
 
-# model weights & export artifacts — run folders under src/models/ keep
-# README.md / data.md / assets/ / cache/ tracked, binary artifacts out
-src/models/**/*.pt
-gru_best.pt
-gru_latest.pt
+# model-export artifacts (TFLite chain: ONNX → TF SavedModel → TFLite)
 *.onnx
 *.tflite
 src/saved_model_dir/

@@ -17,56 +17,58 @@ uv sync                     # install deps (Python >= 3.12; torch cu130 via [too
 ```
 
 - **Never `uv pip install` ad-hoc** — `uv sync` removes anything not declared in `pyproject.toml` (torch was once lost this way). Declare new deps in `pyproject.toml` instead.
-- Run project Python via `.venv/Scripts/python.exe` (Windows). **CWD must be `src/`** for anything importing `modules` or touching data — all paths (`cache/`, `data/`, `checkpoints/`, `models/`) are relative to `src/`, and the Jupyter kernel must also use this venv with `src/` as its working directory.
-- Exception: `scripts/eval_gru.py` is self-contained (reads raw parquet via kagglehub) and runs from anywhere:
+- Run project Python via `.venv/Scripts/python.exe` (Windows). Notebook kernels use this venv with **CWD = `src/`** (that's what makes `import modules...` resolve). Path constants themselves are CWD-independent: `modules/paths.py` anchors everything to the `src/` directory (`RAW_DIR`, `CACHE_DIR`, `TEMP_DIR`, `EXTERNAL_DIR`, `MODELS_DIR`, `MODEL_INDEX`).
+- The project CLIs live in `src/modules/scripts/` and run from **any** CWD (they bootstrap `sys.path` themselves); the root `scripts/` folder is housekeeping-only (PowerShell etc., no project Python):
   ```bash
-  .venv/Scripts/python.exe scripts/eval_gru.py <checkpoint.pt> <out_run_dir> [--landmarks <indices.npy>]
+  .venv/Scripts/python.exe src/modules/scripts/eval_gru.py <run_dir>        # canonical per-class eval (all archs)
+  .venv/Scripts/python.exe src/modules/scripts/build_model_index.py [...]   # rebuild data/models/index.csv + query
   ```
-- `import modules.paths` **triggers kagglehub downloads/resolution at import time** — requires an authenticated Kaggle account that has accepted the `asl-signs` competition rules.
+- Dataset resolution is **lazy**: importing `modules.paths` downloads nothing; call `modules.paths.gislr_dir()` for GISLR only, `resolve_datasets()` for everything (POPSIGN included — huge). Requires an authenticated Kaggle account that has accepted the `asl-signs` competition rules.
 - `.env` at repo root (not committed) holds `POPSIGN_LANDMARKS_DRIVE` — POPSIGN's extracted landmarks go to a separate drive, never into the repo.
 - Type checking: both `pyrefly` and `ty` are installed (`[tool.ty.environment]` points at `./.venv`); TODO §0.2 says pick one — neither is canonical yet.
 - No `jq` on this machine — parse notebook JSON with `.venv/Scripts/python.exe -c "import json; ..."`.
 
 ## Windows constraints (shape architecture decisions)
 
-- **Training is PyTorch + CUDA.** TensorFlow GPU doesn't work on native Windows; TFLite export happens post-hoc via ONNX → TF SavedModel → TFLite (in `gislr.1.model.gru.ipynb`).
+- **Training is PyTorch + CUDA.** TensorFlow GPU doesn't work on native Windows; TFLite export happens post-hoc via ONNX → TF SavedModel → TFLite (deferred section of `gislr.1.model.gru.ipynb`).
 - **MediaPipe extraction is CPU-only** here (GPU delegate is Ubuntu-only), parallelized across worker processes.
-- DataLoader multiprocessing (spawn) is fragile from ad-hoc scripts — in-RAM arrays with `num_workers=0` train GISLR at ~0.3 min/epoch, which is plenty. This is why `gislr.1.model.gru.ipynb` defines its dataset in-notebook (no spawn pickling to survive); the old memmap-backed `GISLRRawDataset` module was deleted in the restructure and is not coming back.
+- DataLoader multiprocessing (spawn) is fragile from ad-hoc scripts — in-RAM arrays with `num_workers=0` train GISLR at ~0.3 min/epoch, which is plenty (`modules/model/data.py::SubsetArrayDataset`).
 
 ## Architecture & conventions
 
 - **Streaming viability drives everything.** The deployment path is the unidirectional `StreamingGRU`; bidirectional/offline models (BiLSTM etc.) are only ever accuracy references, never deployment candidates. New features (e.g. lag differences) must be causal.
+- **Shared logic lives in `src/modules/`, notebooks stay thin.** The unified training stack is `modules/model/` (`architectures.py` = the *single* definition of every model class, imported by both training and `eval_gru.py` — never redefine a model class elsewhere; `data.py`, `registry.py`, `train.py`, `report.py`). The four `gislr.1.model.*.ipynb` notebooks differ only in their architecture-identity block (`ARCH`, `TRAIN_SUBSETS`, `HYP`).
 - **Notebooks are flat in `src/`, named `<dataset>.<stage>.<topic>.ipynb`** — dataset, then a stage number ordering the pipeline, then the topic. No nested notebook folders. Pipeline order per dataset is described in `README.md` §"Running the pipeline".
-- **One folder per training run**: `src/models/<dataset>/<architecture>/<timestamp>/` (timestamp = run start, `YYYYMMDD-HHMMSS`) containing `README.md` (training conditions + metrics), `data.md` (exact dataset/subset/split), `assets/` (PNGs), `cache/` (per-class CSV, `landmarks.npy`, eval summary, training script). Weights (`*.pt`) are gitignored — the docs are the record. `src/models/README.md` is the leaderboard of best runs per dataset × architecture.
-- **Canonical evaluation** (all GISLR runs must match to be comparable): stratified 90/10 split, `random_state=42`, 9,448-video val set, per-class accuracy from raw parquet — exactly what `scripts/eval_gru.py` reproduces. A new run displaces a leaderboard entry only on this same split/metric.
-- **Dated reports**: every substantial analysis gets `docs/<YYYY-MM-DD>.md` with figures under `docs/assets/<YYYY-MM-DD>/`.
-- Raw data never enters the repo: `data/raw/` doesn't exist; `modules/paths.py` resolves kagglehub cache paths at runtime. `src/data/` and `src/cache/` are gitignored caches.
+- **Model registry** (reset empty 2026-07-18; pre-reset runs live in git history ≤ `3668dae`, their weights are gone): one **flat** folder per run at `src/data/models/<run_id>/` with `run_id` = **epoch seconds** at training start, containing only `meta.json` + `best.pt`/`last.pt` (gitignored) + `assets/` (everything else, each linked from `meta.json["assets"]`). Dataset/architecture/subset are meta.json fields, not directory levels. **The meta.json schema's source of truth is `README.md` § "meta.json schema"** (v2; machine check `modules/model/registry.py::REQUIRED_KEYS`). The training driver rewrites `meta.json` every epoch; `index.csv` is regenerated by `build_model_index.py`.
+- **Data placement policy** (`src/data/`, gitignored except `data/models/`): extracted-from-source → `data/raw/<dataset>/`; reusable derived artifacts → `data/cache/<dataset>/` (feature caches, analysis caches, manifests); throwaway output → `data/temp/`, **deleted after use** via `modules.paths.cleanup_temp()` (give producing notebooks a cleanup cell); third-party assets → `data/external/`. Raw kagglehub data never enters the repo.
+- **Canonical evaluation** (all GISLR runs must match to be comparable): stratified 90/10 split, `random_state=42`, 9,448-video val set, per-class accuracy from raw parquet — exactly what `modules/scripts/eval_gru.py` reproduces (it also promotes the run's `meta.json` to `eval_status: "canonical"`). A new run displaces a leaderboard entry only on this same split/metric.
+- **Docs**: daily logs `docs/daily/<YYYY-MM-DD>.md`; weekly summaries `docs/weekly/<YYYY>-<WW>.md` (ISO week, e.g. `2026-29.md`); standalone topic reports `docs/reports/<topic>.md`. Figures under the matching `assets/` subfolder. Convention: `docs/README.md`.
 
 ### How to build a notebook (and any big task)
 
 Three core rules:
 
-1. **Every cell is independently re-runnable.** Tweaking a parameter and re-running *one* cell must be enough to redo that subtask — never a series of cells. Put a subtask's tunables at the top of its own cell; have cells load their inputs from disk/cache rather than from live memory produced by other subtask cells. The only allowed dependencies are the setup cell (imports, shared constants, paths) and reusable-core function definitions — cells that are run once and don't change during param iteration.
+1. **Every cell is independently re-runnable.** Tweaking a parameter and re-running *one* cell must be enough to redo that subtask — never a series of cells. Put a subtask's tunables at the top of its own cell; have cells load their inputs from disk/cache rather than from live memory produced by other subtask cells. The only allowed dependencies are the setup cell (imports, shared constants, paths) and `modules/` imports.
 2. **Well documented with markdown cells.** Title cell first: what the notebook does, pipeline stage vs standalone diagnostic, a table of the artifacts it produces (path per output), how resumability works, and design decisions vs the TODO spec it implements. Then a numbered `## N.` markdown cell per section, cross-referencing TODO items (e.g. `## 3. Scope 1 — per-video (TODO §1.3)`).
-3. **Long tasks (extraction, training, …) save state as they go** — where that's sensible policy, an error/interrupt must never force a complete rerun. Use the existing manifest-driven resumable pattern (per-unit artifact written *before* marking `done` in a `cache/.../<scope>_manifest.json`; atomic saves via temp file + `os.replace`; `done` skipped, `failed` retried) rather than inventing a second one (TODO §2.2); training uses auto-resume checkpointing. Record seeded samples to JSON in the cache so re-runs are stable.
+3. **Long tasks (extraction, training, …) save state as they go** — an error/interrupt must never force a complete rerun. Use the existing manifest-driven resumable pattern (per-unit artifact written *before* marking `done` in a `data/cache/.../<scope>_manifest.json`; atomic saves via temp file + `os.replace`; `done` skipped, `failed` retried) rather than inventing a second one; training uses the driver's auto-resume checkpointing. Record seeded samples to JSON in the cache so re-runs are stable.
 
-Supporting conventions (`src/gislr.0.dataset.motion-energy.ipynb` is the exemplar; the older `gislr.1` / `popsign.*` notebooks predate these):
+Supporting conventions:
 
 - **Code cells open with a banner comment** (`# ===== / # <what this cell does> / # =====`).
-- **One setup cell** right after the title: all imports together, then every shared tunable as an UPPERCASE constant with a short inline comment (including `SEED = 42`); end by printing the resolved data/cache paths.
-- **Download only what's needed**: call `kagglehub.competition_download("asl-signs")` directly rather than `import modules.paths`, which resolves/downloads *every* dataset (incl. POPSIGN) at import time.
-- **Heavy outputs go to `cache/`, not into cell outputs**: write per-unit parquets/PNGs to disk and display only a couple of representative figures inline (a notebook once hit 17MB from animation outputs and had to be stripped).
-- Define reusable core functions once in an early section; every later section calls them rather than re-deriving logic.
+- **One setup cell** right after the title: all imports together, then every shared tunable as an UPPERCASE constant with a short inline comment; end by printing the resolved data/cache paths.
+- **Download only what's needed**: `modules.paths.gislr_dir()` for GISLR work — never `resolve_datasets()` unless POPSIGN raw video is genuinely required.
+- **Progress reporting uses ONE bar per long task** (`tqdm.auto`), with everything (sub-progress, metrics) in that bar's description/postfix — no nested bars, no per-iteration prints (`modules/model/train.py` is the pattern).
+- **Heavy outputs go to `data/cache/` (or a run's `assets/`), not into cell outputs**: write per-unit parquets/PNGs to disk and display only a couple of representative figures inline (a notebook once hit 17MB from animation outputs and had to be stripped).
 
 ## Key domain facts
 
-- GISLR frames have **543 landmarks** (`ROWS_PER_FRAME`), xyz each; sequences uniformly subsampled to `MAX_SEQ_LEN=128`; NaN → 0.
-- **ME-126** landmark subset (hands + upper-body pose {11–16, 23, 24} + lips + eyes/nose) beats the full-543 GRU baseline 73.73% vs 70.59% val acc at half the parameters. The z channel is mostly noise for pose landmarks (~92% of pose "motion"). Evidence and derivation: `docs/2026-07-15.md`; run history: `src/models/README.md`.
+- GISLR frames have **543 landmarks** (`ROWS_PER_FRAME`), xyz each; sequences uniformly subsampled to `MAX_SEQ_LEN=128`; NaN → 0 (constants: `modules/model/data.py`).
+- **ME-126** landmark subset (hands + upper-body pose {11–16, 23, 24} + lips + eyes/nose) beat the full-543 GRU baseline 73.73% vs 70.59% val acc at half the parameters (historical v1-regime runs — pre-reset, weights gone). The z channel is mostly noise for pose landmarks (~92% of pose "motion"). Evidence: `docs/daily/2026-07-15.md` and `docs/daily/2026-07-16.md`.
 
 ## Known broken / stale (verify before relying on)
 
-Tracked in TODO §0.1 and §2.1 — highlights:
-- `popsign.1.mediapipe.ipynb` imports the deleted `modules.datasets`; use `modules.paths.DATASETS` (key `"GISLR"`, not `"ISLR"`). (`gislr.1.model.gru.ipynb`'s stale import was fixed by the 2026-07-16 overhaul.)
-- `modules/data/landmark_worker.py` has a critical bug: `np.savez_compressed` writes only `fps`/`num_frames`, **never the landmarks** — plus a stale hardcoded model path and output dir. Fix before any bulk POPSIGN extraction.
-- `popsign.1.mediapipe.ipynb` currently contains stale GISLR exploration, not POPSIGN extraction; `popsign.0` and `popsign.3` are stubs.
-- Only 1 of 4 POPSIGN train dataset downloads is enabled in `modules/paths.py` (others commented out).
+Tracked in TODO §0.1, §0.4 and §2 — highlights:
+- **POPSIGN video manifests are missing** (`data/cache/popsign/dataframes/{train,test}.csv`) — cleared in the 2026-07-18 restructure; regenerate before any pilot/bulk extraction (TODO §0.4/§2.2).
+- The GISLR feature caches and diagnostic caches were also cleared — first training run per subset rebuilds features (~minutes); diagnostic notebooks recompute on re-run.
+- `popsign.1.mediapipe.ipynb` is stale (old GISLR exploration, dead imports) — slated for retirement; `popsign.2` / `popsign.3` predate the restructure (old paths, TF-era code).
+- Only 1 of 4 POPSIGN train dataset downloads is enabled in `modules/paths.py::resolve_datasets` (others commented out; ~650GB).

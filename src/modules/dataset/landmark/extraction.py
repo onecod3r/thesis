@@ -34,7 +34,7 @@ Resource cap (the "≤70%" rule):
 Typical use (from a notebook with CWD = ``src/``):
 
     from modules.dataset.landmark import extraction as ex
-    videos = pd.read_csv("data/cache/dataframes/train.csv")   # file_path, label, id
+    videos = pd.read_csv("data/cache/popsign/dataframes/train.csv")   # file_path, label, id
     summary = ex.extract_dataset(videos, split="train")
 """
 
@@ -50,6 +50,8 @@ import pandas as pd
 import psutil
 from tqdm.auto import tqdm
 
+from modules import paths
+
 N_LANDMARKS = 543
 GROUP_LAYOUT = (          # (holistic row offset, result attribute, group size)
     (0, "face_landmarks", 468),
@@ -60,7 +62,7 @@ GROUP_LAYOUT = (          # (holistic row offset, result attribute, group size)
 
 DEFAULT_CPU_FRACTION = 0.70   # ≤70% of logical cores
 DEFAULT_RAM_LIMIT_PCT = 70.0  # feeder blocks above this system-RAM usage
-DEFAULT_MODEL_PATH = Path("data/external/mediapipe/tasks/holistic_landmarker.task")
+DEFAULT_MODEL_PATH = paths.EXTERNAL_DIR / "mediapipe" / "tasks" / "holistic_landmarker.task"
 MANIFEST_SAVE_EVERY = 50      # results per manifest rewrite (30K-unit runs)
 DEFAULT_FPS = 30.0            # cv2 sometimes reports fps=0; assume 30
 
@@ -70,21 +72,23 @@ DEFAULT_FPS = 30.0            # cv2 sometimes reports fps=0; assume 30
 # ============================================================
 
 def _read_env_file() -> dict[str, str]:
-    """Minimal KEY=VALUE parse of the repo-root .env (CWD is src/)."""
-    for candidate in (Path(".env"), Path("../.env")):
-        if candidate.exists():
-            pairs = (line.split("=", 1) for line in candidate.read_text().splitlines()
-                     if "=" in line and not line.lstrip().startswith("#"))
-            return {k.strip(): v.strip() for k, v in pairs}
+    """Minimal KEY=VALUE parse of the repo-root .env (any CWD)."""
+    candidate = paths.SRC_DIR.parent / ".env"
+    if candidate.exists():
+        pairs = (line.split("=", 1) for line in candidate.read_text().splitlines()
+                 if "=" in line and not line.lstrip().startswith("#"))
+        return {k.strip(): v.strip() for k, v in pairs}
     return {}
 
 
 def landmarks_root() -> Path:
-    """`<POPSIGN_LANDMARKS_DRIVE>/data/raw/popsign`, or `data/raw/popsign` (gitignored) unset."""
+    """`<POPSIGN_LANDMARKS_DRIVE>/data/raw/popsign`, or `src/data/raw/popsign`
+    (gitignored) when the drive is unset."""
     drive = os.environ.get("POPSIGN_LANDMARKS_DRIVE") or _read_env_file().get(
         "POPSIGN_LANDMARKS_DRIVE")
-    base = Path(drive) if drive else Path(".")
-    return base / "data" / "raw" / "popsign"
+    if drive:
+        return Path(drive) / "data" / "raw" / "popsign"
+    return paths.RAW_DIR / "popsign"
 
 
 def default_n_workers(cpu_fraction: float = DEFAULT_CPU_FRACTION) -> int:
@@ -335,23 +339,26 @@ def benchmark_worker_counts(
     videos: pd.DataFrame,
     worker_counts: tuple[int, ...],
     videos_per_trial: int = 20,
-    out_root: Path | str | None = None,
+    pilot_root: Path | str | None = None,
     **extract_kwargs,
 ) -> pd.DataFrame:
     """Time `extract_dataset` at several worker counts on disjoint video slices.
 
-    Each trial writes under `<root>/_pilot/w<N>/` (disposable) and uses its own
-    slice of `videos`, so no trial is sped up by another's cached results.
-    Returns one row per worker count: videos/s, frames/s, CPU stats, ETA basis.
+    Pilot npz output is throwaway, so each trial writes under the temp tree
+    (`data/temp/popsign_pilot/w<N>/` by default) — delete it afterwards with
+    ``modules.paths.cleanup_temp()``. Each trial uses its own slice of
+    `videos`, so no trial is sped up by another's cached results. Returns one
+    row per worker count: videos/s, frames/s, CPU stats, ETA basis.
     """
-    out_root = Path(out_root) if out_root is not None else landmarks_root()
+    pilot_root = (Path(pilot_root) if pilot_root is not None
+                  else paths.TEMP_DIR / "popsign_pilot")
     rows = []
     for k, n in enumerate(worker_counts):
         batch = videos.iloc[k * videos_per_trial:(k + 1) * videos_per_trial]
         if len(batch) < videos_per_trial:
             raise ValueError("not enough pilot videos for all trials — "
                              "lower videos_per_trial or pass more videos")
-        summary = extract_dataset(batch, split=f"_pilot/w{n}", out_root=out_root,
+        summary = extract_dataset(batch, split=f"w{n}", out_root=pilot_root,
                                   n_workers=n, **extract_kwargs)
         rows.append({"n_workers": n, "videos_per_s": summary["videos_per_s"],
                      "frames_per_s": summary["frames_per_s"],

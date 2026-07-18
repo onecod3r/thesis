@@ -14,8 +14,10 @@ doesn't fit an existing one, add a new `## N. <Workstream Name>` section at the 
 ## 0. Repo Restructure Follow-ups & Tooling
 
 Cleanup left over from the move to the flat `src/` layout (notebooks renamed to
-`<dataset>.<stage>.<topic>.ipynb`, `modules/` slimmed to `paths.py` + `data/`,
-checkpoints+metrics merged into one per-run folder).
+`<dataset>.<stage>.<topic>.ipynb`), plus the **2026-07-18 restructure** (§0.4:
+unified `modules/model` training stack, flat epoch-seconds registry with
+meta.json schema v2, `data/{raw,cache,temp,models}` placement policy,
+docs daily/weekly/reports split).
 
 ### 0.1 Stale imports / references broken by the restructure
 
@@ -32,10 +34,9 @@ checkpoints+metrics merged into one per-run folder).
 - [ ] `src/popsign.1.mediapipe.ipynb` imports `from modules.datasets import DATASETS`
   and uses `DATASETS["ISLR"]` — `datasets/` was deleted; it's now
   `modules.paths.DATASETS` with key `"GISLR"`.
-- [ ] `src/modules/` has no `__init__.py` files (the old ones were deleted) — either
-  restore them or confirm namespace-package imports work from the `src/` kernel CWD.
-  (`modules/dataset/` and `modules/dataset/landmark/` ship `__init__.py` as of
-  2026-07-16.)
+- [x] `src/modules/` has no `__init__.py` files — **resolved 2026-07-18**: every
+  package level ships one (`modules/`, `modules/model/`, `modules/scripts/`,
+  `modules/dataset/`, `modules/dataset/landmark/`).
 - [ ] `src/popsign.1.mediapipe.ipynb` currently contains early **GISLR** motion-energy
   exploration code, not POPSIGN extraction — retire that content (superseded by
   `gislr.0.dataset.motion-energy.ipynb`) and rebuild the notebook as the extraction
@@ -69,7 +70,7 @@ checkpoints+metrics merged into one per-run folder).
   `src/cache/gislr.0.competition.entry.1st.with-outputs.ipynb` (gitignored) or
   Kaggle discussion 406978.
 
-### 0.3 Model-run metadata & queryable index (2026-07-17)
+### 0.3 Model-run metadata & queryable index (2026-07-17, superseded by §0.4's schema v2)
 
 Structured run records so "best 3 gru runs on gislr" / "all runs on subset X"
 is a query, not a folder crawl:
@@ -93,9 +94,49 @@ is a query, not a folder crawl:
   **done for GISLR** (the lstm/bilstm/cnn1d siblings inherit the GRU
   notebook's §7 emission, 2026-07-17); still applies to future POPSIGN
   training notebooks.
-- [ ] Rebuild `index.csv` after the canonical evals of the six pending runs
-  (three 2026-07-16 xyz + three 2026-07-17 xy) — the xy runs' train-loop
-  numbers (§3.1) would displace the ME-126 xyz leader if they hold.
+- [x] ~~Rebuild `index.csv` after the canonical evals of the six pending runs~~ —
+  **voided 2026-07-18**: those runs' weights were deleted with the old
+  `src/models/` tree during the restructure, so their canonical evals can
+  never run. Their train-loop numbers stand as historical references
+  (git history ≤ `3668dae` + docs/daily/); the registry restarted empty (§0.4).
+
+### 0.4 Restructure 2026-07-18 — unified stack, flat registry, data-tree policy
+
+Executed 2026-07-18 (full write-up: `docs/daily/2026-07-18.md`):
+
+- [x] **`src/modules/model/`** — unified training stack (`architectures.py`
+  single model-class definition shared with eval, `data.py`, `registry.py`,
+  `train.py`, `report.py`); the four `gislr.1.model.*.ipynb` notebooks
+  regenerated as thin drivers (identity block + `modules.model` calls).
+- [x] **Registry v2**: flat `src/data/models/<epoch-seconds>/` folders holding
+  only `meta.json` + `best.pt`/`last.pt` (gitignored) + `assets/`;
+  schema v2 documented in README.md § "meta.json schema" (machine check:
+  `modules/model/registry.py::REQUIRED_KEYS`); `meta.json` rewritten every
+  epoch by the driver; **registry reset to empty** (header-only `index.csv`).
+- [x] **Single progress bar per training run** (batch progress, metrics, LR,
+  plateau counter in one bar) — replaces the nested-bar + per-epoch-print spam.
+- [x] **`modules/paths.py`**: absolute CWD-independent tree constants
+  (`RAW/CACHE/TEMP/EXTERNAL/MODELS`), lazy dataset resolution (import no
+  longer downloads), `cleanup_temp()`.
+- [x] **Data placement policy** applied: POPSIGN pilot npz → `data/temp/popsign_pilot/`
+  with cleanup cell (stale `data/raw/popsign/_pilot` deleted); diagnostic
+  caches → `data/cache/gislr/{motion_analysis,subset_comparison}`;
+  manifests → `data/cache/popsign/dataframes/`; `.gitignore` reworked
+  (all of `src/data/` ignored except `data/models/` minus weights/exports).
+- [x] **Scripts split**: project CLIs in `src/modules/scripts/` (`eval_gru.py`
+  takes a run folder, `build_model_index.py` flat-layout; both run from any
+  CWD); root `scripts/` = housekeeping only.
+- [x] **Docs split**: `docs/daily/` + `docs/weekly/<YYYY>-<WW>.md` +
+  `docs/reports/<topic>.md` (convention in `docs/README.md`).
+- [ ] Regenerate the POPSIGN video manifests at
+  `data/cache/popsign/dataframes/{train,test}.csv` — the pre-restructure
+  copies were cleared with the old cache tree (blocks §2 pilot/bulk runs).
+- [ ] First v2-regime training runs (user) to seed the fresh registry —
+  re-establishes the FULL_543 baseline and ME_126 leader under the new
+  schema before any new ablation conclusions.
+- [ ] `popsign.2.model.ipynb` / `popsign.3.pipeline.ipynb` still predate the
+  restructure (old paths, TF-era code) — modernize or retire alongside
+  `popsign.1` (§0.1).
 
 ---
 
@@ -236,11 +277,15 @@ Replaces the deleted `popsign.0.dataset.ipynb` stub as the extraction driver
 - [x] Resumable bulk-extraction cells with progress bars + QC section
   (interruption-safe over ~30K videos) — §1.2 manifest pattern (per-unit artifact
   before `done`, atomic saves, `failed` retried, batched manifest rewrites).
+- [x] Pilot output moved to the temp tree (2026-07-18): npz →
+  `data/temp/popsign_pilot/w<N>/`, deleted by the notebook's cleanup cell once
+  `eta.json` is recorded in `data/cache/popsign/extraction/`.
+- [ ] Regenerate the video manifests at `data/cache/popsign/dataframes/`
+  (pre-restructure copies cleared — see §0.4), ideally with **all 4** POPSIGN
+  train datasets — currently only 1 of 4 is enabled in
+  `modules/paths.py::resolve_datasets` (~650GB still to download).
 - [ ] Run the pilot (user), review videos/s + resource headroom, then run the
   bulk extraction for train + test.
-- [ ] Regenerate the video manifests with **all 4** POPSIGN train datasets —
-  currently only 1 of 4 is enabled in `modules/paths.py` (the other three
-  downloads are commented out; ~650GB still to download).
 
 ---
 
@@ -285,7 +330,13 @@ Replaces the deleted `popsign.0.dataset.ipynb` stub as the extraction driver
 ### 3.1 Landmark-subset training ablations (GRU, all-else-identical)
 
 Controlled runs that change ONLY the input subset vs the full-543 baseline
-(`src/models/gislr/gru/20260713-213000`, val acc 70.59%):
+(historical run `20260713-213000`, val acc 70.59%).
+
+**NOTE (2026-07-18):** all runs below predate the registry reset (§0.4) — their
+weights are gone, so "canonical evals pending" can no longer be satisfied for
+them. Their train-loop numbers stand as historical references; the ablation grid
+should be re-run under regime v2 into the fresh registry before drawing final
+subset conclusions (the run-to-run-variance caveat below makes this doubly true):
 
 **2026-07-16:** `src/gislr.1.model.gru.ipynb` overhauled into the subset-ablation
 driver: trains the top-3 probe subsets (`ME_126`, `ME_132`, `FP_118`) as
@@ -391,4 +442,4 @@ key and handles xy/xyz via its `coords` key).
 
 ---
 
-*Last updated: July 17, 2026*
+*Last updated: July 18, 2026*

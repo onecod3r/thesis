@@ -1,25 +1,23 @@
-"""Per-class evaluation of a trained checkpoint on the canonical val split.
+"""Canonical per-class evaluation of a registry run on the val split.
 
-Handles every architecture the gislr.1.model.*.ipynb notebooks train (gru,
-lstm, bilstm, cnn1d) by dispatching on the checkpoint's "arch" key (absent in
-pre-2026-07-17 checkpoints -> gru). The model classes below must stay
-byte-identical to their notebook definitions or state_dict loading breaks.
+Handles every architecture in modules.model.architectures.ARCHS (gru, lstm,
+bilstm, cnn1d) by dispatching on the checkpoint's "arch" key; coordinate
+channels follow its "coords" key ("xyz" or "xy"), landmark selection its
+"landmarks" key. The model classes are imported from modules/model — the same
+definitions the notebooks train — so state_dicts can never drift.
 
-Reproduces the val split from the training notebooks (stratified 10%, seed 42)
-and the dataset preprocessing (NaN->0, uniform subsample to max_seq_len frames).
-Evaluates straight from the raw parquet files — no memmap cache needed.
+Reproduces the canonical split (stratified 10%, seed 42, 9,448 videos) and the
+dataset preprocessing (NaN->0, uniform subsample to MAX_SEQ_LEN frames),
+straight from the raw parquet files — no feature cache needed.
 
-Usage:
-    python eval_gru.py <checkpoint.pt> <out_run_dir> [--landmarks <npy-file>]
+Usage (any CWD — the script bootstraps its own imports):
 
-If --landmarks is given (a .npy int array of landmark indices into 0..542),
-only those landmarks are fed to the model. Coordinate channels follow the
-checkpoint's "coords" key ("xyz" or "xy" — the z-drop ablation), so
-feature_dim = len(coords) * n_landmarks must match.
+    .venv/Scripts/python.exe src/modules/scripts/eval_gru.py <run_dir> [--checkpoint best.pt]
 
-Besides the per-class artifacts, the canonical numbers are written into the
-run's metadata.json (eval_status -> "canonical"), so a subsequent
-scripts/build_model_index.py rebuild picks them up in src/models/index.csv.
+<run_dir> is a registry folder (src/data/models/<run_id>/). Writes
+assets/per_class_accuracy.{csv,png} + assets/eval_summary.json, promotes
+meta.json metrics to eval_status="canonical", and registers the new assets —
+rebuild the index afterwards with modules/scripts/build_model_index.py.
 """
 import argparse
 import json
@@ -28,112 +26,22 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-import kagglehub
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # -> src/ (imports work from any CWD)
+
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 import torch
-import torch.nn as nn
-from sklearn.model_selection import train_test_split
-from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
-ROWS_PER_FRAME = 543
-MAX_SEQ_LEN = 128
+from modules.model import registry as R
+from modules.model.architectures import build_model
+from modules.model.data import MAX_SEQ_LEN, ROWS_PER_FRAME, get_canonical_split, load_label_map
+from modules.paths import gislr_dir
+
 BATCH = 256
 
 
-class StreamingGRU(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, num_classes, dropout=0.3):
-        super().__init__()
-        self.input_norm = nn.LayerNorm(input_size)
-        self.gru = nn.GRU(input_size, hidden_size, num_layers, batch_first=True,
-                          dropout=dropout if num_layers > 1 else 0.0, bidirectional=False)
-        self.head = nn.Sequential(nn.LayerNorm(hidden_size), nn.Dropout(dropout),
-                                  nn.Linear(hidden_size, num_classes))
-
-    def forward(self, x, lengths):
-        x = self.input_norm(x)
-        packed = pack_padded_sequence(x, lengths.cpu(), batch_first=True, enforce_sorted=True)
-        packed_out, _ = self.gru(packed)
-        out, _ = pad_packed_sequence(packed_out, batch_first=True)
-        idx = (lengths - 1).view(-1, 1, 1).expand(-1, 1, out.size(-1)).to(out.device)
-        return self.head(out.gather(1, idx).squeeze(1))
-
-
-class StreamingLSTM(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, num_classes, dropout=0.3):
-        super().__init__()
-        self.input_norm = nn.LayerNorm(input_size)
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True,
-                            dropout=dropout if num_layers > 1 else 0.0, bidirectional=False)
-        self.head = nn.Sequential(nn.LayerNorm(hidden_size), nn.Dropout(dropout),
-                                  nn.Linear(hidden_size, num_classes))
-
-    def forward(self, x, lengths):
-        x = self.input_norm(x)
-        packed = pack_padded_sequence(x, lengths.cpu(), batch_first=True, enforce_sorted=True)
-        packed_out, _ = self.lstm(packed)
-        out, _ = pad_packed_sequence(packed_out, batch_first=True)
-        idx = (lengths - 1).view(-1, 1, 1).expand(-1, 1, out.size(-1)).to(out.device)
-        return self.head(out.gather(1, idx).squeeze(1))
-
-
-class BiLSTM(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, num_classes, dropout=0.3):
-        super().__init__()
-        self.input_norm = nn.LayerNorm(input_size)
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True,
-                            dropout=dropout if num_layers > 1 else 0.0, bidirectional=True)
-        self.head = nn.Sequential(nn.LayerNorm(2 * hidden_size), nn.Dropout(dropout),
-                                  nn.Linear(2 * hidden_size, num_classes))
-
-    def forward(self, x, lengths):
-        x = self.input_norm(x)
-        packed = pack_padded_sequence(x, lengths.cpu(), batch_first=True, enforce_sorted=True)
-        packed_out, _ = self.lstm(packed)
-        out, _ = pad_packed_sequence(packed_out, batch_first=True)
-        H = out.size(-1) // 2
-        idx = (lengths - 1).view(-1, 1, 1).expand(-1, 1, H).to(out.device)
-        fwd_last = out[..., :H].gather(1, idx).squeeze(1)
-        bwd_first = out[:, 0, H:]
-        return self.head(torch.cat([fwd_last, bwd_first], dim=-1))
-
-
-class CausalConv1D(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, num_classes,
-                 dropout=0.3, kernel_size=5):
-        super().__init__()
-        self.input_norm = nn.LayerNorm(input_size)
-        self.convs = nn.ModuleList()
-        self.norms = nn.ModuleList()
-        ch = input_size
-        for i in range(num_layers):
-            d = 2 ** i
-            self.convs.append(nn.Sequential(
-                nn.ConstantPad1d(((kernel_size - 1) * d, 0), 0.0),
-                nn.Conv1d(ch, hidden_size, kernel_size, dilation=d)))
-            self.norms.append(nn.LayerNorm(hidden_size))
-            ch = hidden_size
-        self.act = nn.GELU()
-        self.drop = nn.Dropout(dropout)
-        self.head = nn.Sequential(nn.LayerNorm(hidden_size), nn.Dropout(dropout),
-                                  nn.Linear(hidden_size, num_classes))
-
-    def forward(self, x, lengths):
-        x = self.input_norm(x).transpose(1, 2)
-        for conv, norm in zip(self.convs, self.norms):
-            x = conv(x).transpose(1, 2)
-            x = self.drop(self.act(norm(x))).transpose(1, 2)
-        out = x.transpose(1, 2)
-        idx = (lengths - 1).view(-1, 1, 1).expand(-1, 1, out.size(-1)).to(out.device)
-        return self.head(out.gather(1, idx).squeeze(1))
-
-
-ARCHS = {"gru": StreamingGRU, "lstm": StreamingLSTM,
-         "bilstm": BiLSTM, "cnn1d": CausalConv1D}
-
-
-def load_video(path, landmarks=None, coords="xyz"):
+def load_video(path, landmarks, coords):
     cols = list(coords)
     table = pq.read_table(path, columns=cols)
     data = np.column_stack([table.column(c).to_numpy() for c in cols])
@@ -150,32 +58,27 @@ def load_video(path, landmarks=None, coords="xyz"):
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("checkpoint")
-    ap.add_argument("out_run_dir")
-    ap.add_argument("--landmarks", default=None)
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("run_dir", help="registry run folder (src/data/models/<run_id>/)")
+    ap.add_argument("--checkpoint", default=R.CKPT_BEST,
+                    help=f"checkpoint file inside the run folder (default {R.CKPT_BEST})")
     args = ap.parse_args()
 
+    run_dir = Path(args.run_dir)
+    assert (run_dir / "meta.json").is_file(), f"not a registry run folder: {run_dir}"
     device = torch.device("cuda")
-    landmarks = np.load(args.landmarks) if args.landmarks else None
 
-    data_dir = Path(kagglehub.competition_download("asl-signs"))
-    sign2idx = json.loads((data_dir / "sign_to_prediction_index_map.json").read_text())
+    data_dir = gislr_dir()
+    sign2idx = load_label_map(data_dir)
     idx2sign = {v: k for k, v in sign2idx.items()}
-
-    train_df = pd.read_csv(data_dir / "train.csv")
-    train_df["label"] = train_df["sign"].map(sign2idx)
-    _, val_split = train_test_split(train_df, test_size=0.1,
-                                    stratify=train_df["sign"], random_state=42)
-    val_split = val_split.reset_index(drop=True)
+    _, val_split = get_canonical_split(data_dir, sign2idx)
     print(f"val split: {len(val_split)} videos")
 
-    ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
-    hyp = ckpt["hyp"]
-    arch = ckpt.get("arch", "gru")  # pre-2026-07-17 checkpoints are all GRU
-    coords = ckpt.get("coords", "xyz")  # "xy" for the z-drop ablation runs
-    model = ARCHS[arch](ckpt["feature_dim"], hyp["hidden_size"], hyp["num_layers"],
-                        len(sign2idx), hyp["dropout"]).to(device)
+    ckpt = torch.load(run_dir / args.checkpoint, map_location=device, weights_only=False)
+    arch = ckpt.get("arch", "gru")
+    coords = ckpt.get("coords", "xyz")
+    landmarks = np.asarray(ckpt["landmarks"]) if ckpt.get("landmarks") is not None else None
+    model = build_model(arch, ckpt["feature_dim"], len(sign2idx), ckpt["hyp"]).to(device)
     model.load_state_dict(ckpt["model_state"])
     model.eval()
     print(f"checkpoint: arch={arch} coords={coords} feature_dim={ckpt['feature_dim']} "
@@ -210,10 +113,9 @@ def main():
     per_class = per_class[["sign", "accuracy", "n_val"]].sort_values("accuracy")
     macro = per_class["accuracy"].mean()
 
-    out = Path(args.out_run_dir)
-    (out / "cache").mkdir(parents=True, exist_ok=True)
-    (out / "assets").mkdir(parents=True, exist_ok=True)
-    per_class.to_csv(out / "cache" / "per_class_accuracy.csv", index_label="label")
+    assets = run_dir / "assets"
+    assets.mkdir(exist_ok=True)
+    per_class.to_csv(assets / "per_class_accuracy.csv", index_label="label")
 
     import matplotlib
     matplotlib.use("Agg")
@@ -229,7 +131,7 @@ def main():
     axes[1].set_title("15 worst classes"); axes[1].set_xlabel("accuracy")
     axes[1].invert_yaxis()
     fig.tight_layout()
-    fig.savefig(out / "assets" / "per_class_accuracy.png", dpi=110)
+    fig.savefig(assets / "per_class_accuracy.png", dpi=110)
 
     summary = {
         "overall_accuracy": float(overall),
@@ -240,28 +142,26 @@ def main():
         "n_classes_below_50pct": int((per_class["accuracy"] < 0.5).sum()),
         "median_class_accuracy": float(per_class["accuracy"].median()),
     }
-    (out / "cache" / "eval_summary.json").write_text(json.dumps(summary, indent=2))
+    (assets / "eval_summary.json").write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary, indent=2))
 
-    # promote the canonical numbers into the run's metadata.json (the record
-    # scripts/build_model_index.py aggregates into src/models/index.csv)
-    meta_path = out / "metadata.json"
-    if meta_path.is_file():
-        meta = json.loads(meta_path.read_text())
-        meta.update({
-            "eval_status": "canonical",
-            "overall_accuracy": summary["overall_accuracy"],
-            "macro_accuracy": summary["macro_accuracy"],
-            "median_class_accuracy": summary["median_class_accuracy"],
-            "n_classes_below_50pct": summary["n_classes_below_50pct"],
-            "n_val": summary["n_val"],
-        })
-        meta_path.write_text(json.dumps(meta, indent=2))
-        print(f"updated {meta_path} (eval_status=canonical) — rebuild the index "
-              f"with scripts/build_model_index.py")
-    else:
-        print(f"NOTE: no {meta_path} to update — create one so the run is "
-              f"indexed by scripts/build_model_index.py")
+    # promote the canonical numbers into meta.json (the record
+    # build_model_index.py aggregates into data/models/index.csv)
+    meta = R.load_meta(run_dir)
+    meta["metrics"].update({
+        "eval_status": "canonical",
+        "overall_accuracy": summary["overall_accuracy"],
+        "macro_accuracy": summary["macro_accuracy"],
+        "median_class_accuracy": summary["median_class_accuracy"],
+        "n_classes_below_50pct": summary["n_classes_below_50pct"],
+    })
+    R.write_meta(run_dir, meta)
+    R.register_assets(run_dir,
+                      per_class_csv="assets/per_class_accuracy.csv",
+                      per_class_png="assets/per_class_accuracy.png",
+                      eval_summary="assets/eval_summary.json")
+    print(f"updated {run_dir / 'meta.json'} (eval_status=canonical) — rebuild the "
+          f"index with modules/scripts/build_model_index.py")
 
 
 if __name__ == "__main__":
