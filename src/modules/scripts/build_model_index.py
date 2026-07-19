@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # -> src/
 
 import pandas as pd
 
+from modules.model import registry as R
 from modules.paths import MODEL_INDEX, MODELS_DIR
 
 # column order of index.csv: identity, then results, then config; the flattened
@@ -41,17 +42,25 @@ LEAD_COLUMNS = [
     "training_regime", "training_source", "training_epoch_cap",
     "training_epochs_trained", "training_best_epoch", "training_early_stopped",
     "training_finished", "training_wall_time_min",
+    "submission_tested", "submission_platform", "submission_public_score",
+    "submission_private_score", "submission_submitted_at", "submission_reference",
 ]
 
 
 def _flatten(meta: dict) -> dict:
     row = {k: v for k, v in meta.items()
            if k not in ("schema_version", "split", "training", "hyperparameters",
-                        "metrics", "checkpoints", "assets")}
+                        "metrics", "checkpoints", "assets", "submission")}
     row.update({f"split_{k}": v for k, v in meta.get("split", {}).items()})
     row.update({f"training_{k}": v for k, v in meta.get("training", {}).items()})
     row.update({f"hyp_{k}": v for k, v in meta.get("hyperparameters", {}).items()})
     row.update(meta.get("metrics", {}))
+    # pre-v3 runs have no submission block — an absent block means "never
+    # submitted", so default rather than leaving the column ragged
+    sub = {**{"tested": False, "platform": None, "public_score": None,
+              "private_score": None, "submitted_at": None, "reference": None},
+           **meta.get("submission", {})}
+    row.update({f"submission_{k}": v for k, v in sub.items() if k != "notes"})
     return row
 
 
@@ -83,9 +92,19 @@ def main():
                     help="filter printed view by architecture (e.g. gru)")
     ap.add_argument("--subset", help="filter printed view by landmark subset (e.g. ME_126)")
     ap.add_argument("--top", type=int, help="print only the top N rows of the filtered view")
+    ap.add_argument("--untested", action="store_true",
+                    help="show only runs not yet scored on the official test set "
+                         "(submission.tested = false) — the submission queue")
+    ap.add_argument("--no-migrate", action="store_true",
+                    help="skip the pre-v3 meta.json schema backfill")
     args = ap.parse_args()
 
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    if not args.no_migrate:
+        migrated = R.migrate_all(MODELS_DIR)
+        if migrated:
+            print(f"migrated {len(migrated)} meta.json file(s) to schema "
+                  f"v{R.SCHEMA_VERSION}\n")
     df = load_runs()
     df.to_csv(MODEL_INDEX, index=False)
     print(f"wrote {MODEL_INDEX} ({len(df)} runs)\n")
@@ -97,11 +116,13 @@ def main():
     for col in ("dataset", "architecture", "subset"):
         if getattr(args, col):
             view = view[view[col].str.lower() == getattr(args, col).lower()]
+    if args.untested:
+        view = view[~view["submission_tested"].fillna(False).astype(bool)]
     if args.top:
         view = view.head(args.top)
 
     show = ["dataset", "architecture", "run_id", "subset", "coords",
-            "val_acc", "eval_status", "n_params", "created"]
+            "val_acc", "eval_status", "submission_tested", "n_params", "created"]
     with pd.option_context("display.width", 200, "display.max_columns", None):
         print(view[show].to_string(index=False))
 

@@ -64,7 +64,30 @@ DEFAULT_CPU_FRACTION = 0.70   # ≤70% of logical cores
 DEFAULT_RAM_LIMIT_PCT = 70.0  # feeder blocks above this system-RAM usage
 DEFAULT_MODEL_PATH = paths.EXTERNAL_DIR / "mediapipe" / "tasks" / "holistic_landmarker.task"
 MANIFEST_SAVE_EVERY = 50      # results per manifest rewrite (30K-unit runs)
+MAXTASKSPERCHILD = 64         # recycle a worker after N videos (graph hygiene)
 DEFAULT_FPS = 30.0            # cv2 sometimes reports fps=0; assume 30
+
+# Detector confidence thresholds — the knobs the confidence-tuning notebook
+# sweeps (popsign.0.dataset.confidence-tuning.ipynb, TODO §2.3). These are the
+# real HolisticLandmarkerOptions fields: the task API exposes no
+# min_tracking_confidence and no separate hand *detection* threshold.
+#
+# Measured 2026-07-19 (docs/reports/confidence-tuning.md): despite its name,
+# min_hand_landmarks_confidence is **inert** — driving it 0.01 -> 0.99 produces
+# bit-identical landmarks. Holistic derives the hand ROIs from the *pose*
+# landmarks, so min_pose_{detection,landmarks}_confidence are what actually gate
+# the hands (0.01 -> 0.99 swings hand detection rate 0.52 -> 0.09).
+CONFIDENCE_FIELDS = (
+    "min_face_detection_confidence",
+    "min_face_suppression_threshold",
+    "min_face_landmarks_confidence",
+    "min_pose_detection_confidence",
+    "min_pose_suppression_threshold",
+    "min_pose_landmarks_confidence",
+    "min_hand_landmarks_confidence",
+)
+# MediaPipe's own defaults; the tuning notebook's baseline arm
+DEFAULT_CONFIDENCE: dict[str, float] = {f: 0.5 for f in CONFIDENCE_FIELDS}
 
 
 # ============================================================
@@ -102,29 +125,87 @@ def default_n_workers(cpu_fraction: float = DEFAULT_CPU_FRACTION) -> int:
 _MP = None            # mediapipe module (imported lazily, workers only)
 _LANDMARKER = None    # per-process HolisticLandmarker (VIDEO mode)
 _LANDMARKER_MODEL_PATH = str(DEFAULT_MODEL_PATH)
+_CONFIDENCE: dict = {}  # per-process detector thresholds (empty = MediaPipe defaults)
 _TS_OFFSET = 0        # VIDEO mode needs strictly increasing timestamps
+_LAST_SHAPE: tuple[int, int] | None = None   # (w, h) of the previous video
 
 
-def _init_worker(model_path: str) -> None:
-    """Pool initializer: single-threaded math libs + one landmarker per process."""
+def _init_worker(model_path: str, confidence: dict | None = None,
+                 stderr_log: str | None = None) -> None:
+    """Pool initializer: quiet stderr + single-threaded math libs + a landmarker.
+
+    ``stderr_log`` redirects this worker's **file-descriptor 2** to a log file
+    before MediaPipe is imported. That is not cosmetic: MediaPipe logs from C++
+    (absl/glog) straight to fd 2, and ipykernel captures fd-level output into
+    cell output by default (``IPKernelApp.capture_fd_output``), so a notebook-run
+    extraction would otherwise write hundreds of `oneDNN`/`XNNPACK`/
+    `inference_feedback_manager` lines *per worker* into the `.ipynb` — the
+    failure mode that once left a 17 MB notebook in this repo (TODO §0.2).
+    Redirecting keeps the messages readable on disk instead of discarding them.
+    """
     for var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
         os.environ[var] = "1"
+    # belt and braces: drop INFO/WARNING at the source too (ERROR still logged)
+    os.environ.setdefault("GLOG_minloglevel", "2")
+    os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
+    if stderr_log:
+        Path(stderr_log).parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(stderr_log, os.O_WRONLY | os.O_CREAT | os.O_APPEND)
+        os.dup2(fd, 2)          # everything C++ writes to stderr now lands here
+        os.close(fd)
     import cv2
     cv2.setNumThreads(1)
-    global _MP, _LANDMARKER, _LANDMARKER_MODEL_PATH
+    global _MP, _LANDMARKER, _LANDMARKER_MODEL_PATH, _CONFIDENCE, _LAST_SHAPE
     import mediapipe as mp
     _MP = mp
     _LANDMARKER_MODEL_PATH = model_path
-    _LANDMARKER = _make_landmarker(model_path)
+    _CONFIDENCE = dict(confidence or {})
+    _LAST_SHAPE = None
+    _LANDMARKER = _make_landmarker(model_path, _CONFIDENCE)
 
 
-def _make_landmarker(model_path: str):
+def _reset_landmarker() -> None:
+    """Close the current landmarker and build a fresh one.
+
+    **Closing is the point.** ``HolisticLandmarker`` owns a native MediaPipe
+    graph with its own thread pool (~70 threads on this machine). Rebinding
+    ``_LANDMARKER`` without closing leaks the graph *and* its threads.
+
+    Observed 2026-07-19 during the first pilot: a worker that had rebuilt three
+    times sat at **219 threads / 1.3 GB** (vs 76 / 614 MB for its siblings) and
+    then wedged at **0% CPU**, taking the whole run with it — ``imap_unordered``
+    blocks forever on a result that can never arrive, so the pilot stalled at
+    18/20 with every worker idle and no error anywhere.
+    """
+    global _LANDMARKER
+    if _LANDMARKER is not None:
+        try:
+            _LANDMARKER.close()
+        except Exception:
+            pass          # a wedged graph must not stop us building a good one
+        _LANDMARKER = None
+    _LANDMARKER = _make_landmarker(_LANDMARKER_MODEL_PATH, _CONFIDENCE)
+
+
+def _make_landmarker(model_path: str, confidence: dict | None = None):
+    """One HolisticLandmarker in VIDEO mode.
+
+    `confidence` overrides any subset of CONFIDENCE_FIELDS; anything omitted
+    keeps MediaPipe's own default. Unknown keys are rejected loudly rather than
+    silently ignored — a typo'd threshold in a tuning sweep would otherwise look
+    like "this config changed nothing".
+    """
     from mediapipe.tasks.python import BaseOptions
     from mediapipe.tasks.python import vision
+
+    confidence = dict(confidence or {})
+    unknown = set(confidence) - set(CONFIDENCE_FIELDS)
+    assert not unknown, f"unknown HolisticLandmarkerOptions field(s): {sorted(unknown)}"
     return vision.HolisticLandmarker.create_from_options(
         vision.HolisticLandmarkerOptions(
             base_options=BaseOptions(model_asset_path=model_path),
-            running_mode=vision.RunningMode.VIDEO))
+            running_mode=vision.RunningMode.VIDEO,
+            **confidence))
 
 
 def _result_to_frame(result) -> np.ndarray:
@@ -146,7 +227,7 @@ def _extract_one(job: tuple[str, str, str]) -> dict:
     returned dict so the driver can record them in the manifest).
     """
     import cv2
-    global _TS_OFFSET, _LANDMARKER
+    global _TS_OFFSET, _LAST_SHAPE
     video_path, out_path, video_id = job
     t0 = time.time()
     try:
@@ -154,6 +235,20 @@ def _extract_one(job: tuple[str, str, str]) -> dict:
         if not cap.isOpened():
             raise IOError(f"cannot open video: {video_path}")
         fps = cap.get(cv2.CAP_PROP_FPS) or DEFAULT_FPS
+
+        # POPSIGN mixes resolutions (1944x2592 and 1080x1920). The graph's
+        # segmentation-smoothing calculator compares each frame against the
+        # previous one, so feeding a differently-sized video into a *reused*
+        # landmarker raises INTERNAL "RET_CHECK ... current_mat->rows ==
+        # previous_mat->rows". Rebuild up front on a resolution change rather
+        # than letting every such video take the per-frame exception path.
+        shape = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                 int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+        if _LAST_SHAPE is not None and shape != _LAST_SHAPE:
+            _reset_landmarker()
+            _TS_OFFSET = 0
+        _LAST_SHAPE = shape
+
         frames: list[np.ndarray] = []
         ts_ms = 0.0
         while True:
@@ -165,8 +260,10 @@ def _extract_one(job: tuple[str, str, str]) -> dict:
             try:
                 result = _LANDMARKER.detect_for_video(image, _TS_OFFSET + round(ts_ms))
             except Exception:
-                # timestamp/session hiccup — one fresh landmarker, then retry
-                _LANDMARKER = _make_landmarker(_LANDMARKER_MODEL_PATH)
+                # timestamp/session hiccup — one fresh landmarker, then retry.
+                # _reset_landmarker() CLOSES the old one; rebinding without
+                # closing is what leaked graphs and deadlocked the first pilot.
+                _reset_landmarker()
                 _TS_OFFSET = 0
                 result = _LANDMARKER.detect_for_video(image, round(ts_ms))
             frames.append(_result_to_frame(result))
@@ -212,6 +309,38 @@ def save_manifest(out_dir: Path, manifest: dict) -> None:
     os.replace(tmp, p)
 
 
+def in_jupyter() -> bool:
+    """Running inside an IPython/Jupyter kernel (as opposed to a real script)?"""
+    try:
+        from IPython import get_ipython
+    except ImportError:
+        return False
+    shell = get_ipython()
+    return shell is not None and shell.__class__.__name__ == "ZMQInteractiveShell"
+
+
+# NOTE (2026-07-19): there used to be an `_assert_pool_usable` here refusing to
+# start a pool from a Jupyter kernel, on the grounds that "spawn re-imports
+# __main__, which in a notebook is the kernel, so workers never start".
+#
+# That is **not true**, and the guard is gone. Two measurements retired it:
+#
+#   1. `multiprocessing.spawn.get_preparation_data` only sets `main_path` when
+#      `__main__` has a `__file__`. A kernel has none, so the child never
+#      re-imports `__main__` at all; `sys_path` IS propagated, and this module's
+#      worker functions are importable. (The classic Jupyter+spawn failure is
+#      about workers defined *in the notebook* — ours are not.)
+#   2. A real ipykernel driven over ZMQ ran this exact pool end to end:
+#      4 videos, 2 workers, 0 failed, 21.6s — the same wall time as the CLI, and
+#      through the resolution sequence that used to deadlock.
+#
+# The hang that motivated the guard was real, but it is far better explained by
+# the leaked-MediaPipe-graph deadlock (see `_reset_landmarker`), which wedges a
+# worker at 0% CPU with no error and which `imap_unordered` cannot detect. That
+# is fixed. Notebook noise — the other reason to prefer a script — is handled by
+# `_init_worker`'s `stderr_log` redirect.
+
+
 def _throttled(jobs, ram_limit_pct: float):
     """Feed jobs to the pool only while system RAM usage is below the cap."""
     for job in jobs:
@@ -255,12 +384,29 @@ def extract_dataset(
     limit: int | None = None,
     chunksize: int = 2,
     progress: bool = True,
+    confidence: dict | None = None,
+    maxtasksperchild: int | None = MAXTASKSPERCHILD,
+    stderr_log: Path | str | bool | None = None,
+    bar=None,
 ) -> dict:
     """Extract landmarks for every video in `videos` (columns: file_path, label, id).
 
     Resumable: skips videos already `done`, retries `failed`. `limit` caps how
-    many *pending* videos this call processes (pilot batches). Returns a summary
-    dict incl. measured videos/s (basis for full-run ETAs).
+    many *pending* videos this call processes (pilot batches). `confidence`
+    overrides detector thresholds (CONFIDENCE_FIELDS) — the knob the
+    confidence-tuning notebook sweeps. Returns a summary dict incl. measured
+    videos/s (basis for full-run ETAs).
+
+    Runs **in a Jupyter kernel as well as a script** — see the NOTE above
+    ``_throttled`` for why the old "pool can't start in Jupyter" guard was wrong
+    and removed. In a kernel, worker C++ logging would otherwise be captured
+    into cell output, so ``stderr_log`` (default ``<out_dir>/_worker_stderr.log``)
+    redirects each worker's fd 2; pass ``stderr_log=False`` to leave fd 2 alone.
+
+    ``n_workers=1`` runs **in-process** (no Pool at all) and never redirects
+    stderr — handy for a smoke test where you want the messages inline. Pass
+    ``bar`` to report into a caller-owned tqdm covering several calls, so a
+    multi-config sweep still shows ONE progress bar.
     """
     out_root = Path(out_root) if out_root is not None else landmarks_root()
     out_dir = out_root / split
@@ -284,33 +430,60 @@ def extract_dataset(
                 "videos_per_s": float("nan"), "elapsed_s": 0.0,
                 "n_workers": n_workers, "out_dir": str(out_dir)}
 
+    # worker C++ logs go to a file, never to the caller's stderr (= cell output)
+    if stderr_log is None:
+        stderr_log = out_dir / "_worker_stderr.log"
+    stderr_log = str(stderr_log) if stderr_log is not False else None
+
     t0 = time.time()
     n_ok = n_fail = since_save = 0
     frames_total = 0
     cpu_samples: list[float] = []
     psutil.cpu_percent(interval=None)   # prime the sampler
-    bar = tqdm(total=len(jobs), desc=f"extract {split}", disable=not progress)
-    with Pool(n_workers, initializer=_init_worker, initargs=(model_path,)) as pool:
-        for res in pool.imap_unordered(_extract_one, _throttled(jobs, ram_limit_pct),
-                                       chunksize=chunksize):
-            res["timestamp"] = datetime.now(timezone.utc).isoformat()
-            manifest[res.pop("id")] = res
-            if res["status"] == "done":
-                n_ok += 1
-                frames_total += res.get("n_frames", 0)
-            else:
-                n_fail += 1
-            since_save += 1
-            if since_save >= manifest_save_every:
-                save_manifest(out_dir, manifest)
-                since_save = 0
-            cpu = psutil.cpu_percent(interval=None)
-            cpu_samples.append(cpu)
-            bar.update(1)
-            bar.set_postfix(cpu=f"{cpu:.0f}%",
-                            ram=f"{psutil.virtual_memory().percent:.0f}%",
-                            failed=n_fail)
-    bar.close()
+    own_bar = bar is None
+    if own_bar:
+        bar = tqdm(total=len(jobs), desc=f"extract {split}", disable=not progress)
+
+    def _results():
+        """Result stream: a real pool, or in-process when n_workers == 1."""
+        if n_workers == 1:
+            # in-process: do NOT redirect fd 2, that would silence the caller too
+            _init_worker(model_path, confidence, None)
+            for job in _throttled(jobs, ram_limit_pct):
+                yield _extract_one(job)
+            return
+        # maxtasksperchild recycles each worker after N videos: a fresh process
+        # is the one guaranteed way to reclaim whatever a long-lived MediaPipe
+        # graph has accumulated. Belt-and-braces behind _reset_landmarker() —
+        # the 2026-07-19 pilot deadlock was a leaked graph wedging a worker, and
+        # imap_unordered has no way to notice that (the process is alive, just
+        # never returning), so it hangs forever with every worker at 0% CPU.
+        with Pool(n_workers, initializer=_init_worker,
+                  initargs=(model_path, confidence, stderr_log),
+                  maxtasksperchild=maxtasksperchild) as pool:
+            yield from pool.imap_unordered(
+                _extract_one, _throttled(jobs, ram_limit_pct), chunksize=chunksize)
+
+    for res in _results():
+        res["timestamp"] = datetime.now(timezone.utc).isoformat()
+        manifest[res.pop("id")] = res
+        if res["status"] == "done":
+            n_ok += 1
+            frames_total += res.get("n_frames", 0)
+        else:
+            n_fail += 1
+        since_save += 1
+        if since_save >= manifest_save_every:
+            save_manifest(out_dir, manifest)
+            since_save = 0
+        cpu = psutil.cpu_percent(interval=None)
+        cpu_samples.append(cpu)
+        bar.update(1)
+        bar.set_postfix(cpu=f"{cpu:.0f}%",
+                        ram=f"{psutil.virtual_memory().percent:.0f}%",
+                        failed=n_fail)
+    if own_bar:            # a caller-owned bar spans several calls — don't close it
+        bar.close()
     save_manifest(out_dir, manifest)
 
     elapsed = time.time() - t0
@@ -324,6 +497,7 @@ def extract_dataset(
         "cpu_mean_pct": round(float(np.mean(cpu_samples)), 1) if cpu_samples else None,
         "cpu_max_pct": round(float(np.max(cpu_samples)), 1) if cpu_samples else None,
         "out_dir": str(out_dir),
+        "confidence": dict(confidence or {}),   # which thresholds produced this output
     }
     if n_fail:
         summary["failed_ids"] = [k for k, v in manifest.items()

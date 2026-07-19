@@ -8,13 +8,15 @@
         "dask[complete]>=2026.7.0",
         "duckdb>=1.5.4",
         "jupyter>=1.1.1",
+        "kaggle>=1.6.17",
         "kagglehub>=1.0.2",
         "matplotlib>=3.11.0",
         "mediapipe>=0.10.35",
         "numpy>=2.5.1",
-        "onnx>=1.17.0",
-        "onnx2tf>=1.26.0",
-        "onnxruntime>=1.20.0",
+        # NOTE: the onnx / onnx2tf / onnxruntime chain was removed 2026-07-19.
+        # TFLite export goes PyTorch -> native Keras rebuild -> TFLite
+        # (modules/model/keras_export.py); onnx2tf could not convert 3 of the 4
+        # architectures. See TODO §6.2.
         "opencv-python>=5.0.0.93",
         "pandas>=3.0.3",
         "pyarrow>=24.0.0",

@@ -1,0 +1,78 @@
+{
+  "schema_version": 3,
+  "run_id": 1784389439,
+  "created": "2026-07-18T21:43:59",
+  "dataset": "gislr",
+  "architecture": "gru",
+  "model_name": "StreamingGRU",
+  "streaming": true,
+  "subset": "ME_132",
+  "coords": "xyz",
+  "n_landmarks": 132,
+  "feature_dim": 396,
+  "n_classes": 250,
+  "n_params": 962578,
+  "split": {
+    "strategy": "stratified 90/10",
+    "random_state": 42,
+    "n_val": 9448
+  },
+  "training": {
+    "regime": "v2-plateau-300",
+    "source": "gislr.1.model.gru.ipynb",
+    "epoch_cap": 300,
+    "epochs_trained": 78,
+    "best_epoch": 63,
+    "early_stopped": true,
+    "finished": true,
+    "wall_time_min": 14.1
+  },
+  "hyperparameters": {
+    "batch_size": 512,
+    "lr": 0.001,
+    "hidden_size": 256,
+    "num_layers": 2,
+    "dropout": 0.3,
+    "weight_decay": 0.0001,
+    "epochs": 300,
+    "grad_clip": 5.0,
+    "lr_factor": 0.5,
+    "lr_patience": 5,
+    "es_patience": 15,
+    "es_min_delta": 0.001,
+    "seed": 42,
+    "max_seq_len": 128,
+    "num_workers": 0,
+    "loss": "CE + label smoothing 0.1",
+    "precision": "AMP"
+  },
+  "metrics": {
+    "train_val_acc": 0.7194,
+    "eval_status": "canonical",
+    "overall_accuracy": 0.719411515664691,
+    "macro_accuracy": 0.7171253576720411,
+    "median_class_accuracy": 0.7273648648648648,
+    "n_classes_below_50pct": 12
+  },
+  "checkpoints": {
+    "best": "best.pt",
+    "last": "last.pt"
+  },
+  "assets": {
+    "landmarks": "assets/landmarks.npy",
+    "per_class_csv": "assets/per_class_accuracy.csv",
+    "per_class_png": "assets/per_class_accuracy.png",
+    "eval_summary": "assets/eval_summary.json",
+    "val_predictions": "assets/val_predictions.npz"
+  },
+  "notes": "ME_132 subset \u00b7 regime v2-plateau-300.",
+  "submission": {
+    "tested": false,
+    "platform": null,
+    "submitted_at": null,
+    "public_score": null,
+    "private_score": null,
+    "reference": null,
+    "notes": ""
+  }
+}

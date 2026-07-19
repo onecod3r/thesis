@@ -22,6 +22,7 @@ One call = one registry run:
   signal (regime v2-plateau-300, TODO §3.2).
 """
 
+import json
 import time
 from datetime import datetime
 from pathlib import Path
@@ -41,6 +42,12 @@ from modules.model.architectures import ARCHS, build_model
 def atomic_torch_save(state: dict, path: Path) -> None:
     tmp = path.with_suffix(".pt.tmp")
     torch.save(state, tmp)
+    tmp.replace(path)
+
+
+def _atomic_write_json(path: Path, payload) -> None:
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload), encoding="utf-8")
     tmp.replace(path)
 
 
@@ -165,9 +172,57 @@ def _build_meta(
             "n_classes_below_50pct": None,
         },
         "checkpoints": {"best": R.CKPT_BEST, "last": R.CKPT_LAST},
-        "assets": {"landmarks": "assets/landmarks.npy"},
+        "assets": {
+            "landmarks": "assets/landmarks.npy",
+            "history": "assets/history.json",
+        },
+        # never submitted by the training loop; write_meta preserves whatever
+        # the evaluation notebook later records here
+        "submission": dict(R.SUBMISSION_DEFAULT),
         "notes": notes,
     }
+
+
+def train_from_config(
+    arch: str,
+    config=None,
+    subsets: list[str] | None = None,
+    notes: str | None = None,
+) -> dict[str, Path]:
+    """Train every subset for one architecture, using the shared training config.
+
+    This is what each architecture section of `gislr.1.models.training.ipynb`
+    calls, so a section is a two-liner and no notebook cell owns hyperparameters
+    — `src/config/gislr.training.json` does (see modules.model.config).
+
+    Reads the config from disk on every call, so a section can be re-run alone
+    after editing the config and never depends on another cell's live state.
+    Returns {subset_name: run_dir}.
+    """
+    from modules.model.config import load_config
+
+    cfg = config or load_config()
+    if not cfg.enabled(arch):
+        print(f"{arch}: disabled in {cfg.path.name} — nothing to train")
+        return {}
+
+    hyp = cfg.hyp_for(arch)
+    coords = cfg.coords_for(arch)
+    overrides = cfg.overrides_for(arch)
+    names = subsets if subsets is not None else cfg.subsets_for(arch)
+
+    print(f"{arch} · regime {cfg.regime} · coords {coords} · subsets {names}")
+    print(f"  hyperparameters from {cfg.path.name}"
+          + (f" · OVERRIDES: {overrides}" if overrides else " (shared, no overrides)"))
+
+    run_dirs = {}
+    for name in names:
+        run_dirs[name] = train_run(
+            arch=arch, subset_name=name, coords=coords, hyp=hyp,
+            regime=cfg.regime, source=cfg.source, dataset=cfg.dataset,
+            notes=notes if notes is not None else cfg.notes_for(arch)
+            or f"{name} · {arch} · regime {cfg.regime}.")
+    return run_dirs
 
 
 def train_run(
@@ -353,6 +408,9 @@ def train_run(
         atomic_torch_save(state, last)  # every epoch -> resume-safe
         if is_best:
             atomic_torch_save(state, best)
+        # history as a plain asset too: the evaluation notebook plots learning
+        # curves for runs whose (gitignored) checkpoints aren't on this machine
+        _atomic_write_json(run_dir / "assets" / "history.json", history)
         R.write_meta(
             run_dir,
             _build_meta(

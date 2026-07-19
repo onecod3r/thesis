@@ -98,11 +98,11 @@ is a query, not a folder crawl:
   **voided 2026-07-18**: those runs' weights were deleted with the old
   `src/models/` tree during the restructure, so their canonical evals can
   never run. Their train-loop numbers stand as historical references
-  (git history ≤ `3668dae` + docs/daily/); the registry restarted empty (§0.4).
+  (git history ≤ `3668dae` + docs/logs/daily/); the registry restarted empty (§0.4).
 
 ### 0.4 Restructure 2026-07-18 — unified stack, flat registry, data-tree policy
 
-Executed 2026-07-18 (full write-up: `docs/daily/2026-07-18.md`):
+Executed 2026-07-18 (full write-up: `docs/logs/daily/2026-07-18.md`):
 
 - [x] **`src/modules/model/`** — unified training stack (`architectures.py`
   single model-class definition shared with eval, `data.py`, `registry.py`,
@@ -126,17 +126,66 @@ Executed 2026-07-18 (full write-up: `docs/daily/2026-07-18.md`):
 - [x] **Scripts split**: project CLIs in `src/modules/scripts/` (`eval_gru.py`
   takes a run folder, `build_model_index.py` flat-layout; both run from any
   CWD); root `scripts/` = housekeeping only.
-- [x] **Docs split**: `docs/daily/` + `docs/weekly/<YYYY>-<WW>.md` +
+- [x] **Docs split**: `docs/logs/daily/` + `docs/logs/weekly/<YYYY>-<WW>.md` +
   `docs/reports/<topic>.md` (convention in `docs/README.md`).
-- [ ] Regenerate the POPSIGN video manifests at
-  `data/cache/popsign/dataframes/{train,test}.csv` — the pre-restructure
-  copies were cleared with the old cache tree (blocks §2 pilot/bulk runs).
+- [x] Regenerate the POPSIGN video manifests at
+  `data/cache/popsign/dataframes/{train,test}.csv` — **done 2026-07-19**:
+  §1 of `popsign.0.dataset.extraction.ipynb` now generates them from the raw
+  video tree (30,867 train / 33,600 test, ids unique, labels cross-checked
+  against the filename). Unblocks the §2 pilot/bulk runs. Still only 1 of 4
+  train parts (§2.2).
 - [ ] First v2-regime training runs (user) to seed the fresh registry —
   re-establishes the FULL_543 baseline and ME_126 leader under the new
   schema before any new ablation conclusions.
 - [ ] `popsign.2.model.ipynb` / `popsign.3.pipeline.ipynb` still predate the
   restructure (old paths, TF-era code) — modernize or retire alongside
   `popsign.1` (§0.1).
+
+### 0.5 Docs tree: `logs/` vs `reports/` (2026-07-19)
+
+The docs tree grew a third top-level sibling (`daily/`, `weekly/`, `reports/`)
+where only two *kinds* of document exist: time-ordered logs and standalone
+test/analysis reports. Collapse the first two under one `logs/` parent:
+
+```
+docs/
+├── logs/
+│   ├── daily/<YYYY-MM-DD>.md
+│   └── weekly/<YYYY>-<WW>.md
+└── reports/<topic>.md        # motion-energy, subset-comparison, confidence-tuning, …
+```
+
+- [x] Move `docs/logs/daily/` → `docs/logs/daily/`, `docs/logs/weekly/` → `docs/logs/weekly/`
+  (assets subfolders move with them).
+- [x] Update every reference: `docs/README.md`, `README.md` (report table +
+  project-structure block + conventions), `CLAUDE.md`, this file.
+- [ ] Backfill the standalone reports that currently live only as daily entries
+  (motion-energy, subset-comparison) into `docs/reports/<topic>.md`, leaving the
+  daily logs as the dated narrative that links to them.
+- [x] **Weekly logs started 2026-07-19**: `docs/logs/weekly/2026-29.md` (Jul 12–18)
+  and `2026-30.md` (Jul 19–25, running). **Week numbering corrected**: weeks run
+  **Sunday → Saturday**, week 1 = the week containing Jan 1 — *not* ISO, which
+  `docs/README.md`, `README.md` and `CLAUDE.md` all previously said and which would
+  number 2026-07-19 as the tail of week 29 rather than the start of week 30. All
+  three updated; weekly titles now state the date range explicitly.
+- [ ] Close out `2026-30.md` on Sat 2026-07-25 (drop the "in progress" marker) and
+  open `2026-31.md`.
+
+### 0.6 Stray notebook/module state to clean up (found 2026-07-19)
+
+- [x] `src/popsign.0.dataset.extraction.ipynb` had a bare
+  `DATASETS = resolve_datasets()` scratch cell in §1 (an unguarded call that
+  would hit kagglehub on every top-to-bottom run). **Resolved 2026-07-19**: it
+  became the proper manifest-generation cell — guarded by `FORCE_REGENERATE`
+  and skipped entirely when both CSVs exist, so a plain re-run never reaches
+  `resolve_datasets()` at all. (`force_download=True` is not in the current
+  `modules/paths.py`; the ~870GB re-download hazard the original note described
+  no longer exists.)
+- [ ] `modules/paths.py::resolve_datasets` (uncommitted working-tree change)
+  hardcodes `D:/`/`E:/` `PATH_PARTS` and calls `p.unlink()` on directories
+  (raises on a real directory) — reconcile with the `.env`-driven policy.
+- [ ] `.env` is empty/missing at the repo root, so `POPSIGN_LANDMARKS_DRIVE`
+  is unset and extraction output falls back into `src/data/raw/popsign`.
 
 ---
 
@@ -262,6 +311,26 @@ must not be reproduced):
   Pool + Windows-spawn path and resume-skip validated on a 4-video run.
 - [x] Output layout `data/raw/popsign/{train,test}/<label>/<id>.npz`, root
   resolved via `POPSIGN_LANDMARKS_DRIVE` (fallback `src/data/`, gitignored).
+- [x] **BUG (2026-07-19, found by the first pilot): leaked MediaPipe graphs
+  deadlocked the pool.** POPSIGN mixes resolutions (1944×2592 and 1080×1920);
+  the persistent per-worker landmarker raises `RET_CHECK ... current_mat->rows
+  == previous_mat->rows` on a resolution change, and the retry handler rebuilt
+  it by **rebinding `_LANDMARKER` without `.close()`** — leaking a native graph
+  and ~70 threads each time. The wedged worker reached **219 threads / 1.3 GB**
+  (vs 76 / 614 MB for its siblings), then stopped at **0% CPU**; the run stalled
+  at 18/20 with no error, because `imap_unordered` cannot tell a live-but-hung
+  worker from a slow one. An overnight 30K-video run would have hung silently.
+  Fixed three ways: `_reset_landmarker()` closes before rebuilding; the
+  landmarker is rebuilt **proactively on a resolution change** (checked once per
+  video, so the exception path isn't used at all); `maxtasksperchild=64`
+  recycles workers as a safety net. Verified on the exact failure sequence
+  (2592 → 1920 → 2592 ending on the two hung videos): 4/4 in 21.7 s, 0 failed.
+- [x] `extract_popsign.py pilot` **clears the temp tree before benchmarking** —
+  `extract_dataset` skips done videos, so leftover npz from an interrupted pilot
+  would time an empty trial and report a meaningless throughput.
+- [ ] Consider a per-video **watchdog timeout** in the driver. The three fixes
+  above address the known cause, but nothing yet bounds an unknown one: a worker
+  that stops returning still hangs the whole run indefinitely.
 
 ### 2.2 Extraction driver — `src/popsign.0.dataset.extraction.ipynb` (2026-07-16)
 
@@ -280,12 +349,190 @@ Replaces the deleted `popsign.0.dataset.ipynb` stub as the extraction driver
 - [x] Pilot output moved to the temp tree (2026-07-18): npz →
   `data/temp/popsign_pilot/w<N>/`, deleted by the notebook's cleanup cell once
   `eta.json` is recorded in `data/cache/popsign/extraction/`.
-- [ ] Regenerate the video manifests at `data/cache/popsign/dataframes/`
-  (pre-restructure copies cleared — see §0.4), ideally with **all 4** POPSIGN
-  train datasets — currently only 1 of 4 is enabled in
-  `modules/paths.py::resolve_datasets` (~650GB still to download).
-- [ ] Run the pilot (user), review videos/s + resource headroom, then run the
-  bulk extraction for train + test.
+- [x] **Extraction runs in the notebook (2026-07-19).** §2/§3/§4 call
+  `extract_dataset` directly — the "pool can't run in Jupyter" guard was
+  disproved and removed (§2.3). Two supporting fixes made it safe:
+  the leaked-graph deadlock (§2.1), and **`_init_worker` redirecting each
+  worker's fd 2** to `<out_dir>/<split>/_worker_stderr.log`. That second one is
+  not cosmetic: MediaPipe logs from C++ straight to fd 2 and ipykernel captures
+  fd-level output into cell output by default (`IPKernelApp.capture_fd_output`),
+  so a 30K-video run would have written hundreds of lines *per worker* into the
+  `.ipynb` — the 17 MB-notebook failure mode of §0.2.
+  Verified by executing the notebook's own cells in a real ipykernel
+  (setup → manifests → verify → pilot → ETA → cleanup): 0 failed,
+  **0 noise lines, ~2 KB of cell output total**.
+  `modules/scripts/extract_popsign.py` stays as an **optional** CLI for
+  unattended runs; both share the manifests and are resumable, so they can be
+  used interchangeably.
+- [x] **Manifests regenerated 2026-07-19** by the notebook's new §1 cell —
+  30,867 train / 33,600 test, verified against the raw tree (ids unique, every
+  label agreeing with the sign encoded in its filename, spot-checked paths all
+  present). The pilot is **no longer blocked**.
+- [ ] Regenerate again with **all 4** POPSIGN train datasets — currently only 1
+  of 4 is enabled in `modules/paths.py::resolve_datasets` (~650GB still to
+  download). Consequence today: **train covers 72 labels but test covers all
+  250**, so 178 test labels have no train videos. Extracting test in full is
+  still correct (landmarks are cheap and never need redoing); those classes just
+  aren't trainable yet. Re-running the §1 cell with `FORCE_REGENERATE = True`
+  after enabling the parts extends the train manifest, and the bulk run picks up
+  the difference incrementally.
+- [~] Run the pilot (user), review videos/s + resource headroom, then run the
+  bulk extraction for train + test:
+  ```
+  .venv/Scripts/python.exe src/modules/scripts/extract_popsign.py pilot
+  .venv/Scripts/python.exe src/modules/scripts/extract_popsign.py run train --confidence default
+  ```
+  **Test split running since 2026-07-19 13:43 UTC** — 15,549/33,600 done, **1 failed**,
+  1.46 videos/s wall, mean 67.1 frames/video, ETA ~3.5 h. Output lands in
+  `src/data/raw/popsign/test/` (`POPSIGN_LANDMARKS_DRIVE` still unset, §0.6);
+  ~165 KB/video projects to **~5.4 GB** for the full split. Confirms the
+  resolution-change fix (§2.1) holds at scale — 15.5K videos, zero deadlocks.
+  Then: `run train`.
+- [ ] Investigate the one failed test video —
+  `gtsignstudy4a.8035-into-2023_01_30_12_00_12.563-0`, `cv2` cannot open the source
+  mp4. Likely a truncated/corrupt download rather than an extraction bug; the
+  manifest retries `failed` on the next run, so confirm the source file first.
+
+### 2.4 Output inspection — `src/popsign.0.dataset.output-inspection.ipynb` (2026-07-19)
+
+- [x] Standalone read-only diagnostic showing how an extracted sign is stored:
+  archive keys/shapes/dtypes, the 543-row holistic group layout, per-group
+  detection rates, one frame + a presence timeline, and the reference
+  npz→model-input loader (NaN→0, subset gather, uniform subsample to
+  `MAX_SEQ_LEN`) mirroring `modules/model/data.py`.
+  **Safe to run against a live extraction by construction**: no writes anywhere in
+  the landmarks tree, no worker pool, no MediaPipe import, and `.tmp.npz` staging
+  files are excluded from sampling so a half-written video can never be opened.
+  Format recorded in `docs/logs/daily/2026-07-19.md` §4c.
+
+### 2.3 Extraction-quality / confidence tuning — `src/popsign.0.dataset.confidence-tuning.ipynb` (2026-07-19)
+
+**Goal:** before committing ~30K videos of CPU time to bulk extraction, find out
+which `HolisticLandmarker` confidence thresholds actually produce good landmarks
+on POPSIGN video — with both a numeric score and a visual check, because no
+ground-truth landmarks exist for this dataset.
+
+**Sample:** 50 videos = 5 classes × 10 videos, seeded, recorded to the cache so
+every re-run scores the same clips. Videos are globbed straight off the raw
+video drives — this notebook deliberately does **not** depend on the missing
+`data/cache/popsign/dataframes/` manifests (§2.2), so it is unblocked today.
+
+- [x] **Finding (2026-07-19, measured): `min_hand_landmarks_confidence` is inert
+  and the *pose* thresholds are what gate the hands.** Driving each field to
+  0.01 vs 0.99 on one clip: the hand threshold produces **bit-identical**
+  landmarks, while `min_pose_{detection,landmarks}_confidence` swing hand
+  detection rate from **0.52 → 0.09**, and the face thresholds at 0.99 drop the
+  face entirely (91% NaN). Cause: holistic derives hand ROIs from the pose
+  landmarks. The naive grid (sweep the hand threshold) would have produced a
+  table of identical rows and read as "tuning doesn't matter".
+  Note also: the task API has **no** `min_tracking_confidence` and no separate
+  hand *detection* threshold — the real field list is
+  `extraction.CONFIDENCE_FIELDS`.
+- [x] Threshold grid over the fields that actually move the output — pose
+  detection/landmarks confidence (jointly and one at a time) plus a face-off
+  arm — each config extracted over the 50-video sample, resumable per
+  (config, video) via the §1.2 manifest pattern.
+- [x] **Numeric quality proxies** (no ground truth, so these are proxies and are
+  documented as such): per-group detection rate (fraction of frames with a
+  non-NaN block), hand-presence rate, temporal jitter (median frame-to-frame
+  landmark displacement — high = flicker), longest detection gap, and
+  bone-length coefficient of variation (a rigid bone such as shoulder-elbow
+  should keep constant length; variance = detection instability).
+- [x] Composite `quality_score` per (config, video) combining those proxies, with
+  the weighting exposed as a tunable so the ranking can be re-derived without
+  re-extracting.
+- [x] **Visual test**: 100 rendered frames with landmarks overlaid — 10 from the
+  best-scoring frames and 80 from the worst-scoring (plus a 10-frame
+  median-quality strip for reference), written to
+  `data/cache/popsign/confidence_tuning/overlays/`, contact sheets shown inline.
+- [x] Supporting module work: `extraction.py` gained `CONFIDENCE_FIELDS` /
+  `DEFAULT_CONFIDENCE` and a `confidence=` parameter threaded through
+  `extract_dataset` → pool initializer → landmarker (unknown fields assert);
+  new `modules/dataset/landmark/quality.py` (proxies + composite score) and
+  `overlay.py` (landmark drawing, frame rendering, contact sheets).
+  Smoke-validated end to end 2026-07-19 on 2 configs × 2 videos.
+- [x] **RESOLVED 2026-07-19: "`multiprocessing.Pool` cannot run in a Jupyter
+  kernel" was wrong, and the guard has been removed.** Two measurements
+  retired it:
+  1. `multiprocessing.spawn.get_preparation_data` only sets `main_path` when
+     `__main__` has a `__file__`. A kernel has none, so the child **never
+     re-imports `__main__`**; `sys_path` *is* propagated and the worker
+     functions live in an importable module. (The classic Jupyter+spawn failure
+     is about workers defined *in the notebook* — ours are not.)
+  2. A real ipykernel driven over ZMQ ran the pool end to end: 4 videos,
+     2 workers, 0 failed, **21.6 s** — the same wall time as the CLI, through
+     the resolution sequence that used to deadlock.
+
+  The hang that motivated the guard was real but is far better explained by the
+  **leaked-graph deadlock in §2.1**, which wedges a worker at 0% CPU with no
+  error and which `imap_unordered` cannot detect. That is now fixed.
+  The other objection — MediaPipe flooding cell output — is handled by
+  `_init_worker`'s `stderr_log` fd-2 redirect (see §2.2). Extraction therefore
+  runs **in the notebook**; `extract_popsign.py` remains as an optional CLI for
+  unattended runs that should outlive the kernel.
+  Superseded sub-items (kept for history):
+  - `extraction._assert_pool_usable` refuses the case up front with
+    instructions, so it fails in a second instead of hanging indefinitely.
+  - `n_workers=1` now runs genuinely **in-process** (no Pool at all) — the only
+    mode usable in-notebook, fine for a smoke test.
+  - `extract_dataset(bar=...)` accepts a caller-owned tqdm so a multi-config
+    sweep still shows ONE progress bar (the old per-config bar also meant the
+    display could not move until an entire 50-video config finished).
+  - **`modules/scripts/tune_confidence.py`** is the supported way to run the
+    sweep; notebook §4 is now a handoff cell that prints the command and
+    reports per-config progress from the npz on disk. Same work: ~100 videos in
+    ~10 min as a script vs **0 files in 30 min** in-notebook.
+- [x] **`popsign.0.dataset.extraction.ipynb` had the same defect** — its pilot
+  (§2) and bulk (§3/§4) cells called `extract_dataset` in-notebook and would now
+  raise instead of hanging. **Resolved 2026-07-19**: new
+  `modules/scripts/extract_popsign.py` (`pilot` / `run <split>` subcommands,
+  resumable, `--confidence` naming a tuning arm, `--limit` for staged runs);
+  the three notebook cells are handoff cells that print the exact command and
+  read progress back off the split manifest. `CONFIDENCE_CONFIG` in the setup
+  cell is threaded through, so the bulk output records which thresholds
+  produced it.
+- [x] **Report written: `docs/reports/confidence-tuning.md`** (2026-07-19) —
+  covers the inert-hand-threshold finding, the default-vs-`pose_strict` paired
+  comparison, and the padding finding below.
+
+**Sweep results so far (2026-07-19): 2 of 7 arms measured** (`default` 50/50
+videos, `pose_strict` 49/50). Full write-up in the report; the operating config
+is **not** yet chosen, and the sweep should not simply be finished as-is:
+
+- [x] **Thresholds barely move the output, and `default` leads.** Paired over the
+  49 videos both arms extracted, `pose_strict` costs 0.022 of any-hand detection
+  rate (worse on 31 videos, better on 5) and buys 0.002 less hand jitter.
+  Composite score 0.160 vs −0.163 — but with two arms the z-scored score is ±1
+  by construction, so it is directional only.
+- [ ] **BLOCKER — the proxies are measuring clip padding, not extraction quality.**
+  Hand presence peaks at **0.86** mid-clip and sits at 0.12–0.19 across the first
+  and last fifths; the median clip's first hand detection is at 27% of its
+  duration and its last at 72%. Restricted to that span the same extraction
+  scores **0.85 mean / 0.94 median** rather than 0.427. `longest_gap_frames`
+  correlates with `n_frames` at **rho 0.84** — that proxy is very largely a
+  measurement of the lead-in/lead-out. The effect being ranked (~0.02) is an
+  order of magnitude below the artifact (~0.4). **Restrict the proxies to the
+  signing span (or add `*_span` variants) before scoring anything else**, then
+  re-derive the comparison above.
+- [ ] Follow-up: `pose_rate` was 1.0 in every arm tested, including
+  `min_pose_*_confidence = 0.99` — the pose block appears to be emitted
+  whenever *any* pose is found, so the proxy can't discriminate pose quality.
+  Either find a per-landmark visibility signal or drop `pose_rate` from the
+  composite score's weighting (it currently contributes a constant offset).
+- [ ] Then run the remaining five arms (`pose_permissive`, `pose_very_permissive`,
+  `pose_det_only`, `pose_lm_only`, `face_off`) — ~250 extractions, ~25 min at 19
+  workers — and record the chosen config as `CONFIDENCE_CONFIG` in
+  `popsign.0.dataset.extraction.ipynb` (and as the default in `extraction.py`).
+- [ ] **Separate deficiency, bigger than any threshold: only 1.1% of frames carry
+  both hands** (left 9.5%, right 34.3%), and `hand_rate` tops out at exactly 0.50
+  across the sample — the signature of "exactly one hand, always". Several
+  sampled signs (`car`, `bath`) are two-handed in ASL. This is about *which*
+  landmarks holistic returns and no confidence threshold addresses it. Inspect
+  the `default` overlay frames before accepting any config.
+- [ ] **Downstream consequence** (not a §2.3 item, filed here so it isn't lost):
+  ~50% of every POPSIGN clip is non-signing lead-in/lead-out. Trimming, or a
+  learned attention over the signing span, belongs in the POPSIGN
+  feature-building stage.
 
 ---
 
@@ -435,6 +682,347 @@ key and handles xy/xyz via its `coords` key).
 
 ---
 
+## 5.5 Training consolidation — one notebook, one config (2026-07-19)
+
+Four `gislr.1.model.<arch>.ipynb` notebooks each carried their own `HYP` dict, so
+"all else identical" — the premise of both the architecture comparison (§4) and
+the subset ablations (§3.1) — was a manual chore across four files.
+
+- [x] **`src/gislr.1.models.training.ipynb`** replaces all four: shared setup /
+  config / split / feature-cache sections, then one markdown+code section per
+  architecture, then cross-architecture comparison and the eval handoff. Each
+  architecture section re-reads the config from disk, so it is independently
+  re-runnable. The four old notebooks are removed (git history ≤ `2d7f668`).
+- [x] **`src/config/gislr.training.json`** is the source of truth for every
+  hyperparameter, read at run time by **`modules/model/config.py`**.
+  Architectures inherit `shared`; a deviation must be an explicit `overrides`
+  entry, surfaced by §2 of the notebook and by `TrainingConfig.overrides_for`.
+  Validation rejects: unknown architectures, unknown per-arch keys, an override
+  naming a key absent from `shared` (a typo can't become a silent no-op),
+  missing required HYP keys, bad `coords`, wrong `schema_version`. All six
+  failure modes tested.
+- [x] `modules/model/train.py::train_from_config(arch)` — what each section
+  calls; trains every subset for that architecture and prints the resolved
+  hyperparameters plus any overrides.
+- [x] Feature caches are built **once** for every (subset, coords) pair the
+  config needs, instead of once per notebook.
+- [x] `report.comparison_row` now includes `finished`, and the comparison
+  section separates interrupted runs from finished ones — an interrupted run
+  was otherwise indistinguishable from a bad architecture.
+
+### 5.5.1 Bug this consolidation exposed — cnn1d's receptive field
+
+- [x] **The hand-sync that made all four `HYP` dicts identical also flattened
+  `cnn1d`'s `num_layers` from 5 to 2.** For `CausalConv1D` that parameter is the
+  number of dilated conv *blocks*, i.e. the receptive field:
+  `1 + (kernel-1) * sum(2^i)` = **125 frames at 5 blocks** (dilations 1,2,4,8,16,
+  matching `MAX_SEQ_LEN=128`) but only **13 frames at 2**. A 13-frame window
+  cannot see a whole sign.
+  **This is almost certainly the whole explanation for cnn1d's ~0.54 vs ~0.75**,
+  and it means the "1D-CNN is 20 points behind" reading in the 2026-07-19 log is
+  an artifact, not an architecture result. Restored as an explicit
+  `overrides: {"num_layers": 5}` in the config, with the reasoning in its
+  `notes` field.
+- [ ] **Re-run cnn1d** with the corrected receptive field before drawing any
+  conclusion about the architecture (all three subsets; ~1.7M params now).
+- [ ] Once re-run, revisit `docs/logs/daily/2026-07-19.md` §1.3, which currently
+  reports the crippled numbers.
+- [ ] Consider making the receptive field an explicit, asserted quantity in
+  `CausalConv1D.__init__` (e.g. warn when it is much shorter than
+  `MAX_SEQ_LEN`), so a future misconfiguration fails loudly rather than
+  training quietly at a fraction of the intended context.
+
+---
+
+## 6. Evaluation, Export & Kaggle Submission (GISLR)
+
+**Location:** `src/gislr.2.models.evaluation.ipynb` — the single place where
+**all** GISLR model evaluation and submission happens. The `gislr.1.model.*`
+notebooks are training drivers only; they no longer carry export code.
+
+### 6.1 Evaluation notebook (2026-07-19)
+
+- [x] **Export code removed from `gislr.1.model.gru.ipynb`** (§7, cells 13–16 —
+  the only training notebook that had it) and rehomed, arch-generic, in
+  `modules/model/export.py` + the evaluation notebook.
+- [x] **DuckDB leaderboard**: glob every `data/models/*/meta.json`, filter
+  `dataset = 'gislr'`, ordered by accuracy (canonical `overall_accuracy` first,
+  falling back to the training-loop `train_val_acc` for un-evaluated runs).
+  DuckDB reads the meta.json files directly — `index.csv` stays the committed
+  snapshot, not the query path.
+- [x] **Learning curves**: the best 5 models overlaid on one loss+accuracy figure
+  (train and val), sourced from each run's `assets/history.json` so the figure
+  never needs the gitignored checkpoints.
+- [x] **Confusion matrices**: the top 5 runs individually (250×250), then one
+  row-normalized confusion matrix aggregated over **all** evaluated gislr runs
+  (where the models agree on a mistake, the confusion is a property of the
+  data/labels, not the architecture — this is the Phase-1 §7.4 instrument).
+- [x] **Most-confused pairs** table extracted from the aggregate matrix (feeds
+  §7 Phase 1.4).
+- [ ] Run the notebook (user) once the fresh-registry runs have canonical evals.
+
+### 6.2 Supporting module work (2026-07-19)
+
+- [x] `modules/model/architectures.py`: every arch gains `forward_full(x)` —
+  a batch-1, unpacked, ONNX-friendly forward used only by export. Parity against
+  the packed training forward is asserted at export time.
+- [x] `modules/model/export.py`: arch-generic ONNX → TF SavedModel → TFLite chain
+  + `submission.zip` packaging + a validation pass using the grader's exact
+  calling convention (raw `(T, 543, 3)` with NaNs in, `(250,)` out). NaN→0 and
+  the landmark-subset gather stay **inside** the exported graph.
+- [x] **The ONNX route was abandoned; export now goes through a native Keras
+  rebuild** (`modules/model/keras_export.py`, 2026-07-19). **All 4
+  architectures export**, all under the 40 MB cap:
+
+  | arch | tflite | keras parity | tflite parity |
+  |---|---|---|---|
+  | gru | 3.44 MB | 4.1e-06 | 3.8e-06 |
+  | lstm | 4.48 MB | 3.5e-06 | 3.8e-06 |
+  | bilstm | 11.06 MB | 3.2e-06 | 2.9e-06 |
+  | cnn1d | 2.89 MB | 6.1e-06 | 5.4e-06 |
+
+  Why the ONNX route was dropped — five distinct failures, in order:
+  1. `onnx2tf` declares **no dependencies of its own** (needs `tf-keras`,
+     `onnx-graphsurgeon`, `sng4onnx`, `ai-edge-litert`).
+  2. `torch.nan_to_num`'s infinity handling emits an ONNX **`IsInf`** op it
+     cannot convert.
+  3. It permutes 3D input layouts (emitted a model wanting `(T, 3, 543)`);
+     needs `-kat inputs`.
+  4. **Op coverage**: only **lstm** converted at all — **gru** died inside
+     onnx2tf's own GRU handler (`tf.split(tR, 3)` on a 256-dim, expects 768),
+     **bilstm** on "mixed types to Tensor", **cnn1d** on a squeeze.
+  5. The one arch that did convert then failed **TFLite** conversion on a
+     malformed `Squeeze` onnx2tf generated (`squeeze_dims` size > 8).
+
+  `onnx`, `onnx2tf`, `onnxruntime`, `onnx-graphsurgeon`, `sng4onnx`,
+  `ai-edge-litert` and `tf-keras` are all **removed from `pyproject.toml`**.
+- [x] **Two parity gates** guard the weight transfer (a gate-order or bias
+  mistake would convert cleanly and predict garbage): `keras_parity` (rebuild vs
+  `forward_full`) and `tflite_parity` (the **final .tflite** vs PyTorch through
+  the whole deployed path, raw `(T, 543, 3)` with NaNs). Conventions handled:
+  GRU gate reorder `[r,z,n]`→`[z,r,h]` with `reset_after=True`; LSTM's two
+  biases summed into Keras' one; LayerNorm epsilon forced to PyTorch's 1e-5
+  (Keras defaults to 1e-3); Conv1d `(out,in,k)`→`(k,in,out)`.
+- [x] Two bugs the gates caught, both fixed:
+  - **int8 quantization**: `tf.lite.Optimize.DEFAULT` shifted logits by ~1e-1.
+    Now off by default — these models are 3–11 MB against a 40 MB cap, so it
+    bought nothing (`export_tflite(quantize=...)` if that ever changes).
+  - **Uninitialized resource variables**: saving the Keras-backed module
+    directly produced a TFLite model that died at invoke with
+    `READ_VARIABLE ... variable != nullptr` inside the RNN's WHILE loop.
+    Weights are now frozen to constants — and since freezing via
+    `from_concrete_functions` loses the output *name* the grader indexes by
+    (`output["outputs"]`), the frozen function is re-wrapped in a module that
+    re-declares the exact signature.
+- [x] `modules/scripts/eval_gru.py` refactored so `evaluate_run(run_dir)` is
+  importable (the CLI is a thin wrapper), and it now also writes
+  `assets/val_predictions.npz` (labels + preds) — that file is what makes the
+  confusion matrices cheap and reproducible.
+- [x] `modules/model/train.py` writes `assets/history.json` every epoch.
+
+### 6.3 Submission tracking — meta.json schema v3 (2026-07-19)
+
+Kaggle allows **100 submissions/day**, and every trained model should be
+evaluated on the real test set, so submission state has to be part of the run
+record rather than something remembered by hand.
+
+- [x] **Schema v3** adds a `submission` object, deliberately dataset-agnostic
+  (`tested` means "scored on the held-out/official test set", whatever that
+  means for the dataset — no Kaggle vocabulary in the required keys):
+
+  ```json
+  "submission": {
+    "tested": false,        // scored on the official/held-out test set yet?
+    "platform": null,       // "kaggle" | "local" | … (null until tested)
+    "submitted_at": null,   // ISO-8601
+    "public_score": null,   // official metric (Kaggle public LB accuracy)
+    "private_score": null,
+    "reference": null,      // kernel slug + version, run id, … — free-form
+    "notes": ""
+  }
+  ```
+
+- [x] `registry.py`: `SCHEMA_VERSION = 3`, `submission` in `REQUIRED_KEYS`,
+  `SUBMISSION_DEFAULT`, and `write_meta` preserves an existing submission block
+  across the training loop's per-epoch rewrites (same protection the canonical
+  metrics already had). `mark_tested()` records a result.
+- [x] `build_model_index.py` exposes `submission_tested` / `submission_platform`
+  / `public_score` columns and a `--untested` filter.
+- [x] Backfill: every pre-v3 `meta.json` in the registry gets the default
+  submission block (idempotent migration in `registry.migrate_meta`).
+- [x] **Submission queue**: DuckDB globs all meta.json, filters
+  `dataset = 'gislr' AND submission.tested = false`, `LIMIT 100` — so each run of
+  the cell submits only untested models and respects the daily cap by
+  construction. Exports each to `submission.zip`, submits, marks `tested`.
+- [x] Declare `kaggle` in `pyproject.toml` and `uv sync` — done 2026-07-19.
+- [~] Submission mechanics. The `kaggle` **CLI** path submits through a Kaggle
+  kernel (`-k <owner>/<notebook> -v <version>`), so each zip must be attached to
+  a kernel version first — and there are currently **no credentials on this
+  machine** (`~/.kaggle/kaggle.json` absent, `KAGGLE_USERNAME` unset), so a
+  non-dry-run submit can only fail or hang.
+- [~] **Kaggle MCP server** (offered 2026-07-19) — likely the better path: it
+  exposes `mcp_kaggle_start_competition_submission_upload` +
+  `kaggle_mcp_submit_to_competition`, i.e. **upload a file and submit it
+  directly**, with no kernel-version dance. `.mcp.json` added at the repo root
+  using the **OAuth variant** (`npx mcp-remote https://www.kaggle.com/mcp`, then
+  call the server's `authorize` tool) so that **no API token is stored at rest**
+  — `.mcp.json` is committed and is not gitignored. Token auth is the fallback:
+  add `--header "Authorization: Bearer ${KAGGLE_MCP_TOKEN}"` to the args and set
+  that variable in the environment, never inline.
+  - [ ] Authorize the server from an **interactive** session (OAuth cannot run
+    in a non-interactive one), then submit one model by hand end to end.
+  - [ ] Once proven, decide whether `modules/model/submission.py::submit_run`
+    keeps shelling out to the CLI or the notebook drives the MCP tools instead;
+    the queue query and `mark_tested` bookkeeping are unaffected either way.
+- [ ] **Security**: an API token was pasted in plaintext into a chat transcript
+  on 2026-07-19 and must be treated as compromised — rotate it (Kaggle
+  Settings → Generate New Token) and never commit one.
+
+---
+
+## 7. Breaking the ~73% Accuracy Plateau
+
+**Context:** GRU, 1D-CNN, LSTM and BiLSTM all converge to ~70–74% on the FP_118
+subset. Architecture-independent ⇒ the ceiling is upstream, in
+features/normalization/data, not the model. Ordered by priority: diagnose first,
+then fix the highest-leverage causes, then ablate to confirm what actually
+helped.
+
+### 7.1 Phase 1 — Diagnose before changing anything
+
+Figure out whether this is overfitting, underfitting or a data/label ceiling
+*before* spending compute on new features.
+
+- [ ] Run the canonical eval on the current best checkpoint and fill in the
+  pending metrics: overall / macro / median class accuracy, `n_classes_below_50pct`
+  (§6.1 leaderboard surfaces all four).
+- [ ] Train/val accuracy gap at the best epoch. **train ≫ val ⇒ overfitting**,
+  prioritize §7.4 augmentation + regularization; **train ≈ val, both ~73% ⇒
+  underfitting the real signal**, prioritize §7.2 normalization and §7.3 motion.
+- [ ] Full 250×250 confusion matrix on the val set (§6.1 produces it).
+- [ ] Top 20–30 most-confused class pairs by off-diagonal mass (§6.1).
+- [ ] Manually inspect a few sequences per confused pair (landmark-trajectory
+  visualization) and classify each pair as distinguished by: **handshape only**
+  (hand landmark resolution/features insufficient) · **motion trajectory only**
+  (velocity features should help most) · **location on/near the body** (absolute
+  position must be preserved, not normalized away — note the tension with §7.2).
+- [ ] Per-class sample count vs per-class accuracy. If low accuracy correlates
+  with low sample count this is **class imbalance**, and the fix is
+  oversampling/class weighting, *not* feature engineering — record this
+  separately.
+- [ ] Write the verdict up (overfitting / underfitting / imbalance / specific
+  confusable pairs) — it decides which phase below runs next.
+
+### 7.2 Phase 2 — Fix normalization (remove signer-appearance bias)
+
+**Goal:** make all relative geometry invariant to a signer's physical proportions.
+
+- [ ] Pick the reference landmark by **semantic identity** (shoulder-center =
+  midpoint of left/right shoulder), never by "whatever index sits at position 0"
+  in a reordered subset like FP_118.
+- [ ] Check that reference's non-NaN rate across the dataset — needs to be ~100%;
+  otherwise pick a more reliable landmark or define a fallback.
+- [ ] Per-frame **translation** normalization: subtract the reference position
+  from every landmark in that frame.
+- [ ] Choose a **scale** reference that is also reliably detected (inter-shoulder
+  distance, or a fixed bone such as shoulder→elbow).
+- [ ] Per-frame **scale** normalization: divide by that distance, with an epsilon
+  floor for frames where the scale landmarks are missing or coincident.
+- [ ] [?] Optional log-compression on top of the scale-normalized values (not on
+  raw distances) — empirical, not assumed to help.
+- [ ] Re-verify the NaN policy after these transforms: missing landmarks must stay
+  NaN-flagged, not silently become 0 through subtraction/division.
+- [ ] Confirm the whole pipeline is **causal** — frame *t* uses only data from
+  frame *t*. This feeds a streaming model; no lookahead, no whole-sequence stats.
+- [ ] Re-run the motion-energy analysis (§1) on normalized coordinates and compare
+  with the existing ME-126 findings — normalization may change which landmarks
+  look important.
+
+### 7.3 Phase 3 — Motion features
+
+**Goal:** give the model velocity, which the 1st-place solution indicates was its
+primary edge.
+
+- [ ] Stacking order: normalize (§7.2) **first**, then compute motion features on
+  the normalized coordinates — never on raw ones.
+- [ ] Frame-to-frame velocity (first-order delta) as extra channels, causal
+  (frame *t* uses *t* and *t−1* only).
+- [ ] Decide and **document** the first-frame policy (zero-velocity vs repeating
+  the first delta) — it changes the model's first observation.
+- [ ] Concatenate position + velocity; record the new `feature_dim` (≈2×).
+- [ ] Retrain **GRU** (fastest, ~15 min wall) on position+velocity vs the
+  position-only baseline under identical hyperparameters.
+- [ ] Only if position+velocity clearly wins: evaluate acceleration (delta-delta)
+  as a third channel. Smooth positions first (reuse the Savitzky-Golay pipeline
+  from §1) — raw double-differencing amplifies MediaPipe jitter. Track
+  `feature_dim` growth and its inference-latency cost (TFLite, 100 ms/video budget).
+- [ ] If acceleration doesn't measurably help, **drop it** rather than keeping it
+  "just in case" — it costs training time and on-device latency.
+
+### 7.4 Phase 4 — Augmentation (especially if Phase 1 showed overfitting)
+
+- [ ] Jitter: random rotation / scale / translation **per sequence**, not per
+  frame (per-frame destroys temporal coherence).
+- [ ] Temporal resampling: randomly speed up / slow down a sequence to simulate
+  different signing speeds.
+- [ ] Random frame dropout + interpolation — simulates detection gaps, builds
+  robustness to missing landmarks.
+- [ ] Left/right mirroring for handedness (see §7.5 — decide augmentation vs
+  canonicalization vs both).
+- [ ] Retrain with augmentation and compare the **train/val gap** before vs after,
+  to confirm it reduces overfitting rather than just adding noise.
+
+### 7.5 Phase 5 — Handedness canonicalization
+
+- [ ] Determine whether GISLR labels signer dominant hand, or whether it must be
+  inferred (which hand has higher motion energy / detection rate per sequence).
+- [ ] Decide the canonical handedness (e.g. always right-handed).
+- [ ] Mirroring transform: flip x-coordinates **and** swap left/right landmark
+  indices.
+- [ ] [?] Deterministic canonicalization of all data, or random mirroring at train
+  time? Different design choices with different generalization effects.
+- [ ] Re-run the §7.1 confusion-matrix analysis afterwards to see whether
+  handedness confusion specifically improved.
+
+### 7.6 Phase 6 — Controlled ablations
+
+**Goal:** isolate which change mattered instead of stacking everything and getting
+an unattributable result.
+
+- [ ] Fixed protocol for every arm: GRU, same split, same hyperparameters, same
+  seed.
+- [ ] **Arm A** — position-only, normalized (§7.2 alone vs the current baseline).
+- [ ] **Arm B** — position + velocity, normalized (motion on top of fixed
+  normalization).
+- [ ] **Arm C** — velocity-only, normalized. Tests whether static pose/location is
+  necessary at all. Prediction: underperforms B and possibly A (loss of
+  static-hold and sign-location information) — run it to confirm, not to assume.
+- [ ] **Arm D** (only if B > A) — position + velocity + acceleration, normalized.
+- [ ] **Arm E** (only if §7.4 is implemented) — best arm from A–D + augmentation.
+- [ ] Tabulate overall accuracy, macro accuracy and train/val gap for all arms
+  side by side.
+- [ ] Re-validate the winning feature combination on **one other architecture**
+  (1D-CNN) to confirm the gain is feature-driven, not GRU-specific.
+- [ ] Record the normalization + feature configuration **per run** in the meta.json
+  schema, so future comparisons stay attributable and nobody has to re-litigate
+  "was it the normalization or the velocity?" later. (Schema change — coordinate
+  with §6.3; likely a `features` object alongside `subset`/`coords`.)
+
+### 7.7 Phase 7 — Validate against prior work
+
+- [ ] Cross-check the §7.2 scheme against the 1st-place solution's specific
+  single-reference-point normalization — match the validated approach rather than
+  a variant of it.
+- [ ] Revisit ME-126 / motion-energy using normalized coordinates: motion energy
+  computed on un-normalized data may have been biased by signer scale.
+- [ ] Resolve the long-open ME-126 vs Kaggle-suggested-subset cross-validation
+  (§1.6, §3) — landmark importance rankings may shift once normalization is fixed.
+- [ ] Plain-language write-up for supervisor progress reporting in
+  `docs/reports/plateau-breakout.md`: what Phase 1 diagnosed, what changed, what
+  moved accuracy and by how much.
+
+---
+
 ## Backlog / Someday
 
 - [ ] (add unscoped ideas here as they come up, promote to a numbered section once
@@ -442,4 +1030,4 @@ key and handles xy/xyz via its `coords` key).
 
 ---
 
-*Last updated: July 18, 2026*
+*Last updated: July 19, 2026 (bulk test-split extraction running · output-inspection notebook · weekly logs started, week numbering set to Sunday-start)*

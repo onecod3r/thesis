@@ -49,6 +49,10 @@ class StreamingGRU(nn.Module):
         idx = (lengths - 1).view(-1, 1, 1).expand(-1, 1, out.size(-1)).to(out.device)
         return self.head(out.gather(1, idx).squeeze(1))
 
+    def forward_full(self, x):
+        out, _ = self.gru(self.input_norm(x))
+        return self.head(out[:, -1])
+
 
 class StreamingLSTM(nn.Module):
     """Unidirectional (causal) LSTM — streaming-viable. The direct LSTM-vs-GRU
@@ -81,6 +85,10 @@ class StreamingLSTM(nn.Module):
         out, _ = pad_packed_sequence(packed_out, batch_first=True)
         idx = (lengths - 1).view(-1, 1, 1).expand(-1, 1, out.size(-1)).to(out.device)
         return self.head(out.gather(1, idx).squeeze(1))
+
+    def forward_full(self, x):
+        out, _ = self.lstm(self.input_norm(x))
+        return self.head(out[:, -1])
 
 
 class BiLSTM(nn.Module):
@@ -123,6 +131,11 @@ class BiLSTM(nn.Module):
         )  # fwd state at last valid frame
         bwd_first = out[:, 0, H:]  # bwd state at t=0 (saw everything)
         return self.head(torch.cat([fwd_last, bwd_first], dim=-1))
+
+    def forward_full(self, x):
+        out, _ = self.lstm(self.input_norm(x))
+        H = out.size(-1) // 2
+        return self.head(torch.cat([out[:, -1, :H], out[:, 0, H:]], dim=-1))
 
 
 class CausalConv1D(nn.Module):
@@ -180,6 +193,13 @@ class CausalConv1D(nn.Module):
         out = x.transpose(1, 2)  # (B, T, H)
         idx = (lengths - 1).view(-1, 1, 1).expand(-1, 1, out.size(-1)).to(out.device)
         return self.head(out.gather(1, idx).squeeze(1))
+
+    def forward_full(self, x):
+        x = self.input_norm(x).transpose(1, 2)
+        for conv, norm in zip(self.convs, self.norms):
+            x = conv(x).transpose(1, 2)
+            x = self.drop(self.act(norm(x))).transpose(1, 2)
+        return self.head(x.transpose(1, 2)[:, -1])
 
 
 @dataclass(frozen=True)

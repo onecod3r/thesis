@@ -1,0 +1,81 @@
+{
+  "schema_version": 3,
+  "run_id": 1784397301,
+  "created": "2026-07-18T23:55:01",
+  "dataset": "gislr",
+  "architecture": "bilstm",
+  "model_name": "BiLSTM",
+  "streaming": false,
+  "subset": "FP_118",
+  "coords": "xy",
+  "n_landmarks": 118,
+  "feature_dim": 236,
+  "n_classes": 250,
+  "n_params": 2718418,
+  "split": {
+    "strategy": "stratified 90/10",
+    "random_state": 42,
+    "n_val": 9448
+  },
+  "training": {
+    "regime": "v2-plateau-300",
+    "source": "gislr.1.model.bilstm.ipynb",
+    "epoch_cap": 300,
+    "epochs_trained": 97,
+    "best_epoch": 82,
+    "early_stopped": true,
+    "finished": true,
+    "wall_time_min": 21.0
+  },
+  "hyperparameters": {
+    "batch_size": 1024,
+    "lr": 0.001414,
+    "hidden_size": 256,
+    "num_layers": 2,
+    "dropout": 0.3,
+    "weight_decay": 0.0001,
+    "epochs": 300,
+    "grad_clip": 5.0,
+    "lr_factor": 0.5,
+    "lr_patience": 5,
+    "es_patience": 15,
+    "es_min_delta": 0.001,
+    "seed": 42,
+    "max_seq_len": 128,
+    "num_workers": 0,
+    "loss": "CE + label smoothing 0.1",
+    "precision": "AMP"
+  },
+  "metrics": {
+    "train_val_acc": 0.7526,
+    "eval_status": "canonical",
+    "overall_accuracy": 0.7525402201524132,
+    "macro_accuracy": 0.7501010585133796,
+    "median_class_accuracy": 0.7631578947368421,
+    "n_classes_below_50pct": 10
+  },
+  "checkpoints": {
+    "best": "best.pt",
+    "last": "last.pt"
+  },
+  "assets": {
+    "landmarks": "assets/landmarks.npy",
+    "learning_curves": "assets/learning_curves.png",
+    "per_class_csv": "assets/per_class_accuracy.csv",
+    "per_class_png": "assets/per_class_accuracy.png",
+    "eval_summary": "assets/eval_summary.json",
+    "val_predictions": "assets/val_predictions.npz",
+    "submission_zip": "export/submission.zip",
+    "tflite": "export/model.tflite"
+  },
+  "notes": "FP_118 subset \u00b7 regime v2-plateau-300.",
+  "submission": {
+    "tested": false,
+    "platform": null,
+    "submitted_at": null,
+    "public_score": null,
+    "private_score": null,
+    "reference": null,
+    "notes": ""
+  }
+}

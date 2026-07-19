@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "dataset": "gislr",
+  "regime": "v2-plateau-300",
+  "source": "gislr.1.models.training.ipynb",
+  "coords": "xy",
+  "subsets": ["ME_126", "ME_132", "FP_118"],
+  "shared": {
+    "batch_size": 1024,
+    "lr": 0.001414,
+    "hidden_size": 256,
+    "num_layers": 2,
+    "dropout": 0.3,
+    "weight_decay": 0.0001,
+    "epochs": 300,
+    "grad_clip": 5.0,
+    "lr_factor": 0.5,
+    "lr_patience": 5,
+    "es_patience": 15,
+    "es_min_delta": 0.001
+  },
+  "architectures": {
+    "gru": {},
+    "lstm": {},
+    "bilstm": {},
+    "cnn1d": {
+      "overrides": {
+        "num_layers": 5
+      },
+      "notes": "num_layers is the number of dilated conv BLOCKS, not recurrent layers - it sets the receptive field: 1 + (kernel-1) * sum(2^i) = 125 frames at 5 blocks (dilations 1,2,4,8,16), which matches MAX_SEQ_LEN=128. At 2 blocks it collapses to 13 frames, far too short to see a whole sign; that is what produced the ~0.54 runs on 2026-07-19."
+    }
+  }
+}

@@ -57,9 +57,9 @@ type Datasets = DatasetMap[Path]
 DATASET_IDS: DatasetIds = {
     "TRAIN": [
         "mrgeislinger/popsign-asl-v1-0-game-train-a-e-signs",
-        "mrgeislinger/popsign-asl-v1-0-game-train-f-m-signs",
-        "mrgeislinger/popsign-asl-v1-0-game-train-n-s-signs",
-        "mrgeislinger/popsign-asl-v1-0-game-train-t-z-signs",
+        # "mrgeislinger/popsign-asl-v1-0-game-train-f-m-signs",
+        # "mrgeislinger/popsign-asl-v1-0-game-train-n-s-signs",
+        # "mrgeislinger/popsign-asl-v1-0-game-train-t-z-signs",
     ],
     "TEST": "mrgeislinger/popsign-asl-v1-0-game-test",
     "GISLR": "asl-signs",
@@ -82,10 +82,8 @@ def resolve_datasets() -> Datasets:
 
     return {
         "TRAIN": [
-            Path(kagglehub.dataset_download(DATASET_IDS["TRAIN"][0])),
-            # Path(kagglehub.dataset_download(DATASET_IDS["TRAIN"][1])),
-            # Path(kagglehub.dataset_download(DATASET_IDS["TRAIN"][2])),
-            # Path(kagglehub.dataset_download(DATASET_IDS["TRAIN"][3])),
+            Path(kagglehub.dataset_download(DATASET_IDS["TRAIN"][i]))
+            for i in range(len(DATASET_IDS["TRAIN"]))
         ],
         "TEST": Path(kagglehub.dataset_download(DATASET_IDS["TEST"])),
         "GISLR": gislr_dir(),

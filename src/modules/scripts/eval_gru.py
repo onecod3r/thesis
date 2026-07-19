@@ -15,9 +15,19 @@ Usage (any CWD — the script bootstraps its own imports):
     .venv/Scripts/python.exe src/modules/scripts/eval_gru.py <run_dir> [--checkpoint best.pt]
 
 <run_dir> is a registry folder (src/data/models/<run_id>/). Writes
-assets/per_class_accuracy.{csv,png} + assets/eval_summary.json, promotes
-meta.json metrics to eval_status="canonical", and registers the new assets —
-rebuild the index afterwards with modules/scripts/build_model_index.py.
+assets/per_class_accuracy.{csv,png} + assets/eval_summary.json +
+assets/val_predictions.npz, promotes meta.json metrics to
+eval_status="canonical", and registers the new assets — rebuild the index
+afterwards with modules/scripts/build_model_index.py.
+
+val_predictions.npz (labels + preds over the canonical val split, in split
+order) is what makes confusion matrices cheap: gislr.2.models.evaluation.ipynb
+builds every matrix from these files instead of re-running inference.
+
+Importable as well as runnable — the evaluation notebook calls
+
+    from modules.scripts.eval_gru import evaluate_run
+    summary = evaluate_run(run_dir)
 """
 import argparse
 import json
@@ -57,32 +67,36 @@ def load_video(path, landmarks, coords):
     return arr.reshape(T, -1), T
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("run_dir", help="registry run folder (src/data/models/<run_id>/)")
-    ap.add_argument("--checkpoint", default=R.CKPT_BEST,
-                    help=f"checkpoint file inside the run folder (default {R.CKPT_BEST})")
-    args = ap.parse_args()
+def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True) -> dict:
+    """Canonical per-class evaluation of one registry run; returns the summary dict.
 
-    run_dir = Path(args.run_dir)
+    Side effects (all inside the run folder): assets/per_class_accuracy.{csv,png},
+    assets/eval_summary.json, assets/val_predictions.npz, and meta.json promoted
+    to eval_status="canonical". Safe to re-run — everything is overwritten.
+    """
+    run_dir = Path(run_dir)
     assert (run_dir / "meta.json").is_file(), f"not a registry run folder: {run_dir}"
     device = torch.device("cuda")
+
+    def log(*a):
+        if verbose:
+            print(*a, flush=True)
 
     data_dir = gislr_dir()
     sign2idx = load_label_map(data_dir)
     idx2sign = {v: k for k, v in sign2idx.items()}
     _, val_split = get_canonical_split(data_dir, sign2idx)
-    print(f"val split: {len(val_split)} videos")
+    log(f"val split: {len(val_split)} videos")
 
-    ckpt = torch.load(run_dir / args.checkpoint, map_location=device, weights_only=False)
+    ckpt = torch.load(run_dir / checkpoint, map_location=device, weights_only=False)
     arch = ckpt.get("arch", "gru")
     coords = ckpt.get("coords", "xyz")
     landmarks = np.asarray(ckpt["landmarks"]) if ckpt.get("landmarks") is not None else None
     model = build_model(arch, ckpt["feature_dim"], len(sign2idx), ckpt["hyp"]).to(device)
     model.load_state_dict(ckpt["model_state"])
     model.eval()
-    print(f"checkpoint: arch={arch} coords={coords} feature_dim={ckpt['feature_dim']} "
-          f"best_val_acc={ckpt['best_val_acc']:.4f}")
+    log(f"checkpoint: arch={arch} coords={coords} feature_dim={ckpt['feature_dim']} "
+        f"best_val_acc={ckpt['best_val_acc']:.4f}")
 
     paths = [data_dir / p for p in val_split["path"]]
     labels_all = val_split["label"].to_numpy()
@@ -102,7 +116,7 @@ def main():
             inv = np.empty_like(order); inv[order] = np.arange(len(order))
             preds_all[b0:b0 + len(chunk)] = pred[inv]
             if (b0 // BATCH) % 10 == 0:
-                print(f"  {b0 + len(chunk)}/{len(paths)}  ({time.time() - t0:.0f}s)", flush=True)
+                log(f"  {b0 + len(chunk)}/{len(paths)}  ({time.time() - t0:.0f}s)")
 
     correct = preds_all == labels_all
     overall = correct.mean()
@@ -116,9 +130,14 @@ def main():
     assets = run_dir / "assets"
     assets.mkdir(exist_ok=True)
     per_class.to_csv(assets / "per_class_accuracy.csv", index_label="label")
+    # raw predictions: everything downstream (confusion matrices, confused-pair
+    # analysis) derives from these, so no consumer needs to re-run inference
+    np.savez_compressed(assets / "val_predictions.npz",
+                        labels=labels_all.astype(np.int16),
+                        preds=preds_all.astype(np.int16))
 
-    import matplotlib
-    matplotlib.use("Agg")
+    # no matplotlib.use() here — evaluate_run is imported by the evaluation
+    # notebook, where forcing Agg would kill inline figures; the CLI sets it
     import matplotlib.pyplot as plt
     fig, axes = plt.subplots(1, 2, figsize=(14, 4.5))
     axes[0].hist(per_class["accuracy"], bins=25, color="tab:blue", edgecolor="white")
@@ -143,7 +162,8 @@ def main():
         "median_class_accuracy": float(per_class["accuracy"].median()),
     }
     (assets / "eval_summary.json").write_text(json.dumps(summary, indent=2))
-    print(json.dumps(summary, indent=2))
+    plt.close(fig)
+    log(json.dumps(summary, indent=2))
 
     # promote the canonical numbers into meta.json (the record
     # build_model_index.py aggregates into data/models/index.csv)
@@ -159,9 +179,22 @@ def main():
     R.register_assets(run_dir,
                       per_class_csv="assets/per_class_accuracy.csv",
                       per_class_png="assets/per_class_accuracy.png",
-                      eval_summary="assets/eval_summary.json")
-    print(f"updated {run_dir / 'meta.json'} (eval_status=canonical) — rebuild the "
-          f"index with modules/scripts/build_model_index.py")
+                      eval_summary="assets/eval_summary.json",
+                      val_predictions="assets/val_predictions.npz")
+    log(f"updated {run_dir / 'meta.json'} (eval_status=canonical) — rebuild the "
+        f"index with modules/scripts/build_model_index.py")
+    return summary
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("run_dir", help="registry run folder (src/data/models/<run_id>/)")
+    ap.add_argument("--checkpoint", default=R.CKPT_BEST,
+                    help=f"checkpoint file inside the run folder (default {R.CKPT_BEST})")
+    args = ap.parse_args()
+    import matplotlib
+    matplotlib.use("Agg")  # headless CLI; the notebook path keeps its backend
+    evaluate_run(args.run_dir, checkpoint=args.checkpoint)
 
 
 if __name__ == "__main__":
