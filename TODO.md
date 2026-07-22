@@ -572,6 +572,34 @@ is **not** yet chosen, and the sweep should not simply be finished as-is:
 - [ ] Position as complementary to gradient saliency and SHAP from trained models
   (not a replacement)
 
+### 3.0.1 Landmark-reduction findings write-up (2026-07-22 remark)
+
+**Blocked on input from the user:** the remark says the rationale, alternatives
+and next steps are "already locked in inside the draft paper," but no paper
+file exists in this repo and the link wasn't provided when asked (2026-07-22).
+Placeholder filed so it isn't lost — fill in the URL/doc and re-derive this
+item once available, since the actual next steps may differ once the paper's
+existing content is known:
+
+- [ ] Get the draft paper location (Google Doc / Overleaf / other) from the
+  user, then reconcile its landmark-reduction section against what's already
+  written here (`docs/reports/motion-energy.md`, `docs/reports/subset-comparison.md`)
+  before drafting anything new, so the write-up doesn't contradict or duplicate
+  decisions already locked in.
+- [ ] Findings write-up should cover, at minimum: why reduce at all (streaming
+  latency/model-size budget — `CLAUDE.md` "streaming viability drives
+  everything"), the evidence trail (motion-energy z-noise finding →
+  discriminability probe → ME-126 selection, §1/§3), the subset-comparison
+  cross-check against the Kaggle 1st-place subset (agreement + divergence
+  points, §1.6), and honest caveats (motion-energy computed pre-normalization,
+  §7.7 flags this may shift once §7.2 lands).
+  Possible solutions/next steps to include: the pending global xy-only re-run
+  (§1.8), the face-anchor-reduction candidate (§3.0), and the normalization-first
+  re-validation of ME-126 vs FP-118 (§7.7).
+- [ ] Decide the destination: a new `docs/reports/landmark-reduction.md`
+  (this repo's existing convention) vs content destined for the external
+  paper — depends on what the paper already contains.
+
 ### 3.0 Landmark-subset registry + comparison notebook (2026-07-16)
 
 - [x] `src/modules/dataset/landmark/subsets.py` — canonical registry of every
@@ -669,17 +697,54 @@ timestamped run folder per training start, auto-generated
 `data.md`/`README.md`/`metadata.json` so every run lands in `src/models/index.csv`.
 Train on the best-known subset for comparability with the GRU runs.
 
-- [~] **`gislr.1.model.lstm.ipynb`** — unidirectional `StreamingLSTM`
+- [x] **`gislr.1.model.lstm.ipynb`** — unidirectional `StreamingLSTM`
   (streaming-viable, direct cell-vs-cell GRU comparison; 1.24M params at
-  hidden 256×2). **Built 2026-07-17** — awaiting user run.
-- [~] **`gislr.1.model.bilstm.ipynb`** — `BiLSTM`, offline-only **accuracy
+  hidden 256×2). **Built 2026-07-17, trained 2026-07-19** — best 0.7453 (lstm
+  ME_126/xy). **Status was stale here** (said "awaiting user run" though the
+  18-run sweep in `docs/logs/daily/2026-07-19.md` already covers all 3
+  subsets) — corrected 2026-07-22.
+- [x] **`gislr.1.model.bilstm.ipynb`** — `BiLSTM`, offline-only **accuracy
   reference, never a deployment candidate** (prices the causality gap;
-  fwd-last + bwd-first readout, 3.0M params). **Built 2026-07-17** (replaced
-  the empty stub) — awaiting user run.
-- [~] **`gislr.1.model.cnn1d.ipynb`** — `CausalConv1D`: 5 dilated causal
+  fwd-last + bwd-first readout, 3.0M params). **Built 2026-07-17, trained
+  2026-07-19** — best 0.7526 (bilstm FP_118/xy), also the **largest train/val
+  gap** of the four archs (0.22–0.24 vs gru's 0.155) — read in the 07-19 log
+  as "most capacity + can see the future ⇒ memorizes hardest," not as a
+  feature/architecture win. **Status was stale here** — corrected 2026-07-22.
+- [x] **`gislr.1.model.cnn1d.ipynb`** — `CausalConv1D`: 5 dilated causal
   Conv1d blocks (kernel 5, dilations 1..16, per-frame LayerNorm, 125-frame
   receptive field ≈ MAX_SEQ_LEN; 1.86M params). Streaming-viable; first step
-  toward the 1st-place port. **Built 2026-07-17** — awaiting user run.
+  toward the 1st-place port. **Built 2026-07-17, trained 2026-07-19** — but at
+  the crippled `num_layers=2` config (§5.5.1 bug), so its 0.5414 best is not a
+  valid architecture result; **re-run still pending** (§5.5.1) with the fixed
+  5-layer config before it's comparable to the other three.
+
+### 4.1 BiLSTM investigation (2026-07-22 remark — scoped as diagnostic only)
+
+- [?] **Conflict to flag, not silently resolve:** the remark asks to "figure out
+  why BiLSTM is performing better" and "try increasing the depth of the
+  model." Two problems with taking that at face value:
+  1. **The premise is already stale.** As of the 07-19 canonical evals, GRU
+     (ME_126/xy, 0.7566) leads the leaderboard — BiLSTM's best is 0.7526. BiLSTM
+     was ahead only in the interim 07-17→07-19 window before GRU's best run.
+  2. **Deepening BiLSTM for accuracy conflicts with `CLAUDE.md`'s "streaming
+     viability drives everything"** — BiLSTM is explicitly "only ever an
+     accuracy reference, never a deployment candidate" because it's
+     bidirectional (needs the whole sequence, can't run causally frame-by-frame).
+     Chasing its accuracy by adding depth doesn't move the deployable model
+     forward and risks quietly re-centering the project on a model that can
+     never ship.
+  - [ ] **If the goal is understanding the causality gap** (legitimate, already
+    partly answered by the memorization read above): quantify it properly —
+    train/val gap by architecture, params-controlled comparison (BiLSTM at
+    GRU-equivalent param count), and whether the gap is genuinely "sees the
+    future" signal or just "has more capacity." This is diagnostic, feeds §7.1,
+    and doesn't require adopting BiLSTM for anything.
+  - [ ] **If the goal is a higher-accuracy *deployable* model**, depth should go
+    into GRU/LSTM/CausalConv1D (the streaming-viable three), not BiLSTM —
+    consistent with the existing plan (§7 plateau-breaking phases, §4's ST-GCN/
+    TCN/Transformer/Conformer evaluation).
+  - Needs a decision from the user on which of these two this remark meant
+    before either sub-item is actioned.
 
 All three verified 2026-07-17 by CPU smoke test: forward shapes correct,
 future-frame corruption provably doesn't change logits for the two causal
@@ -690,6 +755,35 @@ key and handles xy/xyz via its `coords` key).
 - [ ] Caution: 1st-place GISLR Kaggle solution found hand-crafted angle/distance
   features didn't help and GCNs underperformed simpler sequence models — keep this
   in mind when scoping the ST-GCN evaluation
+
+### 4.2 Full 1st-place-solution recreation (2026-07-22 remark)
+
+**Not a new item** — this is already tracked, split across three places: the
+1D-CNN+Transformer port (README "Still planned" line, this section), the
+normalization scheme cross-check (§7.7), and the landmark subset it uses
+(FP_118, already in the registry, §3.0). The remark's "figure out how they
+did it and recreate it, they hit 89%" bumps it in priority; consolidating
+so it isn't chased as three separate untracked efforts:
+
+- [ ] **The 1st-place notebook itself is no longer in the working tree** —
+  `src/gislr.0.competition.entry.1st.ipynb` (referenced in §0.2) was removed
+  in commit `f7be9a1`; recover it with
+  `git show fd1c7aa:src/gislr.0.competition.entry.1st.ipynb > <path>` (last
+  commit that had it) before re-reading it, rather than re-deriving the
+  solution from memory of the Kaggle discussion (406978).
+- [ ] Read/re-read it in full for: exact normalization (single reference
+  point — feeds §7.2/§7.7), motion-feature construction (lag differences —
+  feeds §3.1/§7.3), the 1D-CNN+Transformer architecture, and training regime
+  (augmentation, LR schedule) — note which parts are already validated causal/
+  streaming-safe vs which assume full-sequence access and would need adapting.
+  Their reported ~89% is on the full (non-streaming) task; a streaming
+  unidirectional port is not guaranteed to reach the same number, and that
+  gap is itself useful information about the causality cost.
+- [ ] Port the architecture as a new `gislr.1.models.training.ipynb` section
+  (same pattern as GRU/LSTM/BiLSTM/CNN1D — shared config, canonical split),
+  not a standalone notebook.
+- [ ] Feed findings into §7.7's cross-check once §7.2 normalization is
+  implemented — don't re-normalize twice.
 
 ---
 
@@ -921,11 +1015,25 @@ Figure out whether this is overfitting, underfitting or a data/label ceiling
   underfitting the real signal**, prioritize §7.2 normalization and §7.3 motion.
 - [ ] Full 250×250 confusion matrix on the val set (§6.1 produces it).
 - [ ] Top 20–30 most-confused class pairs by off-diagonal mass (§6.1).
-- [ ] Manually inspect a few sequences per confused pair (landmark-trajectory
-  visualization) and classify each pair as distinguished by: **handshape only**
-  (hand landmark resolution/features insufficient) · **motion trajectory only**
-  (velocity features should help most) · **location on/near the body** (absolute
-  position must be preserved, not normalized away — note the tension with §7.2).
+- [ ] **[Elevated to top priority per 2026-07-22 remarks]** Manually inspect a few
+  sequences per confused pair (landmark-trajectory visualization) and classify
+  each pair as distinguished by: **handshape only** (hand landmark
+  resolution/features insufficient) · **motion trajectory only** (velocity
+  features should help most) · **location on/near the body** (absolute
+  position must be preserved, not normalized away — note the tension with
+  §7.2). Confirmed by the 07-19 aggregate confusion matrix (`docs/logs/daily/2026-07-19.md`
+  §1.2): top pairs (`awake↔wake` 0.42/0.37, `mouth↔lips` 0.31/0.23, `give→gift`
+  0.30, `cut→scissors` 0.26, `goose→duck` 0.24, `listen↔hear` 0.20/0.19,
+  several others) are near-synonyms/morphologically related, several confused
+  **symmetrically** — a label-ceiling candidate, not just a feature deficiency.
+  This is not yet formally verified as **manual** (human eyeball on raw
+  sequences), only inferred from the confusion matrix — do that check.
+- [ ] **New (2026-07-22 remark):** cross-reference the confused-pair list above
+  against the **per-class accuracy** list (the other §7.1 bullet below) to
+  confirm the semantically-similar pairs are the same classes the models
+  actually miss, rather than two findings that happen to coexist. If the
+  overlap is high, that's added evidence for the label-ceiling read; if low,
+  the semantic-similarity hypothesis needs revisiting.
 - [ ] Per-class sample count vs per-class accuracy. If low accuracy correlates
   with low sample count this is **class imbalance**, and the fix is
   oversampling/class weighting, *not* feature engineering — record this
@@ -1043,6 +1151,51 @@ an unattributable result.
 
 ---
 
+## 8. Post-Processing: Context-Aware Correction Layer (2026-07-22 remark, new)
+
+**The idea:** instead of (or alongside) improving raw model accuracy on
+semantically-confused pairs (§7.1/§3.0.1), feed predictions through a
+correction LLM that uses sentence-level context to pick the right word among
+near-synonyms (`awake`/`wake`, `mouth`/`lips`, etc. — the exact pairs §7.1
+already identified as semantic, not geometric).
+
+- [?] **Scope conflict to resolve before filing real sub-tasks:** GISLR and
+  POPSIGN as used in this repo are **isolated single-sign classification**
+  (one video → one of 250 labels), not continuous sentence recognition —
+  there is currently no stage that assembles a sequence of predicted signs
+  into a sentence for an LLM to have "context of a sentence" over. This
+  remark presupposes that downstream stage exists or is in scope. Before
+  doing anything else: is `sign2speech`'s roadmap meant to extend to
+  continuous/sentence-level signing (which would need a whole new
+  segmentation + sequence-assembly pipeline, well beyond the current
+  per-video classifier), or is this meant as a smaller-scope idea (e.g.
+  n-best/beam re-ranking within a single prediction using label
+  co-occurrence stats, no real "sentence")? The two read very differently in
+  scope.
+  - Note also: this repo is notebook-driven ML research with **no app**
+    (`CLAUDE.md`) — an LLM-correction *pipeline component* is a reasonable
+    research notebook (train/eval a re-ranker), but an actual inference
+    service wiring model → LLM → output would be new territory for this repo.
+- [ ] If continuous/sentence-level is in scope: this is a substantial new
+  workstream (data: does either dataset have sentence-level
+  labels/transcripts to train or even evaluate this against? POPSIGN and
+  GISLR are both isolated-sign as extracted here) — needs its own numbered
+  section once scoped, not folded into §7.
+- [ ] If the smaller-scope reading is intended: prototype using the existing
+  aggregate confusion matrix (`docs/logs/daily/2026-07-19.md` §1.2) as a
+  confusability prior — e.g. an LLM or even a simple bigram/co-occurrence
+  re-ranker over the confused pairs — as a notebook-based offline experiment,
+  measuring accuracy lift on exactly the pairs §7.1 identified, before
+  deciding whether it's worth the added complexity/latency over just fixing
+  the underlying signal (§7.2/§7.3).
+- [ ] Either way, note this doesn't replace §7's normalization/motion-feature
+  work — the remark itself frames it as "instead of," but a correction layer
+  papering over confusable classes without first knowing whether they're a
+  genuine label ceiling (§7.1) risks masking a data problem rather than
+  fixing or correctly diagnosing it.
+
+---
+
 ## Backlog / Someday
 
 - [ ] (add unscoped ideas here as they come up, promote to a numbered section once
@@ -1050,4 +1203,4 @@ an unattributable result.
 
 ---
 
-*Last updated: July 22, 2026 (POPSIGN test-split extraction finished · all 4 train dataset parts downloaded, train manifest regeneration still pending · motion-energy and subset-comparison reports backfilled)*
+*Last updated: July 22, 2026 (POPSIGN test-split extraction finished · all 4 train dataset parts downloaded, train manifest regeneration still pending · motion-energy and subset-comparison reports backfilled · filed 5 new remarks: elevated §7.1 semantic-confusion diagnostic, corrected stale §4 architecture-run status + flagged BiLSTM-depth conflict (§4.1), consolidated 1st-place-solution recreation (§4.2), filed landmark-reduction write-up pending draft-paper link (§3.0.1), filed new LLM correction-layer idea pending scope decision (§8))*
