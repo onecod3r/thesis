@@ -22,6 +22,7 @@ Dataset downloads are resolved *lazily* via :func:`gislr_dir` /
 import shutil
 from pathlib import Path
 from typing import Generic, TypedDict, TypeVar
+# import kagglehub
 
 SRC_DIR = Path(__file__).resolve().parents[1]
 
@@ -66,6 +67,15 @@ DATASET_IDS: DatasetIds = {
 }
 
 
+# TRAIN_DATASET_PATHS = [
+#     Path(kagglehub.dataset_download(DATASET_IDS["TRAIN"][i]))
+#     for i in range(len(DATASET_IDS["TRAIN"]))
+# ]
+
+# TEST_DATASET_PATH = Path(kagglehub.dataset_download(DATASET_IDS["TEST"]))
+# GISLR_DATASET_PATH = Path(kagglehub.competition_download(DATASET_IDS["GISLR"]))
+
+
 def gislr_dir() -> Path:
     """Download/resolve only the GISLR competition data (requires a Kaggle
     account that has accepted the asl-signs rules)."""
@@ -74,17 +84,31 @@ def gislr_dir() -> Path:
     return Path(kagglehub.competition_download(DATASET_IDS["GISLR"]))
 
 
+def train_dirs() -> list[Path]:
+    """Download/resolve only the enabled POPSIGN train datasets (~220GB for the
+    one enabled part alone). Only 1 of 4 train parts is enabled so far
+    (TODO §2.2); uncomment the rest in ``DATASET_IDS["TRAIN"]`` to download them."""
+    import kagglehub
+
+    return [
+        Path(kagglehub.dataset_download(dataset_id))
+        for dataset_id in DATASET_IDS["TRAIN"]
+    ]
+
+
+def test_dir() -> Path:
+    """Download/resolve only the POPSIGN test dataset."""
+    import kagglehub
+
+    return Path(kagglehub.dataset_download(DATASET_IDS["TEST"]))
+
+
 def resolve_datasets() -> Datasets:
     """Download/resolve every enabled dataset (POPSIGN included — ~220GB for
     the one enabled train part alone). Only 1 of 4 POPSIGN train datasets is
     enabled so far (TODO §2.2); uncomment the rest to download them."""
-    import kagglehub
-
     return {
-        "TRAIN": [
-            Path(kagglehub.dataset_download(DATASET_IDS["TRAIN"][i]))
-            for i in range(len(DATASET_IDS["TRAIN"]))
-        ],
-        "TEST": Path(kagglehub.dataset_download(DATASET_IDS["TEST"])),
+        "TRAIN": train_dirs(),
+        "TEST": test_dir(),
         "GISLR": gislr_dir(),
     }
