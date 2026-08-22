@@ -58,22 +58,13 @@ type Datasets = DatasetMap[Path]
 DATASET_IDS: DatasetIds = {
     "TRAIN": [
         "mrgeislinger/popsign-asl-v1-0-game-train-a-e-signs",
-        # "mrgeislinger/popsign-asl-v1-0-game-train-f-m-signs",
-        # "mrgeislinger/popsign-asl-v1-0-game-train-n-s-signs",
-        # "mrgeislinger/popsign-asl-v1-0-game-train-t-z-signs",
+        "mrgeislinger/popsign-asl-v1-0-game-train-f-m-signs",
+        "mrgeislinger/popsign-asl-v1-0-game-train-n-s-signs",
+        "mrgeislinger/popsign-asl-v1-0-game-train-t-z-signs",
     ],
     "TEST": "mrgeislinger/popsign-asl-v1-0-game-test",
     "GISLR": "asl-signs",
 }
-
-
-# TRAIN_DATASET_PATHS = [
-#     Path(kagglehub.dataset_download(DATASET_IDS["TRAIN"][i]))
-#     for i in range(len(DATASET_IDS["TRAIN"]))
-# ]
-
-# TEST_DATASET_PATH = Path(kagglehub.dataset_download(DATASET_IDS["TEST"]))
-# GISLR_DATASET_PATH = Path(kagglehub.competition_download(DATASET_IDS["GISLR"]))
 
 
 def gislr_dir() -> Path:
@@ -91,8 +82,19 @@ def train_dirs() -> list[Path]:
     import kagglehub
 
     return [
-        Path(kagglehub.dataset_download(dataset_id))
-        for dataset_id in DATASET_IDS["TRAIN"]
+        Path(kagglehub.dataset_download(DATASET_IDS["TRAIN"][0])),
+        Path(kagglehub.dataset_download(DATASET_IDS["TRAIN"][1])),
+        Path(
+            kagglehub.dataset_download(
+                DATASET_IDS["TRAIN"][2],
+                output_dir="D:/datasets/popsign/ train-n-s-signs",
+            )
+        ),
+        # Path(
+        #     kagglehub.dataset_download(
+        #         DATASET_IDS["TRAIN"][3], output_dir="E:/datasets/"
+        #     )
+        # ),
     ]
 
 
