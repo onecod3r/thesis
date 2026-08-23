@@ -23,8 +23,34 @@ Faithfulness to the reference, and the three places this deviates:
 3. **Best checkpoint by val accuracy**, not val loss — accuracy is the registry's
    comparable metric (`metrics.train_val_acc`) and what the canonical eval
    reproduces. Val loss is still recorded in ``assets/history.json``.
+4. **The run can stop early**, which the reference's fixed-length cosine never
+   does — a val-accuracy plateau (``es_patience``) or a collapse
+   (``collapse_ratio``/``collapse_patience``). See below.
+5. **BatchNorm running statistics are frozen during AWP's adversarial forward**
+   (``optim.frozen_bn_stats``) — the reference's Keras AWP has the same flaw,
+   but it is a bug either way and it is the one that ended run 1787483814.
 
-Deviations 1-2 should if anything help; 3 only changes which epoch is kept.
+Deviations 1-2 should if anything help; 3 only changes which epoch is kept;
+4-5 exist because of what run 1787483814 did.
+
+**Why stopping conditions exist in a fixed-length regime** (run 1787483814,
+2026-08-23): at the exact step AWP and LateDropout switch on (epoch 15), the
+run diverged — train loss went 2.01 -> 5.79 and pinned at ln(250)=5.52,
+val accuracy 0.746 -> 0.017, and it never recovered. 285 of 300 epochs were
+spent training a dead model. Two guards now catch that:
+
+- ``es_patience`` / ``es_min_delta`` — the ordinary plateau stop, same
+  semantics as ``modules.model.train``'s ``v2-plateau-300``. Patience is
+  deliberately generous here because a one-cycle cosine makes most of its
+  late gains while the LR anneals.
+- ``collapse_ratio`` / ``collapse_patience`` — the fast guard. If val accuracy
+  sits below ``collapse_ratio * best`` for ``collapse_patience`` consecutive
+  epochs, or the training loss goes non-finite, the run stops immediately
+  rather than burning the remaining epochs. This is what turns the failure
+  above into a ~3-epoch loss instead of a 2-hour one.
+
+Both are recorded: ``meta.json`` gets ``training.early_stopped`` and
+``training.stop_reason`` ("completed" / "plateau" / "collapse" / "nan").
 """
 
 import json
@@ -43,7 +69,7 @@ from modules.model import data as D
 from modules.model import features as F
 from modules.model import registry as R
 from modules.model.architectures import ARCHS, build_model
-from modules.model.optim import AWP, Lookahead, cosine_one_cycle
+from modules.model.optim import AWP, Lookahead, cosine_one_cycle, frozen_bn_stats
 from modules.model.train import _atomic_write_json, atomic_torch_save
 from modules.paths import SRC_DIR
 
@@ -54,7 +80,8 @@ REQUIRED_HYP_KEYS = (
     "num_heads", "expand", "late_dropout", "late_dropout_start_epoch",
     "weight_decay", "epochs", "warmup_epochs", "lr_min_ratio", "grad_clip",
     "label_smoothing", "awp_delta", "awp_start_epoch", "lookahead_k",
-    "lookahead_alpha", "num_workers",
+    "lookahead_alpha", "num_workers", "es_patience", "es_min_delta",
+    "collapse_ratio", "collapse_patience",
 )
 
 
@@ -88,7 +115,8 @@ def load_fp_config(path: Path | str = DEFAULT_CONFIG) -> dict:
 
 
 def _build_meta(*, run_dir, cfg, subset, feature_dim, n_params, n_classes, hyp,
-                history, best_val_acc, epochs_done, finished, wall_time_min, notes):
+                history, best_val_acc, epochs_done, finished, wall_time_min, notes,
+                early_stopped=False, stop_reason=None):
     arch = cfg["architecture"]
     spec = ARCHS[arch]
     best_epoch = (int(np.argmax(history["val_acc"])) + 1) if history["val_acc"] else None
@@ -117,7 +145,8 @@ def _build_meta(*, run_dir, cfg, subset, feature_dim, n_params, n_classes, hyp,
             "epoch_cap": hyp["epochs"],
             "epochs_trained": epochs_done,
             "best_epoch": best_epoch,
-            "early_stopped": False,  # fixed-length cosine — no early stopping
+            "early_stopped": early_stopped,
+            "stop_reason": stop_reason,
             "finished": finished,
             "wall_time_min": round(wall_time_min, 1),
         },
@@ -193,7 +222,11 @@ def train_firstplace(config: dict | None = None, subsets: list[str] | None = Non
           f"augment={cfg['features']['augment']}")
     print(f"  AWP delta={hyp['awp_delta']} from epoch {hyp['awp_start_epoch']} "
           f"· Lookahead k={hyp['lookahead_k']} · label smoothing "
-          f"{hyp['label_smoothing']}")
+          f"{hyp['label_smoothing']} · grad_clip {hyp['grad_clip'] or 'off'}")
+    print(f"  stops: plateau after {hyp['es_patience']} epochs without a "
+          f"+{hyp['es_min_delta']} val-acc gain · collapse after "
+          f"{hyp['collapse_patience']} epochs below "
+          f"{hyp['collapse_ratio']:.0%} of best")
 
     return {name: train_firstplace_run(cfg, name, hyp, data_dir=data_dir)
             for name in names}
@@ -296,6 +329,7 @@ def train_firstplace_run(cfg: dict, subset_name: str, hyp: dict,
 
     last, best = run_dir / R.CKPT_LAST, run_dir / R.CKPT_BEST
     start_epoch, best_val_acc, wall_min, global_step = 0, 0.0, 0.0, 0
+    epochs_since_gain, collapse_epochs = 0, 0
     history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": [], "lr": []}
     if last.exists():
         ck = torch.load(last, map_location=device, weights_only=False)
@@ -307,6 +341,8 @@ def train_firstplace_run(cfg: dict, subset_name: str, hyp: dict,
         best_val_acc, history = ck["best_val_acc"], ck["history"]
         wall_min = ck.get("wall_time_min", 0.0)
         global_step = ck.get("global_step", start_epoch * steps_per_epoch)
+        epochs_since_gain = ck.get("epochs_since_gain", 0)
+        collapse_epochs = ck.get("collapse_epochs", 0)
 
     meta_kw = dict(run_dir=run_dir, cfg=cfg, subset=subset, feature_dim=feature_dim,
                    n_params=n_params, n_classes=len(sign2idx), hyp=hyp,
@@ -318,7 +354,8 @@ def train_firstplace_run(cfg: dict, subset_name: str, hyp: dict,
     bar.write(f"{tag}: {n_params / 1e6:.2f}M params · feature_dim {feature_dim} "
               f"· {steps_per_epoch} steps/epoch")
     if start_epoch:
-        bar.write(f"{tag}: resumed at epoch {start_epoch}, best {best_val_acc:.4f}")
+        bar.write(f"{tag}: resumed at epoch {start_epoch}, best {best_val_acc:.4f}, "
+                  f"plateau {epochs_since_gain}/{hyp['es_patience']}")
 
     t0 = time.time()
     for epoch in range(start_epoch, hyp["epochs"]):
@@ -342,7 +379,10 @@ def train_firstplace_run(cfg: dict, subset_name: str, hyp: dict,
             # (modules.model.optim.AWP), so no second unscale_ is needed.
             if awp.active(global_step) and awp.perturb():
                 optimizer.zero_grad(set_to_none=True)
-                with torch.amp.autocast("cuda"):
+                # the perturbed forward exists only for its gradient — letting
+                # it move the BatchNorm running stats is what killed run
+                # 1787483814 (optim.frozen_bn_stats)
+                with frozen_bn_stats(model), torch.amp.autocast("cuda"):
                     adv_loss = criterion(model(feats, lengths), labels)
                 scaler.scale(adv_loss).backward()
                 awp.restore()
@@ -375,8 +415,25 @@ def train_firstplace_run(cfg: dict, subset_name: str, hyp: dict,
         history["val_acc"].append(val_acc)
         history["lr"].append(optimizer.param_groups[0]["lr"])
         is_best = val_acc > best_val_acc
+        # plateau: only a gain > es_min_delta resets the counter (is_best still
+        # saves the checkpoint on ANY improvement)
+        epochs_since_gain = (0 if val_acc > best_val_acc + hyp["es_min_delta"]
+                             else epochs_since_gain + 1)
         best_val_acc = max(best_val_acc, val_acc)
-        finished = epoch + 1 >= hyp["epochs"]
+        # collapse: val acc far below what this run already reached, for several
+        # epochs running — a diverged run, not a plateau
+        collapsed = (best_val_acc > 0
+                     and val_acc < hyp["collapse_ratio"] * best_val_acc)
+        collapse_epochs = collapse_epochs + 1 if collapsed else 0
+        stop_reason = None
+        if not np.isfinite(tr_loss) or not np.isfinite(val_loss):
+            stop_reason = "nan"
+        elif collapse_epochs >= hyp["collapse_patience"]:
+            stop_reason = "collapse"
+        elif epochs_since_gain >= hyp["es_patience"]:
+            stop_reason = "plateau"
+        early_stop = stop_reason is not None
+        finished = early_stop or (epoch + 1 >= hyp["epochs"])
         wall_now = wall_min + (time.time() - t0) / 60
 
         state = {
@@ -403,6 +460,8 @@ def train_firstplace_run(cfg: dict, subset_name: str, hyp: dict,
             "finished": finished,
             "wall_time_min": wall_now,
             "global_step": global_step,
+            "epochs_since_gain": epochs_since_gain,
+            "collapse_epochs": collapse_epochs,
         }
         atomic_torch_save(state, last)
         if is_best:
@@ -410,13 +469,30 @@ def train_firstplace_run(cfg: dict, subset_name: str, hyp: dict,
         _atomic_write_json(run_dir / "assets" / "history.json", history)
         R.write_meta(run_dir, _build_meta(
             **meta_kw, history=history, best_val_acc=best_val_acc,
-            epochs_done=epoch + 1, finished=finished, wall_time_min=wall_now))
+            epochs_done=epoch + 1, finished=finished, wall_time_min=wall_now,
+            early_stopped=early_stop,
+            stop_reason=stop_reason or ("completed" if finished else None)))
 
         bar.set_postfix_str(
             f"tr {tr_loss:.3f}/{tr_acc:.4f} · val {val_loss:.3f}/{val_acc:.4f} "
             f"· best {best_val_acc:.4f}{' *' if is_best else ''} "
-            f"· lr {history['lr'][-1]:.2e}")
+            f"· lr {history['lr'][-1]:.2e} "
+            f"· plateau {epochs_since_gain}/{hyp['es_patience']}"
+            + (f" · collapse {collapse_epochs}/{hyp['collapse_patience']}"
+               if collapse_epochs else ""))
         bar.update(1)
+        if early_stop:
+            reasons = {
+                "nan": "loss went non-finite",
+                "collapse": (f"val acc below {hyp['collapse_ratio']:.0%} of best "
+                             f"({best_val_acc:.4f}) for {hyp['collapse_patience']} "
+                             f"epochs — the run diverged, see history.json"),
+                "plateau": (f"no val-acc gain > {hyp['es_min_delta']} for "
+                            f"{hyp['es_patience']} epochs"),
+            }
+            bar.write(f"{tag}: STOPPED at epoch {epoch + 1} ({stop_reason}) — "
+                      f"{reasons[stop_reason]}")
+            break
     bar.close()
     print(f"{tag}: DONE best_val_acc={best_val_acc:.4f} run_dir={run_dir}")
     return run_dir

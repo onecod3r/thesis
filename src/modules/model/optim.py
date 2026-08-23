@@ -18,6 +18,7 @@ Mapping notes, because they are easy to get subtly wrong:
 """
 
 import math
+from contextlib import contextmanager
 
 import torch
 
@@ -157,3 +158,32 @@ class AWP:
                 if name in self._backup:
                     p.copy_(self._backup[name])
         self._backup = {}
+
+
+@contextmanager
+def frozen_bn_stats(model):
+    """Run a forward pass without letting it move any BatchNorm running stats.
+
+    AWP takes its second forward pass at weights perturbed by ``delta * ||w||``.
+    That pass exists only to produce a gradient — but a plain ``model.train()``
+    forward also *updates* every BatchNorm's ``running_mean``/``running_var``,
+    so the perturbed activations get folded into the statistics the model is
+    later evaluated with. Run 1787483814 is what that looks like: after AWP
+    switched on, ``stem_bn.running_var`` walked from 4.8 to 8467 while the
+    stem's weight norm went 16 -> 224, and val accuracy never recovered.
+
+    Batch statistics are still used for the normalization itself (setting the
+    modules to ``eval()`` instead would change the adversarial loss), only the
+    running buffers are held still: PyTorch updates them as
+    ``running = (1 - momentum) * running + momentum * batch``, so ``momentum=0``
+    is exactly "compute, don't remember".
+    """
+    saved = [(m, m.momentum) for m in model.modules()
+             if isinstance(m, torch.nn.modules.batchnorm._BatchNorm)]
+    for m, _ in saved:
+        m.momentum = 0.0
+    try:
+        yield
+    finally:
+        for m, momentum in saved:
+            m.momentum = momentum

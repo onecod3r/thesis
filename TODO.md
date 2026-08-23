@@ -823,9 +823,48 @@ so it isn't chased as three separate untracked efforts:
   - `modules/scripts/eval_gru.py` — dispatches on the checkpoint's `features`
     key so these runs are scored through the 1st-place preprocessing.
   - **`src/gislr.1.models.firstplace.ipynb`** — the driver notebook.
-- [ ] **Run it (user).** Check the §4b one-epoch timing cell *before* §5:
-  reference cost was 6-7 h/fold on a TPU v3-8, and AWP doubles the per-step
-  cost. Then canonical-eval and compare against the 0.7565 GRU on the same split.
+- [x] **Run it (user)** — done 2026-08-23, run `1787483814`, 300 epochs in
+  2.0 h. **It diverged**; see the next item. Canonical eval of the surviving
+  checkpoint: **0.7459** overall / 0.7433 macro / 0.7632 median / 13 classes
+  below 50%. That is *below* the 0.7565 GRU and is not a measurement of the
+  recipe — it is a model 15 epochs into a 300-epoch cosine.
+- [~] **Re-run it with the fixed driver (user).** Full write-up:
+  `docs/logs/daily/2026-08-23.md`. What happened and what changed:
+  - **The run died at epoch 15** — the exact step `awp_start_epoch` and
+    `late_dropout_start_epoch` both fire. Train loss 2.01 -> 5.79 and then
+    pinned at ln(250) = 5.52 (a uniform predictor) for ~45 epochs; val acc
+    0.746 -> 0.017; recovered only to 0.179 by epoch 300. **285 of 300 epochs
+    trained a dead model.** Not a NaN (the reference's documented failure) and
+    not a plateau: `best.pt` vs `last.pt` shows `stem.weight` norm 16 -> 224
+    and `stem_bn.running_var` 4.8 -> 8467, with every downstream BatchNorm
+    scale collapsed toward zero to suppress it.
+  - **Cause 1 — `grad_clip: 0.0`** (faithful to the reference, fine without
+    AWP). AWP steps from a gradient measured where every weight tensor was
+    pushed 20% of its own norm *up* the loss surface. Now `1.0`.
+  - **Cause 2 — AWP's adversarial forward was updating the BatchNorm running
+    statistics.** That pass exists only for its gradient, but a `train()`
+    forward also writes batch stats into the running buffers, so eval-time
+    statistics were fed perturbed-weight activations twice per step. Fixed by
+    `modules/model/optim.py::frozen_bn_stats`, used by `train_fp.py`. The
+    reference's Keras AWP has the same flaw.
+  - **Stopping conditions added to `fp-onecycle-300`** (it deliberately had
+    none): `collapse_ratio`/`collapse_patience` (val acc below 50% of the run's
+    own best for 3 consecutive epochs — replayed on this history it stops at
+    epoch 18), `es_patience`/`es_min_delta` (30 / +0.001, the ordinary plateau
+    stop, generous because a one-cycle cosine gains late), and a non-finite-loss
+    stop. `meta.json` gains `training.stop_reason` ∈ {completed, plateau,
+    collapse, nan}; README's schema table updated.
+  - **Notebook**: §0.4 rewritten around this failure, §5 documents the stops,
+    §6a marks the AWP/LateDropout switch epoch on every curve and warns when the
+    best epoch lands at or before it, and a **new §7b** prints per-class
+    best/worst, the confused-pair table and the confusion matrix from the cached
+    predictions.
+  - **On the re-run**: watch epoch 15. If val accuracy survives the switch the
+    recipe is finally being measured; if it collapses again the guard ends the
+    run in 3 epochs and the next lever is `awp_delta: 0.1`, then `lr`, then bf16.
+- [ ] **Registry housekeeping**: `src/data/models/1787473998/` contains only
+  `assets/landmarks.npy` (an aborted start, no `meta.json`) and makes
+  `build_model_index.py` warn on every rebuild. Delete it or give it a meta.
 - [x] ~~Port the architecture as a new `gislr.1.models.training.ipynb` section,
   not a standalone notebook~~ — **superseded 2026-08-23.** That instruction
   assumed only the architecture differs. It does not: the features, the
@@ -1098,16 +1137,33 @@ Figure out whether this is overfitting, underfitting or a data/label ceiling
   **symmetrically** — a label-ceiling candidate, not just a feature deficiency.
   This is not yet formally verified as **manual** (human eyeball on raw
   sequences), only inferred from the confusion matrix — do that check.
-- [ ] **New (2026-07-22 remark):** cross-reference the confused-pair list above
+- [x] **New (2026-07-22 remark):** cross-reference the confused-pair list above
   against the **per-class accuracy** list (the other §7.1 bullet below) to
   confirm the semantically-similar pairs are the same classes the models
-  actually miss, rather than two findings that happen to coexist. If the
-  overlap is high, that's added evidence for the label-ceiling read; if low,
-  the semantic-similarity hypothesis needs revisiting.
-- [ ] Per-class sample count vs per-class accuracy. If low accuracy correlates
+  actually miss, rather than two findings that happen to coexist.
+  **Done 2026-08-23 on run `1787483814`** (`conv1d_transformer`/FP_118, the
+  1st-place port): **9 of the 15 worst classes** are the "true" side of a
+  top-25 confused pair (`give`, `mouth`, `hear`, `sleep`, `pencil`, `look`,
+  `that`, `close`, `zipper`), 14 of the worst 30. A quarter of a weak class's
+  errors (median over the worst 30) land on its *single* most-confused
+  neighbour. The overlap is high — added evidence for the label-ceiling read.
+  **And it replicates across a completely different model**: this run uses a
+  different architecture, a different feature pipeline (reference-point
+  normalization + lag features) and a different regime from the 18 runs behind
+  the 07-19 aggregate, yet reproduces the same pairs (`awake↔wake` 0.45/0.33,
+  `pencil↔pen` 0.41/0.20, `give→gift` 0.31, `mouth→lips` 0.31, `hear→listen`
+  0.29, `cat↔kitty`, `goose→duck`). Confusion that survives that much variation
+  is a property of the labels/representation, not of any model.
+  Re-check on the fixed re-run (§4.2), since this checkpoint is only 15 epochs
+  into its schedule.
+- [~] Per-class sample count vs per-class accuracy. If low accuracy correlates
   with low sample count this is **class imbalance**, and the fix is
   oversampling/class weighting, *not* feature engineering — record this
-  separately.
+  separately. **First data point 2026-08-23** (run `1787483814`):
+  `corr(n_val, accuracy) = 0.35` — positive but weak, and the canonical val set
+  spans only 30–41 videos per class, so imbalance is a minor effect here rather
+  than the plateau's cause. Worth re-running across several canonical runs
+  before treating 0.35 as the number.
 - [ ] Write the verdict up (overfitting / underfitting / imbalance / specific
   confusable pairs) — it decides which phase below runs next.
 
@@ -1273,7 +1329,17 @@ already identified as semantic, not geometric).
 
 ---
 
-*Last updated: August 23, 2026 (1st-place solution recreated in code — reference
+*Last updated: August 23, 2026, later (§4.2: the 1st-place port's first run
+`1787483814` **diverged at epoch 15** — the step AWP + LateDropout switch on —
+and burned 285 of 300 epochs on a dead model; canonical 0.7459 from the
+surviving checkpoint. Causes found (`grad_clip: 0.0`; AWP's adversarial forward
+updating BatchNorm running stats) and fixed, and `fp-onecycle-300` gained
+collapse/plateau **stopping conditions** + `training.stop_reason`. §7.1: two
+diagnostic bullets closed — the confused-pair and per-class lists overlap 9/15,
+and the semantic pairs replicate on a completely different architecture and
+feature pipeline. Full write-up: `docs/logs/daily/2026-08-23.md`.)*
+
+*Previously: August 23, 2026 (1st-place solution recreated in code — reference
 notebook recovered from git history and read in full, ported as
 `src/gislr.1.models.firstplace.ipynb` + `modules/model/{features,optim,train_fp}.py`
 + `Conv1DTransformer` in `architectures.py`; awaiting the user's run. Correction
