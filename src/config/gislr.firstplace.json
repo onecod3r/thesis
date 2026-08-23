@@ -14,8 +14,8 @@
     "augment": true
   },
   "hyp": {
-    "batch_size": 256,
-    "lr": 0.002,
+    "batch_size": 512,
+    "lr": 0.004,
     "hidden_size": 192,
     "num_layers": 2,
     "dropout": 0.2,
@@ -34,16 +34,19 @@
     "awp_start_epoch": 15,
     "lookahead_k": 5,
     "lookahead_alpha": 0.5,
-    "num_workers": 0
+    "num_workers": 8
   },
   "_notes": {
-    "lr": "Reference is 4e-3 at global batch 512 (8 TPU replicas x 64). Scaled linearly to batch 256 -> 2e-3. Keep the lr/batch ratio if you change either; batch 512 + lr 4e-3 IS the reference config exactly and fits in 16GB with bucketing, but peaks higher on the long-clip buckets.",
+    "lr": "4e-3 at batch 512 IS the reference configuration exactly (it used 8 TPU replicas x 64 = 512 global, lr 5e-4 x 8). Keep the lr/batch ratio if you change either.",
     "num_layers": "Number of (3x Conv1DBlock + TransformerBlock) STAGES. 2 = reference base model at dim 192; the reference's '4x' variant is 4 stages at dim 384.",
     "grad_clip": "0 = off, matching the reference (its clipvalue=1 is commented out). Set to 1.0 if AWP produces NaN losses.",
     "awp_delta": "The reference author reports NaN loss roughly 1 run in 5 at 0.2; 0.1 is the documented fallback. 0 disables AWP entirely and halves epoch time.",
     "weight_decay": "Decoupled. torch applies lr*wd*p and tfa applies (lr*0.1)*p, so 0.1 here reproduces the reference exactly.",
     "diff_mode": "'forward' = reference (dx[t]=x[t+1]-x[t], reads 2 frames ahead). 'backward' = causal/streaming-safe. Changing it invalidates comparability with the reference number.",
-    "batch_size": "Raised 128 -> 256 after the first timing run: peak memory was 1.9GB of 16GB, and length-bucketed batching (features.LengthBucketedBatchSampler) makes a larger batch cheaper per sample, not dearer \u2014 measured padding efficiency is 5.9x at 128 and 6.9x at 256.",
-    "num_workers": "0 = augmentation runs in-process, serialized with GPU compute (measured ~165 ms/batch of CPU work at batch 256, roughly 40% of the step once length bucketing lands). Raising it to 4 overlaps that with the GPU and should cut the step again; it is opt-in because Windows spawn is the fragile path in this repo. The dataset class lives in an importable module, so the classic Jupyter+spawn failure does not apply. >0 also switches the cache to mmap so workers share one copy instead of ~3 GB each."
+    "batch_size": "512, chosen by measurement on this machine (RTX 4080 Super 16GB, i7-14700K): 300 epochs takes 8.86h at w=0, 1.39h at w=8, peak 7.9GB. 256 is SLOWER overall (6.31h) despite a cheaper step, because it doubles the step count and the per-step cost is dominated by fixed overhead. 1024 is much worse (12.85h) and peaks at 15.7GB, near the card limit.",
+    "num_workers": "8, measured. The dataloader was ~85% of the step: batch 512 goes from 640ms/step at w=0 to 101ms at w=8. Beyond 8 it flattens and very slightly regresses (w=12 104ms, w=16/20 106ms), so 8 is the knee. Requires the lazy per-process cache open in features.FirstPlaceDataset - holding the 3GB array as an attribute makes Windows spawn pickle it to every worker and fail with OSError 22.",
+    "precision": "fp16 + GradScaler. bf16 was measured at 105ms/step vs fp16's 104ms - no speed difference on Ada - so fp16 stays. Switch to bf16 only if AWP produces NaN losses, since bf16 has fp32 range and cannot overflow.",
+    "pin_memory": "Deliberately OFF and must stay off. A padded batch at 512 is ~557MB, so pinning across 8 workers x prefetch exhausts page-locked host memory and raises 'CUDA error: out of memory' from the pin thread.",
+    "torch_compile": "Not available here: torch.compile raises TritonMissing on Windows (no Triton wheel). Do not spend time on it - it was the main remaining GPU-side lever."
   }
 }

@@ -338,10 +338,16 @@ class FirstPlaceDataset(Dataset):
                  max_len: int = MAX_LEN, diff_mode: str = "forward",
                  seed: int = 42, mmap: bool = False):
         self.labels = df["label"].to_numpy()
-        # mmap only for the multi-worker path: workers would otherwise each get
-        # their own ~3 GB copy of the cache, where mmap shares one page cache.
-        # In-process (num_workers=0) a plain load is faster after the first pass.
-        self.data = np.load(data_path, mmap_mode="r" if mmap else None)
+        # The ~3 GB cache is opened LAZILY, per process, and deliberately not
+        # held as an attribute at construction time: with num_workers > 0,
+        # Windows spawn pickles the dataset to each worker, and a 3 GB array in
+        # the pickle overruns the pipe ("OSError: [Errno 22] Invalid argument",
+        # then a truncated-pickle error in the child). Storing only the path
+        # keeps the pickle tiny; each worker mmaps the file itself and they
+        # share one page cache.
+        self._data_path = Path(data_path)
+        self._data: np.ndarray | None = None
+        self.mmap = mmap
         self.offsets = np.load(off_path)
         self.n_landmarks = len(subset)
         self.perm = mirror_permutation(subset.array)
@@ -355,6 +361,18 @@ class FirstPlaceDataset(Dataset):
         self.seed = seed
         self.epoch = 0
         assert len(self.labels) == len(self.offsets) - 1, "cache/split mismatch"
+
+    @property
+    def data(self) -> np.ndarray:
+        """The feature cache, opened on first use in whichever process asks.
+
+        ``mmap`` for the worker path (shared page cache, no per-worker copy);
+        a plain read in-process, which is faster once the pages are warm.
+        """
+        if self._data is None:
+            self._data = np.load(self._data_path,
+                                 mmap_mode="r" if self.mmap else None)
+        return self._data
 
     def set_epoch(self, epoch: int) -> None:
         """Re-seed augmentation for the coming epoch (call once per epoch)."""

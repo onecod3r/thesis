@@ -243,18 +243,31 @@ def train_firstplace_run(cfg: dict, subset_name: str, hyp: dict,
     val_sampler = F.LengthBucketedBatchSampler(
         F.cached_lengths(va_off), hyp["batch_size"], shuffle=False,
         drop_last=False, seed=D.SEED)
-    # num_workers > 0 overlaps the numpy augmentation with GPU compute. Safe
-    # here because the dataset class lives in an importable module rather than
-    # __main__ (the same reason the POPSIGN pool runs in a kernel, TODO 2.3) —
-    # but it is opt-in, since Windows spawn is the fragile path in this repo.
+    # Workers overlap the numpy augmentation with GPU compute, and that is the
+    # single biggest win here: measured 640 ms/step at num_workers=0 vs 101 ms
+    # at 8 (batch 512), i.e. the dataloader was ~85% of the step. Gains flatten
+    # past 8, so the config's default is the knee rather than the core count.
+    # Windows spawn is the fragile path in this repo, and it works here for two
+    # specific reasons: the dataset class lives in an importable module rather
+    # than __main__ (as with the POPSIGN pool, TODO 2.3), and FirstPlaceDataset
+    # opens its ~3 GB cache lazily per process — holding it as an attribute
+    # makes spawn pickle the array to every worker and fail with OSError 22.
     train_loader = DataLoader(
         train_ds, batch_sampler=train_sampler, collate_fn=F.collate_fn,
         num_workers=n_workers, persistent_workers=n_workers > 0,
-        prefetch_factor=4 if n_workers > 0 else None)
+        prefetch_factor=2 if n_workers > 0 else None,
+        # pin_memory stays False: a padded batch at 512 is ~557 MB, and pinning
+        # it across workers exhausts page-locked host memory (the pin thread
+        # then raises "CUDA error: out of memory").
+        pin_memory=False)
     val_loader = DataLoader(
         val_ds, batch_sampler=val_sampler, collate_fn=F.collate_fn,
         num_workers=n_workers, persistent_workers=n_workers > 0,
-        prefetch_factor=4 if n_workers > 0 else None)
+        prefetch_factor=2 if n_workers > 0 else None,
+        # pin_memory stays False: a padded batch at 512 is ~557 MB, and pinning
+        # it across workers exhausts page-locked host memory (the pin thread
+        # then raises "CUDA error: out of memory").
+        pin_memory=False)
 
     steps_per_epoch = len(train_loader)
     total_steps = steps_per_epoch * hyp["epochs"]
