@@ -17,7 +17,8 @@ POPSIGN's extracted landmarks (the large intermediate artifact, pre-feature-cach
 
 - **GRU** (unidirectional `StreamingGRU`) — the deployment baseline. Chosen because it supports true causal/streaming inference.
 - **Landmark-subset ablations** — motivated by the motion-energy analysis and the Kaggle 1st-place cross-check ([docs/logs/daily/2026-07-15.md](docs/logs/daily/2026-07-15.md)): the **ME-126** subset (hands + upper-body pose + lips + eyes/nose) beat the full-543 baseline **73.73% vs 70.59% val accuracy with half the parameters** (v1-regime runs, pre-reset — see registry note below), independently confirmed by the discriminability probe comparison ([docs/logs/daily/2026-07-16.md](docs/logs/daily/2026-07-16.md)). Canonical subset index lists: `src/modules/dataset/landmark/subsets.py`. Remaining ablations in `TODO.md` §3.1.
-- **Architecture benchmarks (runs pending)** — `StreamingLSTM` (streaming-viable), `BiLSTM` (offline-only accuracy reference — prices the causality gap), `CausalConv1D` (dilated causal 1D-CNN, streaming-viable) — all trained from `src/gislr.1.models.training.ipynb`, a thin driver over the shared stack in `src/modules/model/` with hyperparameters in `src/config/gislr.training.json`. Still planned: the full 1st-place 1D-CNN + Transformer port, ST-GCN, TCN, Conformer. See `TODO.md` §4.
+- **Architecture benchmarks** — `StreamingLSTM` (streaming-viable), `BiLSTM` (offline-only accuracy reference — prices the causality gap), `CausalConv1D` (dilated causal 1D-CNN, streaming-viable) — all trained from `src/gislr.1.models.training.ipynb`, a thin driver over the shared stack in `src/modules/model/` with hyperparameters in `src/config/gislr.training.json`. Still planned: ST-GCN, TCN, Conformer. See `TODO.md` §4.
+- **1st-place solution port** (`Conv1DTransformer`, `TODO.md` §4.2) — the Kaggle GISLR winner recreated end to end: `FP_118` landmarks, reference-point normalization, lag-1/lag-2 motion features, six augmentations, 2 stages of (3× causal Conv1DBlock + Transformer), RAdam + Lookahead + AWP on a cosine one-cycle. Driven by `src/gislr.1.models.firstplace.ipynb` with its own config (`src/config/gislr.firstplace.json`), because its feature pipeline is incompatible with the shared training notebook's — but the same canonical split, registry and `meta.json` schema, so it stays comparable. **Offline-only** (`streaming: false`): global-average readout, unmasked self-attention and whole-sequence normalization. Its reported ~89% is a 4-seed ensemble trained on all 94,477 videos and scored on the Kaggle LB; a single run on the canonical 90/10 split is not the same measurement.
 
 ## Model registry
 
@@ -128,10 +129,12 @@ sign2speech/
 │   └── sys_disk_usage.ps1    # disk-usage helper (POPSIGN raw video is ~870GB)
 └── src/                      # all code; notebooks assume the kernel CWD is src/
     ├── config/
-    │   └── gislr.training.json   # SHARED TRAINING HYPERPARAMETERS (source of truth, not in any cell)
+    │   ├── gislr.training.json   # SHARED TRAINING HYPERPARAMETERS (source of truth, not in any cell)
+    │   └── gislr.firstplace.json # 1st-place port hyperparameters (separate regime, same principle)
     ├── gislr.0.dataset.motion-energy.ipynb      # diagnostic: landmark motion-over-time analysis (TODO §1)
     ├── gislr.0.dataset.subset-comparison.ipynb  # diagnostic: landmark-subset discriminability comparison (TODO §3)
     ├── gislr.1.models.training.ipynb            # ALL GISLR training: one section per architecture (TODO §4)
+    ├── gislr.1.models.firstplace.ipynb          # 1st-place solution port: own feature pipeline + config (TODO §4.2)
     ├── gislr.2.models.evaluation.ipynb          # ALL GISLR evaluation + export + Kaggle submission (TODO §6)
     ├── popsign.0.dataset.extraction.ipynb       # POPSIGN landmark extraction driver (TODO §2)
     ├── popsign.0.dataset.confidence-tuning.ipynb # diagnostic: extraction-quality threshold sweep (TODO §2.3)
@@ -142,8 +145,11 @@ sign2speech/
     ├── modules/
     │   ├── paths.py                  # canonical tree constants (absolute, CWD-independent) + lazy dataset resolution + cleanup_temp()
     │   ├── model/                    # unified training stack behind gislr.1.models.training.ipynb
-    │   │   ├── architectures.py      # StreamingGRU / StreamingLSTM / BiLSTM / CausalConv1D + ARCHS registry (single definition, shared with eval)
+    │   │   ├── architectures.py      # StreamingGRU / StreamingLSTM / BiLSTM / CausalConv1D / Conv1DTransformer + ARCHS registry (single definition, shared with eval)
     │   │   ├── data.py               # canonical split, per-subset feature caches, in-RAM dataset
+    │   │   ├── features.py           # 1st-place input pipeline: NaN-preserving cache, normalization, lag features, augmentation
+    │   │   ├── optim.py              # Lookahead, AWP, cosine one-cycle (what the 1st-place recipe needs and torch lacks)
+    │   │   ├── train_fp.py           # 1st-place training driver (cosine, no early stop, AWP) — same registry/split as train.py
     │   │   ├── registry.py           # run folders (epoch seconds), meta.json writing, asset registration
     │   │   ├── train.py              # training driver: auto-resume, early stopping, ONE progress bar per run
     │   │   ├── report.py             # learning curves, per-epoch history, confusion matrices
@@ -207,6 +213,7 @@ The Jupyter kernel must use this project's `uv`-managed virtual environment (`.v
 1. `src/gislr.0.dataset.motion-energy.ipynb` — *optional diagnostic*: per-video / per-category / global landmark motion-energy analysis. Executed end-to-end; findings in `docs/logs/daily/2026-07-15.md`. (Caches live at `data/cache/gislr/motion_analysis/`; the pre-restructure caches were cleared, so a re-run recomputes them.)
 2. `src/gislr.0.dataset.subset-comparison.ipynb` — *diagnostic*: landmark-subset discriminability comparison across three scopes, scoring the subsets registered in `modules/dataset/landmark/subsets.py`. Findings in `docs/logs/daily/2026-07-16.md`.
 3. `src/gislr.1.models.training.ipynb` — the training stage, **all four architectures in one notebook**: shared feature caches (`data/cache/gislr/features/`, skip-if-exists, built once and reused by every architecture), then one section per architecture (`StreamingGRU`, `StreamingLSTM`, `BiLSTM`, `CausalConv1D`) calling `modules.model.train_from_config`. Hyperparameters come from `src/config/gislr.training.json` (regime **v2-plateau-300**), not from cells. One epoch-seconds registry folder per (architecture, subset), `meta.json` + `assets/history.json` updated every epoch, one progress bar per run. `bilstm` is an **offline-only accuracy reference** (never a deployment candidate); the other three are streaming-viable. Per-class evaluation is handed off to `modules/scripts/eval_gru.py`. **Training only** — no export section.
+4. `src/gislr.1.models.firstplace.ipynb` — the **1st-place solution recreation** (TODO §4.2), a parallel stage-1 track rather than a step in the main sequence. Builds its own NaN-preserving feature cache, then trains `Conv1DTransformer` under regime `fp-onecycle-300`. Read its §0 before running: it explains why the model is offline-only, why a single run on the canonical split should not be expected to reproduce the ~89% leaderboard figure, and which cell to check for the time estimate. Hands off to the same `eval_gru.py` canonical evaluation.
 5. `src/gislr.2.models.evaluation.ipynb` — **everything after training** (TODO §6): DuckDB leaderboard over all `meta.json` files, canonical-eval backfill, top-5 learning-curve overlay, per-run and aggregate confusion matrices + most-confused pairs, arch-generic TFLite export, and the Kaggle submission queue (untested runs only, 100/day cap). All GISLR evaluation and submission lives here and nowhere else.
 
 **POPSIGN** (raw video, requires extraction first — in progress):

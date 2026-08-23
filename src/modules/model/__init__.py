@@ -11,6 +11,12 @@ and the modules/scripts/ CLIs.
   one source of truth for hyperparameters across every architecture.
 - ``train``         — the training driver (auto-resume, early stopping,
   single-progress-bar reporting).
+- ``features``      — the 1st-place input pipeline (TODO §4.2): NaN-preserving
+  cache, reference-point normalization, lag-1/lag-2 differences, augmentation.
+- ``optim``         — Lookahead, AWP and the cosine one-cycle schedule that the
+  1st-place recipe needs and torch does not ship.
+- ``train_fp``      — the 1st-place training driver (fixed-length cosine, no
+  early stopping, AWP); same registry/split/meta.json as ``train``.
 - ``report``        — learning-curve plotting into a run's assets/.
 - ``export``        — deployment export: run -> ONNX -> TF SavedModel -> TFLite
   -> submission.zip, arch-generic (driven by gislr.2.models.evaluation.ipynb).
@@ -52,6 +58,7 @@ from modules.model.report import (
 )
 from modules.model.config import TrainingConfig, load_config
 from modules.model.train import train_from_config, train_run
+from modules.model.train_fp import load_fp_config, train_firstplace
 
 __all__ = [
     "ARCHS",
@@ -88,4 +95,6 @@ __all__ = [
     "load_config",
     "train_from_config",
     "train_run",
+    "load_fp_config",
+    "train_firstplace",
 ]

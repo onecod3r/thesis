@@ -67,6 +67,27 @@ def load_video(path, landmarks, coords):
     return arr.reshape(T, -1), T
 
 
+def load_video_firstplace(path, landmarks, coords, max_len, diff_mode):
+    """Val-time loading for runs trained through the 1st-place feature pipeline
+    (``modules.model.features``): NaNs preserved, reference-point normalization,
+    lag-1/lag-2 differences, no augmentation.
+
+    Scoring such a run with :func:`load_video` would feed it the wrong feature
+    space entirely (2 channels of un-normalized coordinates instead of 6
+    normalized ones) and silently report near-chance accuracy — hence the
+    dispatch rather than a shared default.
+    """
+    from modules.model import features as FP
+
+    arr = FP.load_video_raw(Path(path), landmarks, coords)
+    arr = FP.drop_empty_frames(arr)[:max_len]
+    ref_idx = int(np.searchsorted(landmarks, FP.REF_LANDMARK))
+    assert landmarks[ref_idx] == FP.REF_LANDMARK, (
+        f"reference landmark {FP.REF_LANDMARK} missing from this run's subset")
+    feats = FP.preprocess(arr, ref_idx, max_len, diff_mode)
+    return feats, feats.shape[0]
+
+
 def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True) -> dict:
     """Canonical per-class evaluation of one registry run; returns the summary dict.
 
@@ -98,6 +119,19 @@ def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True) -
     log(f"checkpoint: arch={arch} coords={coords} feature_dim={ckpt['feature_dim']} "
         f"best_val_acc={ckpt['best_val_acc']:.4f}")
 
+    # which preprocessing produced this run's inputs — the split and the metric
+    # stay canonical either way, only the feature construction differs
+    if ckpt.get("features") == "firstplace":
+        max_len = ckpt["hyp"].get("max_seq_len", 384)
+        diff_mode = ckpt.get("diff_mode", "forward")
+        log(f"features: 1st-place pipeline (max_len={max_len}, diff_mode={diff_mode})")
+
+        def load_one(p):
+            return load_video_firstplace(p, landmarks, coords, max_len, diff_mode)
+    else:
+        def load_one(p):
+            return load_video(p, landmarks, coords)
+
     paths = [data_dir / p for p in val_split["path"]]
     labels_all = val_split["label"].to_numpy()
     preds_all = np.zeros(len(val_split), dtype=np.int64)
@@ -105,7 +139,7 @@ def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True) -
     t0 = time.time()
     with ThreadPoolExecutor(8) as ex, torch.no_grad():
         for b0 in range(0, len(paths), BATCH):
-            chunk = list(ex.map(lambda p: load_video(p, landmarks, coords), paths[b0:b0 + BATCH]))
+            chunk = list(ex.map(load_one, paths[b0:b0 + BATCH]))
             order = np.argsort([-t for _, t in chunk])
             lengths = torch.tensor([chunk[i][1] for i in order])
             padded = torch.zeros(len(chunk), int(lengths[0]), chunk[0][0].shape[1])

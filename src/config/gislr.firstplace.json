@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "dataset": "gislr",
+  "architecture": "conv1d_transformer",
+  "regime": "fp-onecycle-300",
+  "source": "gislr.1.models.firstplace.ipynb",
+  "coords": "xy",
+  "subsets": ["FP_118"],
+
+  "features": {
+    "max_len": 384,
+    "diff_mode": "forward",
+    "augment": true
+  },
+
+  "hyp": {
+    "batch_size": 128,
+    "lr": 0.001,
+    "hidden_size": 192,
+    "num_layers": 2,
+    "dropout": 0.2,
+    "kernel_size": 17,
+    "num_heads": 4,
+    "expand": 2,
+    "late_dropout": 0.8,
+    "late_dropout_start_epoch": 15,
+    "weight_decay": 0.1,
+    "epochs": 300,
+    "warmup_epochs": 0,
+    "lr_min_ratio": 0.002,
+    "grad_clip": 0.0,
+    "label_smoothing": 0.1,
+    "awp_delta": 0.2,
+    "awp_start_epoch": 15,
+    "lookahead_k": 5,
+    "lookahead_alpha": 0.5
+  },
+
+  "_notes": {
+    "lr": "Reference is 4e-3 at global batch 512 (8 TPU replicas x 64). Scaled linearly to batch 128 -> 1e-3. Re-scale together with batch_size or the schedule no longer matches.",
+    "num_layers": "Number of (3x Conv1DBlock + TransformerBlock) STAGES. 2 = reference base model at dim 192; the reference's '4x' variant is 4 stages at dim 384.",
+    "grad_clip": "0 = off, matching the reference (its clipvalue=1 is commented out). Set to 1.0 if AWP produces NaN losses.",
+    "awp_delta": "The reference author reports NaN loss roughly 1 run in 5 at 0.2; 0.1 is the documented fallback. 0 disables AWP entirely and halves epoch time.",
+    "weight_decay": "Decoupled. torch applies lr*wd*p and tfa applies (lr*0.1)*p, so 0.1 here reproduces the reference exactly.",
+    "diff_mode": "'forward' = reference (dx[t]=x[t+1]-x[t], reads 2 frames ahead). 'backward' = causal/streaming-safe. Changing it invalidates comparability with the reference number."
+  }
+}

@@ -770,25 +770,90 @@ normalization scheme cross-check (§7.7), and the landmark subset it uses
 did it and recreate it, they hit 89%" bumps it in priority; consolidating
 so it isn't chased as three separate untracked efforts:
 
-- [ ] **The 1st-place notebook itself is no longer in the working tree** —
+- [x] **The 1st-place notebook itself is no longer in the working tree** —
   `src/gislr.0.competition.entry.1st.ipynb` (referenced in §0.2) was removed
-  in commit `f7be9a1`; recover it with
-  `git show fd1c7aa:src/gislr.0.competition.entry.1st.ipynb > <path>` (last
-  commit that had it) before re-reading it, rather than re-deriving the
-  solution from memory of the Kaggle discussion (406978).
-- [ ] Read/re-read it in full for: exact normalization (single reference
-  point — feeds §7.2/§7.7), motion-feature construction (lag differences —
-  feeds §3.1/§7.3), the 1D-CNN+Transformer architecture, and training regime
-  (augmentation, LR schedule) — note which parts are already validated causal/
-  streaming-safe vs which assume full-sequence access and would need adapting.
-  Their reported ~89% is on the full (non-streaming) task; a streaming
-  unidirectional port is not guaranteed to reach the same number, and that
-  gap is itself useful information about the causality cost.
-- [ ] Port the architecture as a new `gislr.1.models.training.ipynb` section
-  (same pattern as GRU/LSTM/BiLSTM/CNN1D — shared config, canonical split),
-  not a standalone notebook.
+  in commit `f7be9a1`. **Recovered 2026-08-23** with
+  `git show fd1c7aa:src/gislr.0.competition.entry.1st.ipynb`.
+- [x] **Read in full 2026-08-23** (all 28 cells), not re-derived from memory.
+  What it actually is, and the correction it forces to the plan below: the
+  architecture is **one of five changes**, and not the biggest one.
+  - **Landmarks**: `POINT_LANDMARKS` = LIP 40 + LHAND 21 + RHAND 21 + NOSE 4 +
+    REYE 16 + LEYE 16 = **118 — already registered as `FP_118`**. Its `POSE`
+    list is defined but *commented out* of the gather.
+  - **Normalization**: translation by the clip-mean position of **raw holistic
+    landmark 17** (a lip point) — **not** the shoulder-centre §7.2 assumes —
+    then divide by the per-channel std over all frames and landmarks. **Both
+    statistics are whole-sequence, i.e. NOT causal.**
+  - **Features**: xy (z dropped *after* normalizing) + lag-1 + lag-2
+    differences = **6 channels/landmark = 708 input dims**. The differences are
+    **forward** (`dx[t] = x[t+1] - x[t]`) — a 2-frame lookahead, trivially
+    flipped to causal.
+  - **Augmentation** (6, on raw coordinates): temporal resample 0.5-1.5x,
+    left/right mirror with full landmark-pair swap, random affine
+    (scale/shear/rotate±30°/shift), temporal crop to 384, temporal mask and
+    spatial mask — both of which write **NaN**, so NaN must survive to
+    training time.
+  - **Architecture**: 2 stages of (3x Conv1DBlock + TransformerBlock), dim 192.
+    Conv1DBlock = expand x2 -> **causal** depthwise conv k=17 -> BatchNorm ->
+    ECA channel attention -> project, residual dropped per-sample
+    (stochastic depth). Readout = **global average pool** over the sequence.
+  - **Regime**: RAdam + Lookahead(5), cosine one-cycle 300-400 epochs **no
+    early stopping**, decoupled wd 0.1, label smoothing 0.1, LateDropout 0.8
+    from epoch 15, and **AWP** (adversarial weight perturbation, λ=0.2) from
+    epoch 15.
+  - **Streaming verdict**: OFFLINE-ONLY. The convolutions are causal, but the
+    global-average readout and the unmasked self-attention are not, and neither
+    is the normalization. Registered `streaming: false`.
+  - **The ~89% is a 4-seed ensemble trained on ALL 94,477 videos** and scored on
+    the Kaggle LB — not a single model on a held-out split. A single run on our
+    canonical 90/10 split should be expected around 0.84-0.88.
+- [x] **Ported 2026-08-23** — code written, CPU-smoke-validated, **not yet run**:
+  - `modules/model/features.py` — NaN-preserving cache, the normalization, the
+    lag features, all 6 augmentations, mirror-permutation builder (asserts the
+    subset is closed under left/right swap; FP_118, ME_126, ME_132 all are),
+    dataset + collate padding to the **batch max** rather than a fixed 384.
+  - `modules/model/architectures.py` — `Conv1DTransformer` + `ECA`,
+    `CausalDWConv1D`, `Conv1DBlock`, `TransformerBlock`, `LateDropout`,
+    `MaskedBatchNorm1d`; registered in `ARCHS` as `conv1d_transformer`
+    (`streaming=False`). `build_model` now forwards arch-specific HYP keys that
+    a model class declares (existing four architectures verified unchanged).
+  - `modules/model/optim.py` — Lookahead, AWP, cosine one-cycle.
+  - `modules/model/train_fp.py` + `src/config/gislr.firstplace.json` — the
+    driver and its config; same canonical split, registry and meta.json schema.
+  - `modules/scripts/eval_gru.py` — dispatches on the checkpoint's `features`
+    key so these runs are scored through the 1st-place preprocessing.
+  - **`src/gislr.1.models.firstplace.ipynb`** — the driver notebook.
+- [ ] **Run it (user).** Check the §4b one-epoch timing cell *before* §5:
+  reference cost was 6-7 h/fold on a TPU v3-8, and AWP doubles the per-step
+  cost. Then canonical-eval and compare against the 0.7565 GRU on the same split.
+- [x] ~~Port the architecture as a new `gislr.1.models.training.ipynb` section,
+  not a standalone notebook~~ — **superseded 2026-08-23.** That instruction
+  assumed only the architecture differs. It does not: the features, the
+  sequence handling (no uniform subsample to 128), the NaN policy and the
+  augmentation are all incompatible with the shared notebook's data path, and
+  the shared notebook exists specifically to enforce *all-else-identical*
+  across architectures. Injecting this run would destroy that property. It
+  therefore has its own notebook + config, but keeps the canonical split, the
+  registry and the meta.json schema, so the leaderboard still compares like
+  with like.
 - [ ] Feed findings into §7.7's cross-check once §7.2 normalization is
-  implemented — don't re-normalize twice.
+  implemented — don't re-normalize twice. **Note §7.2 needs correcting**: the
+  reference point is a lip landmark (17), not shoulder-centre, and the scale
+  reference is the clip's own std, not inter-shoulder distance.
+- [ ] **Highest-value follow-up: ablate the feature pipeline on the GRU.**
+  Normalization alone, then normalization + lag features, all else identical
+  (§7.2/§7.3). The features are architecture-independent; the architecture is
+  not deployable. If most of the gap comes from features, the *streaming*
+  models get most of it — that is the result that matters for this project.
+- [ ] Causal variant of `Conv1DTransformer` (masked attention + last-frame
+  readout + `diff_mode: "backward"` + a running-statistics normalizer) — turns
+  an offline reference into a deployment candidate and prices the causality gap
+  for a modern architecture.
+- [ ] **TFLite export does not cover this architecture.**
+  `modules/model/keras_export.py` rebuilds GRU/LSTM/BiLSTM/CausalConv1D in
+  native Keras; exporting the port needs Keras equivalents of Conv1DBlock /
+  ECA / TransformerBlock. Not needed to measure accuracy, required before any
+  Kaggle submission of this model (§6.3).
 
 ---
 
@@ -1208,4 +1273,10 @@ already identified as semantic, not geometric).
 
 ---
 
-*Last updated: July 22, 2026 (POPSIGN test-split extraction finished · all 4 train dataset parts downloaded, train manifest regeneration still pending · motion-energy and subset-comparison reports backfilled · filed 5 new remarks: elevated §7.1 semantic-confusion diagnostic, corrected stale §4 architecture-run status + flagged BiLSTM-depth conflict (§4.1), consolidated 1st-place-solution recreation (§4.2), filed landmark-reduction write-up pending draft-paper link (§3.0.1), filed new LLM correction-layer idea pending scope decision (§8))*
+*Last updated: August 23, 2026 (1st-place solution recreated in code — reference
+notebook recovered from git history and read in full, ported as
+`src/gislr.1.models.firstplace.ipynb` + `modules/model/{features,optim,train_fp}.py`
++ `Conv1DTransformer` in `architectures.py`; awaiting the user's run. Correction
+filed to §7.2: the reference point is lip landmark 17, not shoulder-centre.)*
+
+*Previously: July 22, 2026 (POPSIGN test-split extraction finished · all 4 train dataset parts downloaded, train manifest regeneration still pending · motion-energy and subset-comparison reports backfilled · filed 5 new remarks: elevated §7.1 semantic-confusion diagnostic, corrected stale §4 architecture-run status + flagged BiLSTM-depth conflict (§4.1), consolidated 1st-place-solution recreation (§4.2), filed landmark-reduction write-up pending draft-paper link (§3.0.1), filed new LLM correction-layer idea pending scope decision (§8))*
