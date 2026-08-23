@@ -51,6 +51,12 @@ spent training a dead model. Two guards now catch that:
 
 Both are recorded: ``meta.json`` gets ``training.early_stopped`` and
 ``training.stop_reason`` ("completed" / "plateau" / "collapse" / "nan").
+
+``stop_after_epoch`` is the third, and it exists for ablations: it ends the run
+after N epochs **without changing the cosine schedule**, which is still laid out
+over the full ``epochs``. Setting ``epochs`` to 20 instead would compress the
+one-cycle so that epoch 15 sits at 15% of the peak LR — a different experiment
+from the one you meant to run. 0 disables it.
 """
 
 import json
@@ -81,7 +87,7 @@ REQUIRED_HYP_KEYS = (
     "weight_decay", "epochs", "warmup_epochs", "lr_min_ratio", "grad_clip",
     "label_smoothing", "awp_delta", "awp_start_epoch", "lookahead_k",
     "lookahead_alpha", "num_workers", "es_patience", "es_min_delta",
-    "collapse_ratio", "collapse_patience",
+    "collapse_ratio", "collapse_patience", "stop_after_epoch",
 )
 
 
@@ -226,7 +232,10 @@ def train_firstplace(config: dict | None = None, subsets: list[str] | None = Non
     print(f"  stops: plateau after {hyp['es_patience']} epochs without a "
           f"+{hyp['es_min_delta']} val-acc gain · collapse after "
           f"{hyp['collapse_patience']} epochs below "
-          f"{hyp['collapse_ratio']:.0%} of best")
+          f"{hyp['collapse_ratio']:.0%} of best"
+          + (f" · hard stop at epoch {hyp['stop_after_epoch']} "
+             f"(schedule still over {hyp['epochs']})"
+             if hyp.get("stop_after_epoch") else ""))
 
     return {name: train_firstplace_run(cfg, name, hyp, data_dir=data_dir)
             for name in names}
@@ -346,8 +355,9 @@ def train_firstplace_run(cfg: dict, subset_name: str, hyp: dict,
 
     meta_kw = dict(run_dir=run_dir, cfg=cfg, subset=subset, feature_dim=feature_dim,
                    n_params=n_params, n_classes=len(sign2idx), hyp=hyp,
-                   notes=f"{subset_name} · 1st-place port (TODO §4.2) · "
-                         f"regime {cfg['regime']}.")
+                   notes=(f"{subset_name} · 1st-place port (TODO §4.2) · "
+                          f"regime {cfg['regime']}."
+                          + (f" {cfg['notes_suffix']}" if cfg.get("notes_suffix") else "")))
 
     bar = tqdm(total=hyp["epochs"], initial=start_epoch, dynamic_ncols=True,
                desc=f"{cfg['dataset']}/{arch}/{tag} · run {run_dir.name}")
@@ -432,6 +442,8 @@ def train_firstplace_run(cfg: dict, subset_name: str, hyp: dict,
             stop_reason = "collapse"
         elif epochs_since_gain >= hyp["es_patience"]:
             stop_reason = "plateau"
+        elif hyp.get("stop_after_epoch") and epoch + 1 >= hyp["stop_after_epoch"]:
+            stop_reason = "stop_after_epoch"
         early_stop = stop_reason is not None
         finished = early_stop or (epoch + 1 >= hyp["epochs"])
         wall_now = wall_min + (time.time() - t0) / 60
@@ -489,6 +501,8 @@ def train_firstplace_run(cfg: dict, subset_name: str, hyp: dict,
                              f"epochs — the run diverged, see history.json"),
                 "plateau": (f"no val-acc gain > {hyp['es_min_delta']} for "
                             f"{hyp['es_patience']} epochs"),
+                "stop_after_epoch": (f"configured hard stop "
+                                     f"(stop_after_epoch={hyp['stop_after_epoch']})"),
             }
             bar.write(f"{tag}: STOPPED at epoch {epoch + 1} ({stop_reason}) — "
                       f"{reasons[stop_reason]}")

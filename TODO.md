@@ -859,9 +859,26 @@ so it isn't chased as three separate untracked efforts:
     best epoch lands at or before it, and a **new §7b** prints per-class
     best/worst, the confused-pair table and the confusion matrix from the cached
     predictions.
-  - **On the re-run**: watch epoch 15. If val accuracy survives the switch the
-    recipe is finally being measured; if it collapses again the guard ends the
-    run in 3 epochs and the next lever is `awp_delta: 0.1`, then `lr`, then bf16.
+  - **The re-run collapsed too.** `1787492560`, same config plus all three
+    changes: val acc 0.7415 at epoch 15, 0.039 at 16, stopped by the guard at
+    epoch 18 after **9.1 min** (against 300 epochs / 2.0 h for the same failure).
+    The guard works; the fixes only softened the blow-up (epoch-16 loss 5.08 vs
+    5.79). From that epoch average the model survives ~20 steps into epoch 16
+    before dying — a systematic runaway, so clipping was treating the wrong
+    shape of problem.
+  - [ ] **Run notebook §5b (user, ~30 min) — the next action on this item.**
+    Epoch 15 switches on AWP (λ=0.2) *and* LateDropout (p=0.8) and neither has
+    ever been run alone. Three arms, same seed/data/LR schedule, each capped at
+    epoch 25: `awp_delta: 0` · `late_dropout: 0` · control. Whichever survives
+    past epoch 16 is the innocent one. Readings and the fix implied by each are
+    tabulated in §5b itself.
+  - New config key **`stop_after_epoch`** (0 = off) ends a run after N epochs
+    *without* changing the cosine schedule — lowering `epochs` to 25 instead
+    would put epoch 15 at ~15% of peak LR and answer a different question.
+  - **Until §5b returns, no number from this architecture means anything**, and
+    a second full 2 h §5 run is a coin flip. The GRU feature ablation (below) is
+    independent of all of it and is the item that can still move the deployable
+    models.
 - [ ] **Registry housekeeping**: `src/data/models/1787473998/` contains only
   `assets/landmarks.npy` (an aborted start, no `meta.json`) and makes
   `build_model_index.py` warn on every rebuild. Delete it or give it a meta.
@@ -1329,7 +1346,13 @@ already identified as semantic, not geometric).
 
 ---
 
-*Last updated: August 23, 2026, later (§4.2: the 1st-place port's first run
+*Last updated: August 23, 2026, later still (§4.2: the fixed re-run
+`1787492560` **collapsed at epoch 15 as well** — the collapse guard caught it in
+9.1 min instead of 2 h, so the guards work but the cause is still open. Neither
+of the two switches that fire at epoch 15 has been run alone; notebook **§5b**
+is a ~30 min three-arm ablation that settles it, and it is the next action.)*
+
+*Previously: August 23, 2026 (§4.2: the 1st-place port's first run
 `1787483814` **diverged at epoch 15** — the step AWP + LateDropout switch on —
 and burned 285 of 300 epochs on a dead model; canonical 0.7459 from the
 surviving checkpoint. Causes found (`grad_clip: 0.0`; AWP's adversarial forward
