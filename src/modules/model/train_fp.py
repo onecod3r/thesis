@@ -54,7 +54,7 @@ REQUIRED_HYP_KEYS = (
     "num_heads", "expand", "late_dropout", "late_dropout_start_epoch",
     "weight_decay", "epochs", "warmup_epochs", "lr_min_ratio", "grad_clip",
     "label_smoothing", "awp_delta", "awp_start_epoch", "lookahead_k",
-    "lookahead_alpha",
+    "lookahead_alpha", "num_workers",
 )
 
 
@@ -125,7 +125,6 @@ def _build_meta(*, run_dir, cfg, subset, feature_dim, n_params, n_classes, hyp,
             **hyp,
             "seed": D.SEED,
             "max_seq_len": cfg["features"]["max_len"],
-            "num_workers": 0,
             "loss": f"CE + label smoothing {hyp['label_smoothing']}",
             "precision": "AMP",
             # what makes this run's INPUT different from every other registry
@@ -226,19 +225,36 @@ def train_firstplace_run(cfg: dict, subset_name: str, hyp: dict,
 
     torch.manual_seed(D.SEED)
     np.random.seed(D.SEED)
+    n_workers = int(hyp["num_workers"])
     train_ds = F.FirstPlaceDataset(
         train_split, tr_data, tr_off, subset, augment_data=fcfg["augment"],
-        max_len=fcfg["max_len"], diff_mode=fcfg["diff_mode"], seed=D.SEED)
+        max_len=fcfg["max_len"], diff_mode=fcfg["diff_mode"], seed=D.SEED,
+        mmap=n_workers > 0)
     val_ds = F.FirstPlaceDataset(
         val_split, va_data, va_off, subset, augment_data=False,
-        max_len=fcfg["max_len"], diff_mode=fcfg["diff_mode"], seed=D.SEED)
-    g = torch.Generator()
-    g.manual_seed(D.SEED)
-    train_loader = DataLoader(train_ds, batch_size=hyp["batch_size"], shuffle=True,
-                              collate_fn=F.collate_fn, num_workers=0, generator=g,
-                              drop_last=True)
-    val_loader = DataLoader(val_ds, batch_size=hyp["batch_size"], shuffle=False,
-                            collate_fn=F.collate_fn, num_workers=0)
+        max_len=fcfg["max_len"], diff_mode=fcfg["diff_mode"], seed=D.SEED,
+        mmap=n_workers > 0)
+    # length-bucketed batching: GISLR lengths are heavily skewed (median 22,
+    # p99 219), so randomly composed batches pad to the tail and waste ~6x the
+    # compute. See features.LengthBucketedBatchSampler.
+    train_sampler = F.LengthBucketedBatchSampler(
+        F.cached_lengths(tr_off), hyp["batch_size"], shuffle=True,
+        drop_last=True, seed=D.SEED)
+    val_sampler = F.LengthBucketedBatchSampler(
+        F.cached_lengths(va_off), hyp["batch_size"], shuffle=False,
+        drop_last=False, seed=D.SEED)
+    # num_workers > 0 overlaps the numpy augmentation with GPU compute. Safe
+    # here because the dataset class lives in an importable module rather than
+    # __main__ (the same reason the POPSIGN pool runs in a kernel, TODO 2.3) —
+    # but it is opt-in, since Windows spawn is the fragile path in this repo.
+    train_loader = DataLoader(
+        train_ds, batch_sampler=train_sampler, collate_fn=F.collate_fn,
+        num_workers=n_workers, persistent_workers=n_workers > 0,
+        prefetch_factor=4 if n_workers > 0 else None)
+    val_loader = DataLoader(
+        val_ds, batch_sampler=val_sampler, collate_fn=F.collate_fn,
+        num_workers=n_workers, persistent_workers=n_workers > 0,
+        prefetch_factor=4 if n_workers > 0 else None)
 
     steps_per_epoch = len(train_loader)
     total_steps = steps_per_epoch * hyp["epochs"]
@@ -293,7 +309,8 @@ def train_firstplace_run(cfg: dict, subset_name: str, hyp: dict,
 
     t0 = time.time()
     for epoch in range(start_epoch, hyp["epochs"]):
-        train_ds.set_epoch(epoch)  # fresh, reproducible augmentation each epoch
+        train_ds.set_epoch(epoch)       # fresh, reproducible augmentation
+        train_sampler.set_epoch(epoch)  # ...and a fresh bucketing/shuffle
         model.train()
         total_loss, correct, total, n_awp = 0.0, 0, 0, 0
         n_batches = len(train_loader)
@@ -359,7 +376,7 @@ def train_firstplace_run(cfg: dict, subset_name: str, hyp: dict,
             "history": history,
             "sign2idx": sign2idx,
             "hyp": {**build_hyp, "seed": D.SEED,
-                    "max_seq_len": fcfg["max_len"], "num_workers": 0},
+                    "max_seq_len": fcfg["max_len"]},
             "feature_dim": feature_dim,
             "landmarks": subset.array.tolist(),
             "subset_name": subset_name,

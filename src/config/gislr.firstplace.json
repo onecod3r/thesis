@@ -5,17 +5,17 @@
   "regime": "fp-onecycle-300",
   "source": "gislr.1.models.firstplace.ipynb",
   "coords": "xy",
-  "subsets": ["FP_118"],
-
+  "subsets": [
+    "FP_118"
+  ],
   "features": {
     "max_len": 384,
     "diff_mode": "forward",
     "augment": true
   },
-
   "hyp": {
-    "batch_size": 128,
-    "lr": 0.001,
+    "batch_size": 256,
+    "lr": 0.002,
     "hidden_size": 192,
     "num_layers": 2,
     "dropout": 0.2,
@@ -33,15 +33,17 @@
     "awp_delta": 0.2,
     "awp_start_epoch": 15,
     "lookahead_k": 5,
-    "lookahead_alpha": 0.5
+    "lookahead_alpha": 0.5,
+    "num_workers": 0
   },
-
   "_notes": {
-    "lr": "Reference is 4e-3 at global batch 512 (8 TPU replicas x 64). Scaled linearly to batch 128 -> 1e-3. Re-scale together with batch_size or the schedule no longer matches.",
+    "lr": "Reference is 4e-3 at global batch 512 (8 TPU replicas x 64). Scaled linearly to batch 256 -> 2e-3. Keep the lr/batch ratio if you change either; batch 512 + lr 4e-3 IS the reference config exactly and fits in 16GB with bucketing, but peaks higher on the long-clip buckets.",
     "num_layers": "Number of (3x Conv1DBlock + TransformerBlock) STAGES. 2 = reference base model at dim 192; the reference's '4x' variant is 4 stages at dim 384.",
     "grad_clip": "0 = off, matching the reference (its clipvalue=1 is commented out). Set to 1.0 if AWP produces NaN losses.",
     "awp_delta": "The reference author reports NaN loss roughly 1 run in 5 at 0.2; 0.1 is the documented fallback. 0 disables AWP entirely and halves epoch time.",
     "weight_decay": "Decoupled. torch applies lr*wd*p and tfa applies (lr*0.1)*p, so 0.1 here reproduces the reference exactly.",
-    "diff_mode": "'forward' = reference (dx[t]=x[t+1]-x[t], reads 2 frames ahead). 'backward' = causal/streaming-safe. Changing it invalidates comparability with the reference number."
+    "diff_mode": "'forward' = reference (dx[t]=x[t+1]-x[t], reads 2 frames ahead). 'backward' = causal/streaming-safe. Changing it invalidates comparability with the reference number.",
+    "batch_size": "Raised 128 -> 256 after the first timing run: peak memory was 1.9GB of 16GB, and length-bucketed batching (features.LengthBucketedBatchSampler) makes a larger batch cheaper per sample, not dearer \u2014 measured padding efficiency is 5.9x at 128 and 6.9x at 256.",
+    "num_workers": "0 = augmentation runs in-process, serialized with GPU compute (measured ~165 ms/batch of CPU work at batch 256, roughly 40% of the step once length bucketing lands). Raising it to 4 overlaps that with the GPU and should cut the step again; it is opt-in because Windows spawn is the fragile path in this repo. The dataset class lives in an importable module, so the classic Jupyter+spawn failure does not apply. >0 also switches the cache to mmap so workers share one copy instead of ~3 GB each."
   }
 }

@@ -42,7 +42,7 @@ from pathlib import Path
 import numpy as np
 import pyarrow.parquet as pq
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Sampler
 
 from modules.model.data import FEATURES_DIR, ROWS_PER_FRAME, subset_tag
 
@@ -279,14 +279,27 @@ def preprocess(x: np.ndarray, ref_idx: int, max_len: int = MAX_LEN,
     """
     assert diff_mode in ("forward", "backward"), diff_mode
 
-    with np.errstate(invalid="ignore", divide="ignore"):
-        # translation reference: where this signer's reference landmark sits,
-        # averaged over the clip (NaN-aware; 0.5 = frame centre if never seen)
-        mean = np.nanmean(x[:, ref_idx:ref_idx + 1, :], axis=(0, 1), keepdims=True)
-        mean = np.where(np.isnan(mean), 0.5, mean).astype(np.float32)
-        # scale reference: per-channel spread about that centre over the whole
-        # clip — this is what removes signer size / distance to camera
-        std = np.sqrt(np.nanmean((x - mean) ** 2, axis=(0, 1), keepdims=True))
+    # NaN-aware mean/std, written out rather than via np.nanmean: an all-NaN
+    # reference landmark is a NORMAL case here (the signer's lip point is never
+    # detected in that clip) and np.nanmean answers it with a RuntimeWarning
+    # per call — 85k of them per epoch. Doing the masked sums directly is both
+    # quiet and slightly cheaper.
+    ref = x[:, ref_idx:ref_idx + 1, :]
+    seen = ~np.isnan(ref)
+    n_seen = seen.sum(axis=(0, 1), keepdims=True)
+    # translation reference: where this signer's reference landmark sits,
+    # averaged over the clip (0.5 = frame centre when it is never detected)
+    mean = np.where(n_seen > 0,
+                    np.where(seen, ref, 0.0).sum(axis=(0, 1), keepdims=True)
+                    / np.maximum(n_seen, 1),
+                    0.5).astype(np.float32)
+    # scale reference: per-channel spread about that centre over the whole clip
+    # — this is what removes signer size / distance to camera
+    sq = (x - mean) ** 2
+    ok = ~np.isnan(sq)
+    n_ok = ok.sum(axis=(0, 1), keepdims=True)
+    std = np.sqrt(np.where(ok, sq, 0.0).sum(axis=(0, 1), keepdims=True)
+                  / np.maximum(n_ok, 1))
     std = np.where(~np.isfinite(std) | (std < 1e-6), 1.0, std).astype(np.float32)
     x = ((x - mean) / std).astype(np.float32)
 
@@ -323,9 +336,12 @@ class FirstPlaceDataset(Dataset):
 
     def __init__(self, df, data_path, off_path, subset, *, augment_data: bool,
                  max_len: int = MAX_LEN, diff_mode: str = "forward",
-                 seed: int = 42):
+                 seed: int = 42, mmap: bool = False):
         self.labels = df["label"].to_numpy()
-        self.data = np.load(data_path)
+        # mmap only for the multi-worker path: workers would otherwise each get
+        # their own ~3 GB copy of the cache, where mmap shares one page cache.
+        # In-process (num_workers=0) a plain load is faster after the first pass.
+        self.data = np.load(data_path, mmap_mode="r" if mmap else None)
         self.offsets = np.load(off_path)
         self.n_landmarks = len(subset)
         self.perm = mirror_permutation(subset.array)
@@ -362,14 +378,88 @@ class FirstPlaceDataset(Dataset):
         return tensor, feats.shape[0], int(self.labels[i])
 
 
+class LengthBucketedBatchSampler(Sampler[list[int]]):
+    """Batch clips of similar length together.
+
+    **Why this is not optional.** GISLR clip lengths are extremely skewed —
+    median 22 frames, mean 38, p99 219, max 537. Padding to the batch max
+    therefore does almost nothing at batch 128: the max of 128 draws lands deep
+    in the tail, so the observed median padded length was **277**, i.e. ~6.4x
+    more compute than the frames actually carry. Measured cost of a training
+    epoch is dominated by that padding, and attention makes it worse than
+    linear (O(T^2) in the padded length).
+
+    Batching by length instead brings the padded total to within ~1.2x of the
+    frames themselves — a measured **5.9x** at batch 128 and **6.9x** at 256.
+
+    Randomness is preserved in two ways, because sorting the whole epoch by
+    length would be a serious training bug (the LR schedule and the BatchNorm
+    statistics would both see a systematic length ramp):
+
+    1. indices are shuffled, then sorted only *within* a pool of
+       ``pool_batches`` batches — so a clip's batch-mates vary every epoch;
+    2. the resulting batches are shuffled again, so length is uncorrelated with
+       position in the epoch.
+
+    Lengths are the cached (pre-augmentation) ones. ``resample`` then scales a
+    clip by 0.5-1.5x, which blurs the buckets but does not undo them — the
+    ordering is approximately preserved, and the 5.9x above is measured against
+    the cached lengths.
+    """
+
+    def __init__(self, lengths, batch_size: int, pool_batches: int = 50,
+                 shuffle: bool = True, drop_last: bool = True, seed: int = 42):
+        self.lengths = np.asarray(lengths)
+        self.batch_size = batch_size
+        self.pool = batch_size * pool_batches
+        self.shuffle = shuffle
+        self.drop_last = drop_last
+        self.seed = seed
+        self.epoch = 0
+        self._n = len(self._build(0))
+
+    def set_epoch(self, epoch: int) -> None:
+        """Re-shuffle for the coming epoch (call alongside ``dataset.set_epoch``)."""
+        self.epoch = int(epoch)
+
+    def _build(self, epoch: int) -> list[np.ndarray]:
+        n = len(self.lengths)
+        rng = np.random.default_rng((self.seed, epoch))
+        order = rng.permutation(n) if self.shuffle else np.arange(n)
+        batches: list[np.ndarray] = []
+        for start in range(0, n, self.pool):
+            chunk = order[start:start + self.pool]
+            chunk = chunk[np.argsort(self.lengths[chunk], kind="stable")]
+            for b in range(0, len(chunk), self.batch_size):
+                batch = chunk[b:b + self.batch_size]
+                if len(batch) == self.batch_size or not self.drop_last:
+                    batches.append(batch)
+        if self.shuffle:
+            rng.shuffle(batches)  # length must not correlate with epoch position
+        return batches
+
+    def __iter__(self):
+        for batch in self._build(self.epoch):
+            yield batch.tolist()
+
+    def __len__(self):
+        return self._n
+
+
+def cached_lengths(off_path) -> np.ndarray:
+    """Per-clip frame counts straight from a cache's offset array — what
+    :class:`LengthBucketedBatchSampler` buckets on, without touching the data."""
+    return np.diff(np.load(off_path))
+
+
 def collate_fn(batch):
     """Pad to the *batch* max, not to MAX_LEN.
 
-    The reference pads every batch to a fixed 384 frames; GISLR clips average
-    ~39, so that is roughly 10x wasted compute. Padding to the batch max is
-    numerically identical here because every op in ``Conv1DTransformer`` is
-    mask-aware, and it is the single biggest reason this port trains in hours
-    rather than days.
+    Only actually cheap when paired with :class:`LengthBucketedBatchSampler` —
+    with randomly composed batches the max sits in the tail of a very skewed
+    length distribution and this saves almost nothing (see that class).
+    Numerically identical to fixed-length padding either way, because every op
+    in ``Conv1DTransformer`` is mask-aware.
 
     Returns ``(padded, lengths, labels)`` — the same contract as
     ``data.collate_fn``, so the model, the training driver and
