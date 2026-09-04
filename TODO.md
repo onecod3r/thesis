@@ -1936,9 +1936,12 @@ long-running frame loop.
   graph) and manifest-driven resumability, matching the Python extractor.
 - [ ] **Never executed.** `deno` and `ffmpeg` are both absent from this machine.
   Install both, then `deno task check` and a single-video run.
-- [ ] **`npz.ts` has no round-trip test against numpy.** The format is
-  well-specified but "numpy actually reads this" is worth one test on the first
-  machine that has both.
+- [x] **`npz.ts` format logic validated** — `tools/verify_npz_format.py`
+  transcribes `encodeNpy`/`encodeNpz`/`toFloat16` into Python and numpy reads the
+  result: header padding, ZIP offsets, float16 with NaN preserved and exact
+  binary fractions intact. Passes.
+- [ ] Still unproven: that the **TypeScript itself** runs correctly. The same
+  tool takes `--file <clip>.npz` for that, once one exists.
 - [ ] **BLOCKER before it extracts anything trainable: parity.**
   `python -m sb.extract.parity --python-dir … --ts-dir … ` compares the two
   extractors on the same clips — structure (frame counts, detected/undetected

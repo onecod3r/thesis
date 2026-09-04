@@ -93,6 +93,10 @@ retried with `--retry-failed`.
 - **Model asset is pinned to `latest`** in the Google bucket URL, which is the
   only published path. If reproducibility of the extraction itself matters, mirror
   the `.task` file and pin a copy.
-- **No test for `npz.ts` against numpy yet.** The format is well-specified, but
-  "numpy actually reads this" is worth one round-trip test on the first machine
-  that has both.
+- **`npz.ts` is validated at the algorithm level, not the execution level.**
+  `tools/verify_npz_format.py` transcribes `encodeNpy`/`encodeNpz`/`toFloat16`
+  into Python and confirms numpy reads the bytes — NPY header padding, ZIP
+  central-directory offsets, float16 with NaN preserved and exact binary
+  fractions intact. That catches format-logic bugs without Deno, and it passes.
+  It cannot prove the TypeScript *runs* correctly; for that, extract one clip and
+  run `python tools/verify_npz_format.py --file <clip>.npz`.
