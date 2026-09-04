@@ -1449,17 +1449,40 @@ Windows machine. The 2026-07-18 reset (§0.4) already destroyed 8 runs' weights
 including the ME-126 result still cited in the README, and those evals can never
 be completed.
 
-- [ ] `ops/sync_models.ps1` (or `.py`) — `rclone` / `aws s3 sync` of
-  `data/models/*/best.pt` to R2. Current total: **675 MB across 42 runs**
-  (~16 MB/run), so this is inside R2's free tier and takes minutes.
-- [ ] Run it at the end of every training session; document the restore path in
+- [x] `ops/sync_models.ps1` (or `.py`) — `rclone` / `aws s3 sync` of
+  `data/models/*/best.pt` to R2. Current total: **707 MB across 42 runs**
+  (~17 MB/run), so this is inside R2's free tier and takes minutes.
+  **Built as `src/modules/scripts/sync_models.py`, not `ops/`** — a project
+  Python CLI belongs in `modules/scripts/` under the existing convention, and
+  creating `ops/` would pre-empt the layout change §9.8 defers. Uses boto3
+  (R2 speaks S3) from a new optional `ops` dependency group, so the default
+  environment stays lean: `uv sync --group ops`.
+- [x] Run it at the end of every training session; document the restore path in
   the README registry section.
-- [ ] **Scope it to weights only.** Not the 29 GB feature caches (derivable —
+- [x] **Scope it to weights only.** Not the 29 GB feature caches (derivable —
   §9.2 makes that checkable) and emphatically not POPSIGN's ~870 GB of raw
   video (immutable upstream Kaggle releases; record the ref, never the bytes).
-- [ ] Skip DVC. Its one real advantage over this — `dvc.yaml` stage DAGs
+- [x] Skip DVC. Its one real advantage over this — `dvc.yaml` stage DAGs
   catching stale derived artifacts — is what §9.2 buys directly, and DVC fights
   the notebook-driven workflow for the rest.
+- [ ] **Not yet run: the actual upload.** This machine has no R2 credentials
+  (`.env` holds only `KAGGLE_MCP_TOKEN`) and no bucket exists yet, so `push
+  --apply` has never executed. Create the bucket, put the five `R2_*` keys in
+  `.env`, `uv sync --group ops`, then `push --apply` — 42 objects, 707 MB. Until
+  that runs, the weights are still single-copy.
+
+**Done 2026-09-04 (tooling).** `sync_models.py status | push | pull`, dry-run by
+default, never deletes remotely. `data/models/checkpoints.manifest.json`
+(committed) records size + sha256 + upload time per object, so "is this backed
+up, and is it still the file I trained?" is answerable with no credentials;
+`pull` verifies every download against that hash and refuses a mismatch rather
+than installing a checkpoint that is not the one that was trained. Saved after
+each object, so an interrupted push loses nothing. Verified end to end except
+the network calls: `status` (42 local, 0 in manifest), `push` dry run (42
+objects / 707 MB), and the missing-credentials path (names the exact missing
+keys before touching boto3). The `.env` reader moved from
+`extraction.py::_read_env_file` to `paths.py::env_value` now that two consumers
+need it.
 
 ### 9.4 Landmark tensor spec + validator
 

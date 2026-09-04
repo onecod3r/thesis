@@ -33,6 +33,22 @@ Every training run gets **one flat folder** at `src/data/models/<run_id>/`, wher
 
 All `meta.json` files are flattened into the queryable **[src/data/models/index.csv](src/data/models/index.csv)** by `src/modules/scripts/build_model_index.py` (runs from anywhere) — **regenerate it before trusting it: it lags the run folders** (38 rows vs 43 run folders on 2026-09-04, TODO §9.6), which also answers filter queries directly — e.g. `--dataset gislr --architecture gru --top 3` or `--subset ME_126`. The training driver writes `meta.json` **every epoch** with `eval_status: "pending"`; `src/modules/scripts/eval_gru.py` fills in the canonical eval numbers and flips it to `"canonical"`.
 
+### Checkpoints off this machine
+
+`best.pt`/`last.pt` are gitignored, so every trained weight exists on one Windows machine — and the 2026-07-18 reset below already destroyed 8 runs' checkpoints. `src/modules/scripts/sync_models.py` keeps a copy in Cloudflare R2 (**42 checkpoints, ~707 MB** — inside the free tier):
+
+```bash
+.venv/Scripts/python.exe src/modules/scripts/sync_models.py status          # local vs manifest
+.venv/Scripts/python.exe src/modules/scripts/sync_models.py push            # dry run
+.venv/Scripts/python.exe src/modules/scripts/sync_models.py push --apply    # upload
+.venv/Scripts/python.exe src/modules/scripts/sync_models.py pull 1784447175 # restore one run
+.venv/Scripts/python.exe src/modules/scripts/sync_models.py pull --all      # restore everything
+```
+
+Needs `uv sync --group ops` (boto3, an optional group) and the `R2_*` keys in `.env` — see [Environment setup](#environment-setup). **Weights only**: not the ~30 GB of feature caches (derivable, and their content address makes that checkable) and not POPSIGN's ~870 GB of raw video (an immutable upstream release — a run records the reference, never the bytes).
+
+[`src/data/models/checkpoints.manifest.json`](src/data/models/checkpoints.manifest.json) is committed and records each object's size, sha256 and upload time, so "is this run backed up, and is the copy still the file I trained?" is answerable with no credentials. `pull` verifies every download against that hash and refuses a mismatch rather than installing a checkpoint that is not the one that was trained.
+
 > **Registry reset (2026-07-18).** The registry was restarted empty when the flat epoch-seconds layout was adopted. The 8 pre-reset runs (GRU full-543 baseline 70.59%, ME-126 73.73%, the xy ablations, …) survive only in git history (`3668dae` and earlier, under the old `src/models/` tree) and in the daily reports — their weights are gone, so their canonical evals cannot be completed; the numbers remain as historical references.
 
 ### meta.json schema
@@ -193,6 +209,7 @@ sign2speech/
     │   │   ├── eval_gru.py           # canonical per-class eval of any run (all archs, xy/xyz); promotes meta.json to "canonical"
     │   │   ├── build_model_index.py  # flattens all meta.json files into data/models/index.csv + answers filter queries
 │   │   ├── migrate_feature_caches.py # one-shot: flat name-keyed caches → content-addressed dirs (rename, never rebuild)
+│   │   ├── sync_models.py        # off-machine copy of the run weights (R2): status / push / pull, manifest-verified
     │   │   ├── extract_popsign.py    # POPSIGN extraction: pilot benchmark + resumable bulk run (worker pool — cannot run in a notebook)
     │   │   └── tune_confidence.py    # POPSIGN confidence-threshold sweep (same reason)
     │   └── dataset/landmark/
@@ -239,6 +256,19 @@ Create a `.env` file at the project root (not committed) with:
 
 ```
 POPSIGN_LANDMARKS_DRIVE=D:/    # or wherever the extraction-output drive is mounted
+
+# Checkpoint remote (sync_models.py) — Cloudflare R2 speaks the S3 API
+R2_ACCOUNT_ID=...
+R2_BUCKET=sign2speech-models
+R2_ACCESS_KEY_ID=...
+R2_SECRET_ACCESS_KEY=...
+R2_PREFIX=models               # optional, defaults to "models"
+```
+
+`.env` is read by `modules/paths.py::env_value` (process environment first, then the file), so any of these can also come from the shell. Checkpoint sync additionally needs its optional dependency group:
+
+```bash
+uv sync --group ops            # boto3, for src/modules/scripts/sync_models.py
 ```
 
 The Jupyter kernel must use this project's `uv`-managed virtual environment (`.venv`) and run with `src/` as its working directory — `import modules...` depends on it.

@@ -35,6 +35,31 @@ MODELS_DIR = DATA_DIR / "models"
 MODEL_INDEX = MODELS_DIR / "index.csv"
 
 
+def read_env_file() -> dict[str, str]:
+    """Minimal KEY=VALUE parse of the repo-root ``.env`` (works from any CWD).
+
+    Lives here rather than in one consumer because more than one now needs it
+    (POPSIGN's output drive, the model-checkpoint remote). Values already in the
+    process environment win — see :func:`env_value`.
+    """
+    candidate = SRC_DIR.parent / ".env"
+    if not candidate.exists():
+        return {}
+    pairs = (
+        line.split("=", 1)
+        for line in candidate.read_text(encoding="utf-8").splitlines()
+        if "=" in line and not line.lstrip().startswith("#")
+    )
+    return {k.strip(): v.strip() for k, v in pairs}
+
+
+def env_value(key: str, default: str | None = None) -> str | None:
+    """Environment first, repo ``.env`` second, ``default`` last."""
+    import os
+
+    return os.environ.get(key) or read_env_file().get(key) or default
+
+
 def cleanup_temp() -> None:
     """Delete src/data/temp entirely — call at the end of any notebook/script
     that wrote scratch output there (the temp tree is never reused)."""

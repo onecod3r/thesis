@@ -28,6 +28,9 @@
 
 [dependency-groups]
     dev = ["ty>=0.0.59", "types-tqdm>=4.68.0.20260608"]
+    # Off-machine checkpoint sync (TODO 9.3). Optional so the default
+    # environment stays lean -- install with: uv sync --group ops
+    ops = ["boto3>=1.35.0"]
 
 
 [[tool.uv.index]]

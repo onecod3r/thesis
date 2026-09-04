@@ -22,6 +22,7 @@ uv sync                     # install deps (Python >= 3.12; torch cu130 via [too
   ```bash
   .venv/Scripts/python.exe src/modules/scripts/eval_gru.py <run_dir>        # canonical per-class eval (all archs)
   .venv/Scripts/python.exe src/modules/scripts/build_model_index.py [...]   # rebuild data/models/index.csv + query
+  .venv/Scripts/python.exe src/modules/scripts/sync_models.py status        # checkpoint backup: status / push / pull (R2)
   ```
 - Dataset resolution is **lazy**: importing `modules.paths` downloads nothing; call `modules.paths.gislr_dir()` for GISLR only, `resolve_datasets()` for everything (POPSIGN included — huge). Requires an authenticated Kaggle account that has accepted the `asl-signs` competition rules.
 - `.env` at repo root (gitignored) holds secrets — currently `KAGGLE_MCP_TOKEN` (Kaggle MCP auth, TODO §6.3). `POPSIGN_LANDMARKS_DRIVE` (meant to send extracted POPSIGN landmarks to a separate drive, never into the repo) is **not currently set**, so extraction falls back to `src/data/raw/popsign` — set it before a bulk POPSIGN run if that's not where you want ~hundreds of GB to land.

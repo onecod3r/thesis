@@ -94,21 +94,11 @@ DEFAULT_CONFIDENCE: dict[str, float] = {f: 0.5 for f in CONFIDENCE_FIELDS}
 # Output root resolution (.env: POPSIGN_LANDMARKS_DRIVE)
 # ============================================================
 
-def _read_env_file() -> dict[str, str]:
-    """Minimal KEY=VALUE parse of the repo-root .env (any CWD)."""
-    candidate = paths.SRC_DIR.parent / ".env"
-    if candidate.exists():
-        pairs = (line.split("=", 1) for line in candidate.read_text().splitlines()
-                 if "=" in line and not line.lstrip().startswith("#"))
-        return {k.strip(): v.strip() for k, v in pairs}
-    return {}
-
-
 def landmarks_root() -> Path:
     """`<POPSIGN_LANDMARKS_DRIVE>/data/raw/popsign`, or `src/data/raw/popsign`
     (gitignored) when the drive is unset."""
-    drive = os.environ.get("POPSIGN_LANDMARKS_DRIVE") or _read_env_file().get(
-        "POPSIGN_LANDMARKS_DRIVE")
+    # the .env reader lives in modules.paths now — two consumers, one parser
+    drive = paths.env_value("POPSIGN_LANDMARKS_DRIVE")
     if drive:
         return Path(drive) / "data" / "raw" / "popsign"
     return paths.RAW_DIR / "popsign"
