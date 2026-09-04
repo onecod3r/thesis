@@ -6,6 +6,7 @@ dist/
 wheels/
 *.egg-info
 .venv
+.venvs/
 .env
 
 # The data tree is NEVER committed — no exceptions, no negation rules.

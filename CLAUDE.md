@@ -17,14 +17,19 @@ uv sync                     # install deps (Python >= 3.12; torch cu130 via [too
 ```
 
 - **Never `uv pip install` ad-hoc** — `uv sync` removes anything not declared in `pyproject.toml` (torch was once lost this way). Declare new deps in `pyproject.toml` instead.
+- **Per-stage environments**: `./ops/envs.ps1 -Stage train|mlops|extract` builds `.venvs/<stage>` from one workspace member's dependency closure (`uv sync --package <member>` with `UV_PROJECT_ENVIRONMENT`). The default `.venv` holds everything and is what notebooks use; the split exists because torch and tensorflow are resolved together in one env and because it makes the "`sb-mlops` must not import `sb-recognize`" invariant executable — an mlops-only env verifiably has no torch, tensorflow, mediapipe or opencv.
+- **`packages/sb-extract-ts` is a Deno package**, excluded from the uv workspace (`[tool.uv.workspace].exclude`) because it has no `pyproject.toml` and `packages/*` would otherwise break every `uv sync`.
 - Run project Python via `.venv/Scripts/python.exe` (Windows). **CWD no longer matters**: the six packages are installed into the venv as editable workspace members, so `import sb...` resolves from anywhere, and `sb.core.paths` finds the repo root by walking up for the workspace marker (`ROOT_DIR`, `DATA_DIR`, `RAW_DIR`, `CACHE_DIR`, `TEMP_DIR`, `EXTERNAL_DIR`, `REGISTRY_DIR`, `MODELS_DIR`, `MODEL_INDEX`, `EXPERIMENTS_DIR`). `SIGNBRIDGE_ROOT` overrides the walk.
-- The project CLIs live in `packages/scripts/` and run from **any** CWD (they bootstrap `sys.path` themselves); the root `scripts/` folder is housekeeping-only (PowerShell etc., no project Python):
+- The project CLIs are **console scripts** installed into the venv by `uv sync`; they run from any CWD and need no interpreter prefix:
   ```bash
-  .venv/Scripts/python.exe .venv/Scripts/sb-evaluate.exe <run_dir>        # canonical per-class eval (all archs)
-  .venv/Scripts/python.exe .venv/Scripts/sb-index.exe [...]   # rebuild data/models/index.csv + query
-  .venv/Scripts/python.exe .venv/Scripts/sb-sync.exe status        # checkpoint backup: status / push / pull (R2)
-  .venv/Scripts/python.exe .venv/Scripts/sb-docs.exe                 # regenerate index.csv + schemas/ + README generated blocks
+  .venv/Scripts/sb-evaluate.exe <run_dir>   # canonical per-class eval (all archs); fetches the checkpoint if absent
+  .venv/Scripts/sb-index.exe [...]          # rebuild registry/index.csv + query it
+  .venv/Scripts/sb-sync.exe status          # checkpoint backup: status / push / pull / prune / rescheme
+  .venv/Scripts/sb-promote.exe list         # aliases: which run is champion
+  .venv/Scripts/sb-docs.exe                 # regenerate index.csv + schemas/ + README generated blocks
+  .venv/Scripts/sb-extract.exe --help       # POPSIGN extraction (Python path)
   ```
+  `ops/` holds housekeeping only (PowerShell etc., no project Python).
 - Dataset resolution is **lazy**: importing `sb.core.paths` downloads nothing; call `sb.core.paths.gislr_dir()` for GISLR only, `resolve_datasets()` for everything (POPSIGN included — huge). Requires an authenticated Kaggle account that has accepted the `asl-signs` competition rules.
 - `.env` at repo root (gitignored) holds secrets — currently `KAGGLE_MCP_TOKEN` (Kaggle MCP auth, TODO §6.3). `POPSIGN_LANDMARKS_DRIVE` (meant to send extracted POPSIGN landmarks to a separate drive, never into the repo) is **not currently set**, so extraction falls back to `data/raw/popsign` — set it before a bulk POPSIGN run if that's not where you want ~hundreds of GB to land.
 - Type checking: `ty` is canonical (`[tool.ty.environment]` points at `./.venv`) — run `.venv/Scripts/ty.exe check` from the repo root. `pyrefly` was dropped 2026-07-22 (TODO §0.2).
@@ -39,7 +44,8 @@ uv sync                     # install deps (Python >= 3.12; torch cu130 via [too
 ## Windows constraints (shape architecture decisions)
 
 - **Training is PyTorch + CUDA.** TensorFlow GPU doesn't work on native Windows; TFLite export happens post-hoc by rebuilding the model in native Keras and transferring weights (`sb.recognize.export.keras`, driven by `gislr.2.models.evaluation.ipynb`) — the ONNX/onnx2tf route was tried and abandoned (TODO §6.2).
-- **MediaPipe extraction is CPU-only** here (GPU delegate is Ubuntu-only), parallelized across worker processes.
+- **MediaPipe extraction is CPU-only** here (GPU delegate is Ubuntu-only), parallelized across worker processes. There are **two extractors**: `packages/sb-extract` (Python, the one that produced the 33,599 test clips) and `packages/sb-extract-ts` (Deno/TypeScript, chosen because Deno gives `ImageData` and Web Workers natively so MediaPipe's WASM build needs no `canvas` native module). **They are not yet known to agree** — run `python -m sb.extract.parity` before letting the TS path extract anything that will be trained on, because a systematic difference between extractors used on different splits is invisible to every accuracy metric.
+- **POPSIGN is downloaded one part at a time.** ~870 GB does not fit; `python -m sb.extract.popsign_cycle run --part <name>` does download → extract → **verify** → delete, and refuses to delete a part whose clips are not all extracted and spec-valid.
 - DataLoader multiprocessing (spawn) is fragile from ad-hoc scripts — in-RAM arrays with `num_workers=0` train GISLR at ~0.3 min/epoch, which is plenty (`sb.recognize.features.base_v1::SubsetArrayDataset`).
 
 ## Architecture & conventions
@@ -56,14 +62,18 @@ uv sync                     # install deps (Python >= 3.12; torch cu130 via [too
   first" step to a workflow**; call the thing and let it fetch. Learning curves
   read the committed `assets/history.json` and need no checkpoint at all. Naming follows Kaggle's own convention and
   is derived, never typed by hand:
-  `bracu23101281/signbridge-gislr/pyTorch/<arch>-<subset-tag>/<version>` — the
+  `bracu23101281/signbridge-gislr/pyTorch/<architecture>/<version>` — the
   **model** is the family (a POPSIGN model becomes `signbridge-popsign`, not a
   variation, because a different label space is a different model), the
-  **variation** is `<architecture>-<subset><-coords>` (the thing that makes two
-  runs incomparable if it differs), and a **version** is the same configuration
-  retrained, uploaded in chronological run-id order. Versions are chronological,
-  **not ranked** — "which run to deploy" is `sb-promote`'s job, not the version
-  number's. Every version carries its run's `meta.json` beside the weights.
+  **variation** is just the **architecture** (`gru`, `bilstm`,
+  `conv1d-transformer`), and a **version** is any run of it. Everything the slug
+  does not say — subset, coords, score, params, regime — goes in the **version
+  note**, and in full in the `meta.json` uploaded beside the weights. Consequence
+  to keep in mind: versions of one variation are *not* all-else-equal, so a
+  version list mixes subsets and cannot be read as a learning curve; restores are
+  unaffected because the manifest pins an exact `<variation>/<version>` handle.
+  `sb-sync rescheme` migrates existing uploads after a naming change (Kaggle has
+  no rename, so it re-uploads; old variations must be deleted by hand).
 - **Never delete a checkpoint with `rm`.** `sb-sync prune` is the only safe path:
   it downloads the remote copy, and deletes only when the manifest hash, the
   remote hash and the local hash all agree. `sb-sync drop-resume` removes

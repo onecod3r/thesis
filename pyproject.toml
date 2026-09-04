@@ -22,6 +22,9 @@
 
 [tool.uv.workspace]
     members = ["packages/*"]
+    # sb-extract-ts is a Deno package, not a Python one: it has a deno.json and no
+    # pyproject.toml, and `packages/*` would otherwise make every `uv sync` fail.
+    exclude = ["packages/sb-extract-ts"]
 
 [[tool.uv.index]]
     # workspace-wide: members inherit it, sb-recognize pins torch to it
