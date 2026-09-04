@@ -23,7 +23,7 @@ stale, trust the sections.
 | 2 | ~~Run the first checkpoint backup~~ — **done 2026-09-04**: 42 on Kaggle, local copies pruned after hash verification. Remaining: confirm the model is **private** | §9.3 | was the last single-copy risk |
 | 3 | **Notebook §5b: the three-arm AWP/LateDropout ablation** (~30 min) | §4.2 | the 1st-place port has collapsed at epoch 15 twice and neither switch has been run alone, so the recipe is still unmeasured |
 | 4 | **Regenerate the POPSIGN train manifest** (30,867 rows covers 1 of 4 parts) then start bulk train extraction | §2.2 | all four train parts are downloaded; the stale manifest is the only thing blocking the primary dataset |
-| 5 | **§7.4 augmentation** — the Phase-1 verdict was overfitting (gap 0.16–0.24), so this outranks §7.3 motion features | §7.1 → §7.4 | the diagnosis is done and points here; §7.3 was written before the verdict |
+| 5 | **Run the plateau diagnosis's two GPU arms** — §7 train-split confusion, §8 per-pair separability probes | §7.1 | the CPU arms showed semantics is only ~2.7 of the 25 missing points; these two decide between §7.4 augmentation and §7.2 normalization |
 | 6 | Re-run the evaluation notebook on the 42-run registry | §6.1 | it last ran against 18 runs; only 1 of 42 run folders has a confusion matrix |
 
 Decisions still owed by the user, blocking real work:
@@ -1228,6 +1228,39 @@ Figure out whether this is overfitting, underfitting or a data/label ceiling
   is a property of the labels/representation, not of any model.
   Re-check on the fixed re-run (§4.2), since this checkpoint is only 15 epochs
   into its schedule.
+- [x] **Is semantic similarity the cause of the plateau? — measured 2026-09-04, and the
+  answer is NO.** `experiments/recognition/gislr.2.models.plateau-diagnosis.ipynb`, over
+  31 canonical runs at ≥0.70 (mean 0.7433). Write-up:
+  [`docs/reports/plateau-diagnosis.md`](docs/reports/plateau-diagnosis.md).
+  - The top-20 confusable pairs absorb **10.5% of all errors**. Solving them
+    perfectly moves 0.7433 → **0.7704** (+2.7 pts), against **+0.007** for a
+    random-pair control — the effect is unmistakably real *and* small. Even
+    declaring 50 pairs (100 of 250 classes) solved leaves accuracy below 0.79.
+  - Semantic errors are near-misses (**77%** recovered at rank 2, 95% at rank 5);
+    the other 90% of errors are not (31% / 56%). For the bulk of the error the
+    representation simply does not carry the answer.
+  - Imbalance ruled out (support spans only 30–42 videos/class); the error is
+    diffuse, not concentrated (worst 10 classes = 8.6% of error vs 4.0% uniform).
+  - **Consequence for §8:** a rescoring layer is worth **at most ~2.7 points**,
+    and only on the near-miss tenth. Quote it that way, not as "fixes the plateau".
+  - **Consequence for §7.2–§7.4:** the plateau is ~22 points of diffuse error
+    where the true label is usually outside the top 5. That points at the input
+    representation, and **§7.2 normalization is the untested candidate** —
+    nothing in the stack currently removes signer appearance or position.
+- [ ] **Run the two GPU arms of the diagnosis (user)** — they separate the last
+  two readings, and the notebook is built and waiting:
+  - **§7 train-split confusion.** Train acc is 90–99% vs val ~75%, so the model
+    separates *something*. Train confusion ≈ 0 on these pairs ⇒ generalization
+    failure (→ §7.4). Train confusion also high ⇒ representation ceiling
+    (→ §7.2/§7.3). ~2,000 clips of inference, a few minutes.
+  - **§8 per-pair separability probes.** A binary classifier that only ever sees
+    `awake`/`wake`. ≈0.95 ⇒ the signal is there and the 250-way head is not using
+    it; ≈0.55 ⇒ genuinely near-identical in these landmarks.
+- [ ] Backfill top-k on more runs — only **1 of 31** has it (`sb-evaluate` began
+  storing top-5 on 2026-09-04), so the near-miss split rests on a single run.
+- [ ] Two of the top-20 pairs (`finger`/`wait`, `animal`/`have`) are **not**
+  semantically related. Whatever drives those is not meaning — worth an eyeball
+  on the raw sequences, and it may be the more informative case.
 - [~] Per-class sample count vs per-class accuracy. If low accuracy correlates
   with low sample count this is **class imbalance**, and the fix is
   oversampling/class weighting, *not* feature engineering — record this

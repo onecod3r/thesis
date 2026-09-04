@@ -49,14 +49,12 @@
   "n_classes_below_50pct": 8,
   "median_class_accuracy": 0.7567567567567568,
   "provenance": {
-    "git_commit": "aaee32ffa6f0ef505d7d307e51ef44eaf901537a",
+    "git_commit": "f4621567c9140826b5a55b4e084a29e70f3ef508",
     "git_branch": "main",
     "git_dirty": true,
     "code_dirty": true,
     "dirty_code_paths": [
-      "packages/sb-mlops/src/sb/mlops/artifacts.py",
-      "packages/sb-recognize/src/sb/recognize/evaluate.py",
-      "packages/sb-recognize/src/sb/recognize/export/tflite.py"
+      "packages/sb-recognize/src/sb/recognize/evaluate.py"
     ],
     "config_path": null,
     "config_sha256": null,
@@ -83,6 +81,6 @@
       "scikit-learn": "1.9.0",
       "mediapipe": "0.10.35"
     },
-    "captured_at": "2026-09-04T21:00:43"
+    "captured_at": "2026-09-04T21:13:48"
   }
 }

@@ -25,9 +25,13 @@ pruned locally, so this fetches the run's `best.pt` through `kagglehub` on
 demand and verifies its sha256 against the manifest before using it. `--no-fetch`
 turns that off and prints where the file is instead.
 
-val_predictions.npz (labels + preds over the canonical val split, in split
-order) is what makes confusion matrices cheap: gislr.2.models.evaluation.ipynb
-builds every matrix from these files instead of re-running inference.
+val_predictions.npz (labels, preds, and the top-5 ranked alternatives with
+their probabilities, over the canonical val split in split order) is what makes
+confusion matrices cheap: the evaluation notebook builds every matrix from these
+files instead of re-running inference. The top-5 arrays are what let the plateau
+diagnosis ask whether a wrong answer was *nearly* right (TODO §7.1). Runs
+evaluated before 2026-09-04 have only `labels`/`preds`; re-run `sb-evaluate` to
+backfill the rest.
 
 Importable as well as runnable — the evaluation notebook calls
 
@@ -54,6 +58,7 @@ from sb.recognize.data import MAX_SEQ_LEN, ROWS_PER_FRAME
 from sb.recognize.sources import get_source
 
 BATCH = 256
+TOPK = 5  # ranked alternatives kept per sample (see the topk_* arrays below)
 
 
 def load_video(path, landmarks, coords):
@@ -153,6 +158,12 @@ def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True,
     paths = [source.sample_path(data_dir, row) for _, row in val_split.iterrows()]
     labels_all = val_split["label"].to_numpy()
     preds_all = np.zeros(len(val_split), dtype=np.int64)
+    # Top-K, not just argmax: "is the right answer ranked second?" separates a
+    # model that lacks the information from one that has it and mis-ranks it —
+    # the question the plateau diagnosis turns on (TODO §7.1). Storing K=5 costs
+    # ~200 KB per run; full logits would be 9.4 MB and this asset is committed.
+    topk_idx = np.zeros((len(val_split), TOPK), dtype=np.int16)
+    topk_prob = np.zeros((len(val_split), TOPK), dtype=np.float32)
 
     t0 = time.time()
     with ThreadPoolExecutor(8) as ex, torch.no_grad():
@@ -164,9 +175,13 @@ def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True,
             for j, i in enumerate(order):
                 padded[j, : chunk[i][1]] = torch.from_numpy(chunk[i][0])
             logits = model(padded.to(device), lengths)
+            probs = torch.softmax(logits.float(), dim=-1)
+            tp, ti = probs.topk(TOPK, dim=-1)
             pred = logits.argmax(-1).cpu().numpy()
             inv = np.empty_like(order); inv[order] = np.arange(len(order))
             preds_all[b0:b0 + len(chunk)] = pred[inv]
+            topk_idx[b0:b0 + len(chunk)] = ti.cpu().numpy()[inv]
+            topk_prob[b0:b0 + len(chunk)] = tp.cpu().numpy()[inv]
             if (b0 // BATCH) % 10 == 0:
                 log(f"  {b0 + len(chunk)}/{len(paths)}  ({time.time() - t0:.0f}s)")
 
@@ -185,6 +200,7 @@ def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True,
     # raw predictions: everything downstream (confusion matrices, confused-pair
     # analysis) derives from these, so no consumer needs to re-run inference
     np.savez_compressed(assets / "val_predictions.npz",
+                        topk_idx=topk_idx, topk_prob=topk_prob,
                         labels=labels_all.astype(np.int16),
                         preds=preds_all.astype(np.int16))
 
