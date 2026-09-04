@@ -17,6 +17,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 
 from sb.core.schema import N_LANDMARKS
+from sb.core.subsets import subset_tag  # re-exported: the run tag lives with the subsets
 from sb.core.vocab import check_covers, load_label_map  # re-exported: callers ask data for both
 from sb.recognize.features.base_v1 import MAX_SEQ_LEN
 
@@ -42,15 +43,3 @@ def get_canonical_split(
     tr, va = train_test_split(df, test_size=0.1, stratify=df["sign"], random_state=SEED)
     assert len(va) == N_VAL, "val-set size drifted — leaderboard comparability broken"
     return tr.reset_index(drop=True), va.reset_index(drop=True)
-
-
-def subset_tag(name: str, coords: str = "xyz") -> str:
-    """Run tag: 'ME_126' -> 'me126' (+'-xy' when z is dropped).
-
-    This is the *human* handle — registry pointer-file keys, progress-bar
-    labels, run notes. It is deliberately not the feature-cache identifier: a
-    name cannot notice that its subset's indices changed, which is what
-    :func:`sb.recognize.features.cache.cache_key` is for.
-    """
-    tag = name.lower().replace("_", "")
-    return tag if coords == "xyz" else f"{tag}-{coords}"

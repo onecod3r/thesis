@@ -51,9 +51,11 @@ Top 5 by canonical val accuracy (training-loop best where the canonical eval has
 | `1784397301` | gislr | bilstm | FP_118 | xy | 0.7525 | canonical | 2,718,418 |
 <!-- /generated:registry-summary -->
 
-### Checkpoints off this machine
+### Checkpoints live on Kaggle
 
-`best.pt`/`last.pt` are gitignored, so every trained weight exists on one Windows machine — and the 2026-07-18 reset below already destroyed 8 runs' checkpoints. `sb-sync` keeps a second copy (**42 checkpoints, ~707 MB**), with the backend chosen by `SB_ARTIFACT_BACKEND` in `.env`:
+**A run folder normally contains no weights.** `best.pt` is uploaded to a Kaggle Model and then deleted locally, so anything that loads a checkpoint — `sb-evaluate`, the TFLite export — starts with `sb-sync pull <run_id>`. This is what keeps 700 MB+ of `.pt` off a single disk after the 2026-07-18 reset destroyed 8 runs' weights.
+
+The backend is chosen by `SB_ARTIFACT_BACKEND` in `.env`:
 
 | backend | what it is | setup |
 |---|---|---|
@@ -63,14 +65,40 @@ Top 5 by canonical val accuracy (training-loop best where the canonical eval has
 
 A second folder on the same physical disk is not a backup — point `local` at something that survives this machine.
 
-**Why Models and not Datasets.** A Kaggle *Dataset* versions as one directory, so every push would re-upload all 707 MB and every restore would download the lot. A *Model* has variations that version independently, so a push sends **only the runs that are new** and a restore fetches **one checkpoint** (`kagglehub.model_download(handle, path="best.pt")`). Each variation also carries that run's `meta.json` beside its weights, so an uploaded checkpoint is self-describing. `pyTorch` is the framework segment because these are `.pt` state dicts — when the TFLite export (§6.2) is worth publishing it goes under the same model as a `tfLite` framework, which is what that segment is for. And a Kaggle inference kernel can attach a model directly, so the backup and the artifact a submission run loads (§6.3) are the same object.
+#### Naming
+
+```
+bracu23101281/signbridge-gislr/pyTorch/gru-me126-xy/2
+└─ owner ──┘ └─── model ────┘ └─fw─┘ └ variation ┘ └ver┘
+```
+
+Derived from each run's `meta.json`, never typed by hand:
+
+| segment | rule |
+|---|---|
+| **model** | the family. GISLR recognizers are `signbridge-gislr`; a POPSIGN model becomes `signbridge-popsign` rather than a variation, because a different label space is a different model |
+| **framework** | `pyTorch` — these are `.pt` state dicts. A TFLite export (§6.2) goes under the *same* model as `tfLite`, which is what the segment is for |
+| **variation** | `<architecture>-<subset><-coords>` — precisely the things that make two runs incomparable |
+| **version** | the same configuration retrained, in chronological run-id order, so the version history reads as the training history |
+
+**Versions are chronological, not ranked.** The newest version is the most recent run, not necessarily the best one — "which run should be deployed" is a separate question answered by `sb-promote` aliases. Every version carries its run's `meta.json` beside the weights, so an uploaded checkpoint is self-describing.
+
+**Why Models and not Datasets.** A Kaggle *Dataset* versions as one directory, so every push would re-upload all 707 MB and every restore would download the lot. A *Model*'s variations version independently, so a push sends **only the runs that are new** and a restore fetches **one file** (`model_download(handle, path="best.pt")`). And a Kaggle inference kernel can attach a model directly, so the backup and the artifact a submission run loads (§6.3) are the same object.
+
+#### Deleting local copies
+
+Never `rm` a checkpoint. `sb-sync prune` downloads the remote copy and deletes the local file only when **three hashes agree** — the manifest's, the remote's, and the local file's. The third check matters as much as the second: a local file that has diverged from what was uploaded is something the remote does *not* have.
+
+`sb-sync drop-resume` removes `last.pt` for **finished** runs only — the registry never resumes a finished run, so that file is dead weight — and leaves an unfinished run's resume state alone.
 
 ```bash
-.venv/Scripts/sb-sync.exe status          # local vs manifest
-.venv/Scripts/sb-sync.exe push            # dry run
-.venv/Scripts/sb-sync.exe push --apply    # upload
-.venv/Scripts/sb-sync.exe pull 1784447175 # restore one run
-.venv/Scripts/sb-sync.exe pull --all      # restore everything
+sb-sync status                 # local vs manifest
+sb-sync push                   # dry run
+sb-sync push --apply           # upload (--limit N to trial a few first)
+sb-sync pull 1784447175        # restore one run
+sb-sync pull --all             # restore everything
+sb-sync prune --apply          # verify against the remote, then delete local copies
+sb-sync drop-resume --apply    # drop last.pt for finished runs
 ```
 
 Only the `s3` backend needs `uv sync --group ops` (boto3); `kaggle` and `local` work out of the box — see [Environment setup](#environment-setup). **Weights only**: not the ~30 GB of feature caches (derivable, and their content address makes that checkable) and not POPSIGN's ~870 GB of raw video (an immutable upstream release — a run records the reference, never the bytes).

@@ -1,7 +1,7 @@
 """Canonical per-class evaluation of a registry run on the val split.
 
 Handles every architecture in sb.recognize.architectures.ARCHS (gru, lstm,
-bilstm, cnn1d) by dispatching on the checkpoint's "arch" key; coordinate
+bilstm, cnn1d, conv1d_transformer) by dispatching on the checkpoint's "arch" key; coordinate
 channels follow its "coords" key ("xyz" or "xy"), landmark selection its
 "landmarks" key. The model classes are imported from sb.recognize.architectures — the same
 definitions the notebooks train — so state_dicts can never drift.
@@ -10,15 +10,19 @@ Reproduces the canonical split (stratified 10%, seed 42, 9,448 videos) and the
 dataset preprocessing (NaN->0, uniform subsample to MAX_SEQ_LEN frames),
 straight from the raw parquet files — no feature cache needed.
 
-Usage (any CWD — the script bootstraps its own imports):
+Usage (any CWD — installed as a console script):
 
-    .venv/Scripts/python.exe src/modules/scripts/evaluate.py <run_dir> [--checkpoint best.pt]
+    sb-evaluate <run_dir> [--checkpoint best.pt]
 
-<run_dir> is a registry folder (src/data/models/<run_id>/). Writes
+<run_dir> is a registry folder (registry/runs/<run_id>/). Writes
 assets/per_class_accuracy.{csv,png} + assets/eval_summary.json +
 assets/val_predictions.npz, promotes meta.json metrics to
 eval_status="canonical", and registers the new assets — rebuild the index
-afterwards with modules/scripts/build_model_index.py.
+afterwards with `sb-index`.
+
+**The checkpoint is usually not on this disk.** Weights are pushed to Kaggle and
+pruned locally, so start with `sb-sync pull <run_id>`; this script says so rather
+than failing on a missing file.
 
 val_predictions.npz (labels + preds over the canonical val split, in split
 order) is what makes confusion matrices cheap: gislr.2.models.evaluation.ipynb
@@ -112,7 +116,16 @@ def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True) -
     _, val_split = source.canonical_split(data_dir, sign2idx)
     log(f"dataset: {source.name} · val split: {len(val_split)} videos")
 
-    ckpt = torch.load(run_dir / checkpoint, map_location=device, weights_only=False)
+    # Checkpoints normally live on Kaggle, not on this disk (see README
+    # § "Checkpoints live on Kaggle"), so an absent file is the expected case
+    # rather than a broken run — say what to do about it.
+    ckpt_path = run_dir / checkpoint
+    if not ckpt_path.is_file():
+        raise SystemExit(
+            f"{checkpoint} is not in {run_dir}. Checkpoints are pushed to Kaggle "
+            f"and pruned locally, so fetch it first:\n"
+            f"  sb-sync pull {run_dir.name}")
+    ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
     arch = ckpt.get("arch", "gru")
     coords = ckpt.get("coords", "xyz")
     landmarks = np.asarray(ckpt["landmarks"]) if ckpt.get("landmarks") is not None else None

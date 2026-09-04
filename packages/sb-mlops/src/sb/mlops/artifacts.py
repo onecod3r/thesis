@@ -193,34 +193,45 @@ class LocalBackend(Backend):
 class KaggleBackend(Backend):
     """A **Kaggle Model**, using the credentials this repo already has.
 
-    Kaggle has two artifact types and the difference matters here. A *Dataset*
-    versions as one directory, so every push re-uploads the whole 707 MB and
-    every restore downloads it. A *Model* has **variations**, each versioned
-    independently — so one variation per run means a push uploads only the runs
-    that are new, and a restore fetches exactly one checkpoint.
+    Naming follows Kaggle's own convention — a *model* is a family, a
+    *variation* is one configuration of it, and *versions* are that
+    configuration retrained::
 
-    Handle layout (``kagglehub.model_upload``)::
+        bracu23101281/signbridge-gislr/pyTorch/gru-me126-xy/2
+        └─ owner ──┘ └─── model ────┘ └─fw─┘ └ variation ┘ └ver┘
 
-        bracu23101281/signbridge-checkpoints/pyTorch/run-1784447175
-        └─ owner ──┘ └── model ───────────┘ └─fw─┘ └── variation ──┘
+    - **model** = the family: recognizers trained on GISLR. POPSIGN models later
+      become `signbridge-popsign`, not a variation here — a different label space
+      is a different model.
+    - **variation** = `<architecture>-<subset><-coords>`, the thing that makes
+      two runs incomparable if it differs.
+    - **version** = a re-run of the *same* configuration, uploaded in
+      chronological run-id order, so the version history reads as the training
+      history and an improvement shows up as a later version.
 
-    ``pyTorch`` is the framework slug because these are `.pt` state dicts; when
-    the TFLite export (§6.2) is worth publishing it goes under the same model as
-    a ``tfLite`` framework, which is exactly what the segment is for.
+    Versions are chronological, **not** ranked: the newest version is the most
+    recent run, not necessarily the best one. "Which run should be deployed" is a
+    separate question with a separate answer — `sb-promote` aliases.
 
-    Each variation carries the run's ``meta.json`` next to its weights, so an
-    uploaded checkpoint is self-describing: the provenance block, the
-    hyperparameters and the canonical metrics travel with the bytes.
+    Using Models rather than Datasets is what makes this practical: a Dataset
+    versions as one directory, so every push would re-send every checkpoint and
+    every restore would pull the whole bundle. Model variations version
+    independently, so a push uploads only what is new and
+    ``model_download(handle, path=...)`` restores exactly one file.
+
+    Each version carries its run's ``meta.json`` beside the weights, so an
+    uploaded checkpoint is self-describing: provenance, hyperparameters and the
+    canonical metrics travel with the bytes.
     """
 
     name = "kaggle"
 
     def __init__(self):
         self.owner = env_value("KAGGLE_ARTIFACT_OWNER") or self._user()
-        self.model = env_value("KAGGLE_ARTIFACT_MODEL", "signbridge-checkpoints")
+        self.model = env_value("KAGGLE_ARTIFACT_MODEL", "signbridge-gislr")
         self.framework = env_value("KAGGLE_ARTIFACT_FRAMEWORK", "pyTorch")
         # Kaggle applies its own default when this is omitted; set
-        # KAGGLE_ARTIFACT_LICENSE if the upload is rejected for the want of one.
+        # KAGGLE_ARTIFACT_LICENSE if an upload is rejected for the want of one.
         self.license = env_value("KAGGLE_ARTIFACT_LICENSE")
         self.stage = TEMP_DIR / "artifact_stage"
 
@@ -236,18 +247,47 @@ class KaggleBackend(Backend):
                 "KAGGLE_ARTIFACT_OWNER in .env "
                 f"({type(exc).__name__})") from None
 
-    def handle(self, run_id: str) -> str:
-        return f"{self.owner}/{self.model}/{self.framework}/run-{run_id}"
+    @staticmethod
+    def variation(meta: dict) -> str:
+        """`gru-me126-xy` — architecture plus the subset/coords run tag."""
+        from sb.core.subsets import subset_tag
+
+        arch = str(meta["architecture"]).replace("_", "-")
+        return f"{arch}-{subset_tag(meta['subset'], meta['coords'])}"
+
+    def handle(self, variation: str, version: int | None = None) -> str:
+        base = f"{self.owner}/{self.model}/{self.framework}/{variation}"
+        return f"{base}/{version}" if version else base
 
     def describe(self) -> dict:
         return {"backend": self.name,
                 "location": f"kaggle://models/{self.owner}/{self.model}/{self.framework}"}
 
+    @staticmethod
+    def _notes(meta: dict) -> str:
+        m = meta.get("metrics", {})
+        acc = m.get("overall_accuracy")
+        scored = (f"canonical val acc {acc:.4f}" if acc is not None
+                  else f"train-loop val acc {m.get('train_val_acc')} (eval pending)")
+        tr = meta.get("training", {})
+        return (f"run {meta['run_id']} · {scored} · {meta['n_params']:,} params · "
+                f"regime {tr.get('regime')} · {tr.get('epochs_trained')} epochs "
+                f"(best {tr.get('best_epoch')})")
+
     def put_group(self, run_id: str, files: dict[str, Path]) -> dict[str, str]:
-        """Upload one run as one model variation — a single new version."""
+        """Upload one run as one new version of its variation."""
         import kagglehub
 
-        run_stage = self.stage / f"run-{run_id}"
+        meta_path = MODELS_DIR / run_id / "meta.json"
+        if not meta_path.is_file():
+            raise SystemExit(
+                f"run {run_id} has no meta.json — refusing to upload a checkpoint "
+                "whose configuration is unknown, because the variation slug is "
+                "derived from it")
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        variation = self.variation(meta)
+
+        run_stage = self.stage / run_id
         if run_stage.exists():
             shutil.rmtree(run_stage)
         run_stage.mkdir(parents=True)
@@ -257,28 +297,42 @@ class KaggleBackend(Backend):
                 os.link(path, dest)  # NTFS hard link: no second copy of the bytes
             except OSError:
                 shutil.copy2(path, dest)
-        # the run record travels with the weights
-        meta = MODELS_DIR / run_id / "meta.json"
-        if meta.is_file():
-            shutil.copy2(meta, run_stage / "meta.json")
+        shutil.copy2(meta_path, run_stage / "meta.json")
 
-        handle = self.handle(run_id)
         kwargs = {"license_name": self.license} if self.license else {}
         kagglehub.model_upload(
-            handle=handle,
+            handle=self.handle(variation),
             local_model_dir=str(run_stage),
-            version_notes=f"run {run_id} · {datetime.now():%Y-%m-%d %H:%M}",
+            version_notes=self._notes(meta),
             **kwargs,
         )
         shutil.rmtree(run_stage, ignore_errors=True)
-        return {key: f"{handle}/{key.split('/')[1]}" for key in files}
+
+        # The version number is not returned by the API. It is the count of runs
+        # of this variation already uploaded, plus this one — which holds because
+        # uploads happen in chronological run-id order and each call adds exactly
+        # one version. `prune` re-downloads the pinned handle and compares
+        # sha256 before deleting anything, so a wrong guess is caught there
+        # rather than becoming silent data loss.
+        version = self._version_for(variation)
+        return {key: f"{self.handle(variation, version)}/{key.split('/')[1]}"
+                for key in files}
+
+    def _version_for(self, variation: str) -> int:
+        prefix = self.handle(variation) + "/"
+        seen = {rec["remote_key"].split("/")[4]
+                for rec in load_manifest().get("objects", {}).values()
+                if str(rec.get("remote_key", "")).startswith(prefix)}
+        return len(seen) + 1
 
     def get(self, key: str, rec: dict, dest: Path) -> None:
         import kagglehub
 
-        run_id, filename = key.split("/")
-        # `path` fetches one file out of the variation rather than the bundle
-        src = Path(kagglehub.model_download(self.handle(run_id), path=filename))
+        remote = rec.get("remote_key")
+        if not remote:
+            raise SystemExit(f"{key}: the manifest records no remote location")
+        handle, filename = remote.rsplit("/", 1)
+        src = Path(kagglehub.model_download(handle, path=filename))
         shutil.copy2(src, dest)
 
 
@@ -407,6 +461,9 @@ def cmd_push(args) -> None:
     groups: dict[str, dict[str, Path]] = {}
     for key, path in todo:
         groups.setdefault(key.split("/")[0], {})[key] = path
+    if getattr(args, "limit", None):
+        groups = dict(list(groups.items())[: args.limit])
+        print(f"  (--limit {args.limit}: uploading {len(groups)} run(s) this pass)")
 
     for run_id, files in groups.items():
         locations = backend.put_group(run_id, files)
@@ -426,7 +483,10 @@ def cmd_push(args) -> None:
         print(f"  pushed run {run_id} ({len(files)} file(s)) "
               f"-> {locations[next(iter(files))]}")
     backend.finish([k for k, _ in todo])
-    print(f"\n{len(todo)} object(s) in {len(groups)} run(s) pushed; "
+    # count what was actually pushed this pass, not every candidate — with
+    # --limit those differ, and the old message overstated it
+    pushed_n = sum(len(f) for f in groups.values())
+    print(f"\n{pushed_n} object(s) in {len(groups)} run(s) pushed; "
           f"manifest at {MANIFEST}")
 
 
@@ -471,6 +531,115 @@ def cmd_pull(args) -> None:
     print(f"\n{restored} checkpoint(s) restored")
 
 
+def cmd_prune(args) -> None:
+    """Delete local checkpoints that are *verifiably* in the remote.
+
+    The verification is the whole point, and it is deliberately paranoid: for
+    every candidate this **downloads the remote copy and hashes it**, rather
+    than trusting that a push returned without raising. Three things must agree
+    before a byte is deleted — the manifest's recorded sha256, the sha256 of
+    what the remote actually serves, and the sha256 of the local file. A
+    disagreement on any of them skips that file and says why.
+
+    That third check matters as much as the second: if the local file has
+    diverged from what was uploaded, deleting it destroys something the remote
+    does *not* have.
+    """
+    manifest = load_manifest()
+    objects = manifest.get("objects", {})
+    if not objects:
+        raise SystemExit(f"{MANIFEST} lists no objects — nothing is backed up, "
+                         "so there is nothing safe to delete")
+    backend = get_backend(args.backend or (manifest.get("remote") or {}).get("backend"))
+
+    local = local_checkpoints(include_last=True)
+    candidates = {k: p for k, p in local.items() if k in objects}
+    skipped = [k for k in local if k not in objects]
+
+    print(f"{len(candidates)} local file(s) claimed by the manifest, "
+          f"{len(skipped)} not backed up (never deletable)")
+    if not args.apply:
+        for k in list(candidates)[:5]:
+            print(f"  would verify+delete {k}")
+        if len(candidates) > 5:
+            print(f"  … and {len(candidates) - 5} more")
+        for k in skipped[:5]:
+            print(f"  KEEP (not in the manifest) {k}")
+        print("\ndry run — pass --apply to verify and delete")
+        return
+
+    freed, deleted, refused = 0, 0, []
+    tmp_dir = TEMP_DIR / "prune_verify"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        for key, path in candidates.items():
+            rec = objects[key]
+            tmp = tmp_dir / "candidate.pt"
+            try:
+                backend.get(key, rec, tmp)
+            except SystemExit as exc:
+                refused.append((key, f"download failed: {exc}"))
+                continue
+            remote_digest = sha256_file(tmp)
+            local_digest = sha256_file(path)
+            tmp.unlink(missing_ok=True)
+            if remote_digest != rec["sha256"]:
+                refused.append((key, "remote copy does not match the manifest"))
+                continue
+            if local_digest != rec["sha256"]:
+                refused.append((key, "local file has diverged from what was uploaded"))
+                continue
+            size = path.stat().st_size
+            path.unlink()
+            freed += size
+            deleted += 1
+            print(f"  verified + deleted {key} ({size / 1e6:.1f} MB)")
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    print(f"\n{deleted} file(s) deleted, {freed / 1e6:.0f} MB freed")
+    for key, why in refused:
+        print(f"  REFUSED {key}: {why}")
+    if refused:
+        raise SystemExit(f"{len(refused)} file(s) kept — see above")
+
+
+def cmd_drop_resume(args) -> None:
+    """Delete `last.pt` for FINISHED runs — resume state the policy never reuses.
+
+    `last.pt` is auto-resume state. The registry's rule is that a *finished* run
+    (early-stopped or epoch cap reached) is never resumed — a new training always
+    gets a fresh folder — so for those runs the file is dead weight. For an
+    unfinished run it is the only way to continue, so it is kept.
+
+    This deletes **without** a remote copy, which is only defensible because of
+    that policy; `best.pt` is the artifact that gets backed up.
+    """
+    from sb.mlops import registry as R
+
+    kept, target = [], []
+    for run_dir in sorted(p for p in MODELS_DIR.iterdir()
+                          if p.is_dir() and p.name.isdigit()):
+        last = run_dir / "last.pt"
+        if not last.is_file():
+            continue
+        meta = R.load_meta(run_dir) if (run_dir / "meta.json").is_file() else {}
+        if meta.get("training", {}).get("finished"):
+            target.append(last)
+        else:
+            kept.append(run_dir.name)
+
+    size = sum(p.stat().st_size for p in target)
+    print(f"{len(target)} finished run(s) hold last.pt ({size / 1e6:.0f} MB); "
+          f"{len(kept)} unfinished run(s) keep theirs: {', '.join(kept) or '—'}")
+    if not args.apply:
+        print("\ndry run — pass --apply to delete")
+        return
+    for p in target:
+        p.unlink()
+    print(f"deleted {len(target)} last.pt, {size / 1e6:.0f} MB freed")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--include-last", action="store_true",
@@ -487,10 +656,27 @@ def main() -> None:
     push = sub.add_parser("push", help="upload checkpoints missing from the manifest")
     push.add_argument("--apply", action="store_true",
                       help="actually upload (default: print the plan only)")
+    push.add_argument("--limit", type=int, metavar="N",
+                      help="upload at most N runs — trial one before committing "
+                           "to a long batch; the manifest makes it resumable")
     backend_flag(push)
 
     pull = sub.add_parser("pull", help="restore checkpoints from the remote")
     backend_flag(pull)
+
+    prune = sub.add_parser(
+        "prune", help="delete local checkpoints that verify against the remote")
+    prune.add_argument("--apply", action="store_true",
+                       help="actually verify and delete (default: plan only)")
+    prune.add_argument("--include-last", dest="include_last", action="store_true",
+                       help=argparse.SUPPRESS)
+    backend_flag(prune)
+
+    drop = sub.add_parser(
+        "drop-resume",
+        help="delete last.pt for FINISHED runs (resume state the policy never reuses)")
+    drop.add_argument("--apply", action="store_true",
+                      help="actually delete (default: plan only)")
     pull.add_argument("run_id", nargs="*", help="run ids to restore")
     pull.add_argument("--all", action="store_true", help="restore every manifest object")
     pull.add_argument("--force", action="store_true",
@@ -501,6 +687,10 @@ def main() -> None:
         args.backend = None
     if args.command == "push":
         cmd_push(args)
+    elif args.command == "prune":
+        cmd_prune(args)
+    elif args.command == "drop-resume":
+        cmd_drop_resume(args)
     elif args.command == "pull":
         if not args.run_id and not args.all:
             raise SystemExit("pull needs run ids or --all")

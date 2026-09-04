@@ -33,6 +33,21 @@ N_LANDMARKS = spec.N_LANDMARKS  # 543 holistic rows per frame (ROWS_PER_FRAME)
 POSE_OFFSET = spec.POSE_OFFSET  # 489 — holistic row of pose landmark 0
 
 
+def subset_tag(name: str, coords: str = "xyz") -> str:
+    """Human handle for a (subset, coords) pair: 'ME_126' + 'xy' -> 'me126-xy'.
+
+    Lives here rather than in the recognizer because more than one package needs
+    it — registry pointer keys, progress bars, and the Kaggle model-variation
+    slug — and `sb-mlops` must not import `sb-recognize`.
+
+    It is deliberately NOT a cache identifier: a name cannot notice that its
+    subset's indices changed, which is what the content-addressed feature cache
+    key is for.
+    """
+    tag = name.lower().replace("_", "")
+    return tag if coords == "xyz" else f"{tag}-{coords}"
+
+
 def pose_rows(pose_indices: list[int]) -> list[int]:
     """Map MediaPipe Pose indices (0-32) to holistic row indices."""
     return [POSE_OFFSET + i for i in pose_indices]
