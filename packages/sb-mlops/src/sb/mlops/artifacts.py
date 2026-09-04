@@ -17,8 +17,9 @@ Pick one with ``SB_ARTIFACT_BACKEND`` in the repo ``.env``. They differ only in
 where bytes land; the manifest, the hashing and the verification are identical.
 
 ``kaggle`` (default, and what this repo uses)
-    A **Kaggle Model**, one variation per configuration
-    (``<owner>/signbridge-gislr/pyTorch/<arch>-<subset><-coords>/<version>``).
+    A **Kaggle Model**, one variation per **architecture**
+    (``<owner>/signbridge-gislr/pyTorch/<architecture>/<version>``); what a
+    version was trained on lives in its notes and its uploaded ``meta.json``.
     Costs nothing extra: this repo already authenticates to Kaggle for the GISLR
     competition data, so there is no new account, no card on file and no new
     secret. Models rather than Datasets, for two reasons that matter in daily
@@ -78,6 +79,8 @@ hash, the remote hash and the local hash all agree.
     sb-sync pull 1784447175 | --all
     sb-sync prune [--apply]        # verify against the remote, then delete
     sb-sync drop-resume [--apply]  # last.pt of FINISHED runs only
+    sb-sync rescheme [--apply]     # re-upload objects whose handle predates a
+                                   # naming change (pulls them back first)
 """
 
 import argparse
@@ -271,11 +274,20 @@ class KaggleBackend(Backend):
 
     @staticmethod
     def variation(meta: dict) -> str:
-        """`gru-me126-xy` — architecture plus the subset/coords run tag."""
-        from sb.core.subsets import subset_tag
+        """`gru` — the architecture, and nothing else.
 
-        arch = str(meta["architecture"]).replace("_", "-")
-        return f"{arch}-{subset_tag(meta['subset'], meta['coords'])}"
+        A variation is the *model shape*; what it was trained on lives in the
+        version notes and, in full, in the `meta.json` uploaded beside the
+        weights. That keeps the model page readable — one entry per architecture
+        rather than one per (architecture, subset, coords) combination.
+
+        The cost, stated plainly: versions of one variation are no longer
+        all-else-equal, so the version list mixes subsets and coord sets and
+        cannot be read as a single learning curve. Restores are unaffected —
+        the manifest pins an exact `.../<variation>/<version>` handle per run —
+        but a human comparing two versions has to read the notes.
+        """
+        return str(meta["architecture"]).replace("_", "-")
 
     def handle(self, variation: str, version: int | None = None) -> str:
         base = f"{self.owner}/{self.model}/{self.framework}/{variation}"
@@ -287,14 +299,25 @@ class KaggleBackend(Backend):
 
     @staticmethod
     def _notes(meta: dict) -> str:
+        """What the variation slug no longer says, said here instead.
+
+        Everything needed to tell two versions apart: the subset and coordinate
+        set (which make runs incomparable if they differ), the score and whether
+        it is canonical, the size, and the regime.
+        """
         m = meta.get("metrics", {})
         acc = m.get("overall_accuracy")
         scored = (f"canonical val acc {acc:.4f}" if acc is not None
-                  else f"train-loop val acc {m.get('train_val_acc')} (eval pending)")
+                  else f"train-loop val acc {m.get('train_val_acc')} (eval PENDING)")
         tr = meta.get("training", {})
-        return (f"run {meta['run_id']} · {scored} · {meta['n_params']:,} params · "
-                f"regime {tr.get('regime')} · {tr.get('epochs_trained')} epochs "
-                f"(best {tr.get('best_epoch')})")
+        return (
+            f"{meta['subset']} / {meta['coords']} · {scored} · "
+            f"run {meta['run_id']} · {meta['n_params']:,} params · "
+            f"{meta['n_landmarks']} landmarks, feature_dim {meta['feature_dim']} · "
+            f"regime {tr.get('regime')} · {tr.get('epochs_trained')} epochs "
+            f"(best {tr.get('best_epoch')})"
+            + ("" if tr.get("finished") else " · UNFINISHED")
+        )
 
     def put_group(self, run_id: str, files: dict[str, Path]) -> dict[str, str]:
         """Upload one run as one new version of its variation."""
@@ -727,6 +750,77 @@ def cmd_drop_resume(args) -> None:
     print(f"deleted {len(target)} last.pt, {size / 1e6:.0f} MB freed")
 
 
+def cmd_rescheme(args) -> None:
+    """Re-upload objects whose recorded handle no longer matches the naming scheme.
+
+    Kaggle has no rename, so changing how variations are named means uploading
+    the affected runs again under the new handle. The old variations stay on the
+    model page until deleted there by hand — this never deletes anything remote.
+
+    Because checkpoints are normally pruned locally, each affected run is pulled
+    back (sha256-verified) before being re-pushed, then pruned again if it was
+    not local to begin with. That is 2x the bytes over the network, which is why
+    this is a dry run unless `--apply`.
+    """
+    manifest = load_manifest()
+    objects = manifest.get("objects", {})
+    if not objects:
+        raise SystemExit(f"{MANIFEST} lists no objects — nothing to re-scheme")
+    backend = get_backend(args.backend or (manifest.get("remote") or {}).get("backend"))
+    if not isinstance(backend, KaggleBackend):
+        raise SystemExit("rescheme only applies to the kaggle backend")
+
+    stale, total = {}, 0
+    for key, rec in sorted(objects.items()):
+        run_id = key.split("/")[0]
+        meta_path = MODELS_DIR / run_id / "meta.json"
+        if not meta_path.is_file():
+            continue
+        want = backend.variation(json.loads(meta_path.read_text(encoding="utf-8")))
+        have = str(rec.get("remote_key", "")).split("/")
+        if len(have) >= 5 and have[3] != want:
+            stale.setdefault(run_id, {})[key] = (have[3], want)
+            total += rec.get("bytes", 0)
+
+    if not stale:
+        print(f"all {len(objects)} object(s) already use the current scheme")
+        return
+    for run_id, files in list(stale.items())[:10]:
+        for key, (old, new) in files.items():
+            print(f"  {key:<26} {old}  ->  {new}")
+    if len(stale) > 10:
+        print(f"  … and {len(stale) - 10} more run(s)")
+    print(f"\n{len(stale)} run(s), {total / 1e6:.0f} MB — pulled back then re-uploaded, "
+          f"so ~{2 * total / 1e6:.0f} MB of transfer")
+    print("The old variations are NOT deleted; remove them from the Kaggle model "
+          "page by hand once you are happy with the new ones.")
+
+    if not args.apply:
+        print("\ndry run — pass --apply to re-upload")
+        return
+
+    for run_id in stale:
+        run_dir = MODELS_DIR / run_id
+        was_local = (run_dir / "best.pt").is_file()
+        files = {}
+        for key in stale[run_id]:
+            files[key] = ensure_local(run_dir, key.split("/")[1], verbose=False)
+        locations = backend.put_group(run_id, files)
+        for key, path in files.items():
+            objects[key] = {**objects[key], "remote_key": locations[key],
+                            "backend": backend.name,
+                            "uploaded_at": datetime.now().isoformat(timespec="seconds")}
+        save_manifest(manifest)
+        print(f"  re-uploaded run {run_id} -> {locations[next(iter(files))]}")
+        if not was_local:                       # leave the disk as we found it
+            for path in files.values():
+                path.unlink(missing_ok=True)
+    cache = backend.download_cache()
+    if cache is not None:
+        shutil.rmtree(cache, ignore_errors=True)
+    print(f"\n{len(stale)} run(s) re-uploaded under the new scheme")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--include-last", action="store_true",
@@ -759,6 +853,15 @@ def main() -> None:
                        help=argparse.SUPPRESS)
     backend_flag(prune)
 
+    resch = sub.add_parser(
+        "rescheme",
+        help="re-upload objects whose handle predates a naming change")
+    resch.add_argument("--apply", action="store_true",
+                       help="actually pull back and re-upload (default: plan only)")
+    resch.add_argument("--include-last", dest="include_last", action="store_true",
+                       help=argparse.SUPPRESS)
+    backend_flag(resch)
+
     drop = sub.add_parser(
         "drop-resume",
         help="delete last.pt for FINISHED runs (resume state the policy never reuses)")
@@ -778,6 +881,8 @@ def main() -> None:
         cmd_prune(args)
     elif args.command == "drop-resume":
         cmd_drop_resume(args)
+    elif args.command == "rescheme":
+        cmd_rescheme(args)
     elif args.command == "pull":
         if not args.run_id and not args.all:
             raise SystemExit("pull needs run ids or --all")
