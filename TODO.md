@@ -11,6 +11,32 @@ doesn't fit an existing one, add a new `## N. <Workstream Name>` section at the 
 
 ---
 
+## Current focus (2026-09-04)
+
+The workstream sections below are the source of truth; this is just the short
+list of what is actually next, in order. Re-derived at each audit — if it looks
+stale, trust the sections.
+
+| # | next action | where | why now |
+|---|---|---|---|
+| 1 | **Restart the Jupyter kernels, then run one short training** to prove the restructure end to end | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
+| 2 | **Run the first real checkpoint backup** — pick `kaggle` or `local` and `sb-sync push --apply` | §9.3 | 42 checkpoints, 707 MB, still single-copy on one machine. The tooling is verified; only the button-press is missing |
+| 3 | **Notebook §5b: the three-arm AWP/LateDropout ablation** (~30 min) | §4.2 | the 1st-place port has collapsed at epoch 15 twice and neither switch has been run alone, so the recipe is still unmeasured |
+| 4 | **Regenerate the POPSIGN train manifest** (30,867 rows covers 1 of 4 parts) then start bulk train extraction | §2.2 | all four train parts are downloaded; the stale manifest is the only thing blocking the primary dataset |
+| 5 | **§7.4 augmentation** — the Phase-1 verdict was overfitting (gap 0.16–0.24), so this outranks §7.3 motion features | §7.1 → §7.4 | the diagnosis is done and points here; §7.3 was written before the verdict |
+| 6 | Re-run the evaluation notebook on the 42-run registry | §6.1 | it last ran against 18 runs; only 1 of 42 run folders has a confusion matrix |
+
+Decisions still owed by the user, blocking real work:
+
+- **§8 scope**: continuous/sentence-level, or n-best re-ranking? `sb-rescore/`
+  and `sb-synthesize/` are empty skeletons until this is answered — and should
+  be **deleted** if the answer is "out of scope".
+- **§4.1**: BiLSTM is the accuracy leader (0.7569) but can never ship. Is the
+  goal understanding the causality gap, or a deployable model? The section
+  flags this conflict and it is still unresolved.
+
+---
+
 ## 0. Repo Restructure Follow-ups & Tooling
 
 Cleanup left over from the move to the flat `src/` layout (notebooks renamed to
@@ -31,12 +57,19 @@ docs daily/weekly/reports split).
   **resolved 2026-07-16** by the notebook overhaul (§3.1): it now imports only
   the subset registry (`modules.dataset.landmark.subsets`) and defines the
   dataset class itself.
-- [ ] `experiments/extraction/popsign.1.mediapipe.ipynb` imports `from modules.datasets import DATASETS`
-  and uses `DATASETS["ISLR"]` — `datasets/` was deleted; it's now
-  `modules.paths.DATASETS` with key `"GISLR"`.
-- [x] `packages/` has no `__init__.py` files — **resolved 2026-07-18**: every
-  package level ships one (`modules/`, `modules/model/`, `modules/scripts/`,
-  `modules/dataset/`, `modules/dataset/landmark/`).
+- [ ] `experiments/extraction/popsign.1.mediapipe.ipynb` imports `DATASETS`,
+  which **no longer exists in any form** — the eager module-level dict was
+  replaced by `DATASET_IDS` plus the lazy `gislr_dir()` / `train_dirs()` /
+  `test_dir()` resolvers, now in `sb.core.paths`. (The old note here said to
+  swap the key to `"GISLR"`; that instruction is stale — there is no dict to key
+  into.) This and `popsign.2`'s `tensorflow.keras` import are the **only two
+  unresolved imports left in the tree** as of 2026-09-04. Retire the notebook
+  (next bullet) rather than repairing an import into code that is itself
+  superseded.
+- [x] `src/modules/` had no `__init__.py` files — **resolved 2026-07-18**, and
+  superseded 2026-09-04: the tree is now six installed packages under a `sb`
+  PEP 420 namespace, so there is deliberately **no** `sb/__init__.py` — that
+  absence is what lets separate distributions share the namespace.
 - [ ] `experiments/extraction/popsign.1.mediapipe.ipynb` currently contains early **GISLR** motion-energy
   exploration code, not POPSIGN extraction — retire that content (superseded by
   `gislr.0.dataset.motion-energy.ipynb`) and rebuild the notebook as the extraction
@@ -59,11 +92,15 @@ docs daily/weekly/reports split).
   `.venv/Scripts/ty.exe check` from `src/` (35 pre-existing diagnostics as of
   2026-07-22, mostly in the stale `popsign.2`/`popsign.3` notebooks — not
   triaged, just confirming the tool runs).
-- [ ] `.gitignore`: the bare `data/` pattern also ignores `data/external/`
-  (the MediaPipe `holistic_landmarker.task`) and `data/cache/dataframes/`
-  (POPSIGN manifests) — decide whether to narrow the ignore and commit those, or
-  document them as download/generate-on-setup. (Still open after the 2026-07-15
-  rewrite — the pattern was kept as-is pending this decision.)
+- [x] `.gitignore`: whether to narrow the `data/` ignore — **decided 2026-09-04
+  by the restructure (§9.8): do not narrow it.** `data/` is ignored absolutely,
+  with no negation rules, and the one thing that genuinely needed committing
+  (the registry) moved out to `registry/` instead.
+- [ ] Follow-on from that decision: the two ignored artifacts a fresh clone
+  needs have **no one-command fetch/regenerate path** —
+  `data/external/mediapipe/holistic_landmarker.task` (third-party download) and
+  `data/cache/popsign/dataframes/{train,test}.csv` (regenerated from the raw
+  video tree). Document or script both in the README setup section.
 - [x] `.gitignore`: rewritten 2026-07-15 for the `src/` layout — stale root-level
   `cache/*.npy` lines and the self-ignoring `.gitignore` line removed; now covers
   `src/cache/`, model weights (`src/models/**/*.pt`, bare `gru_best.pt` /
@@ -95,10 +132,12 @@ is a query, not a folder crawl:
   training gets a new `<timestamp>` folder (timestamp = training start), even
   under identical conditions. Auto-resume still continues an *interrupted*
   run in its own folder.
-- [~] Future training notebooks must write the same `metadata.json` schema —
-  **done for GISLR** (the lstm/bilstm/cnn1d siblings inherit the GRU
-  notebook's §7 emission, 2026-07-17); still applies to future POPSIGN
-  training notebooks.
+- [x] Future training notebooks must write the same schema — **closed
+  2026-09-04**: it is no longer a convention notebooks must remember. Both
+  drivers build the record through `sb.mlops.registry`, `write_meta` asserts
+  every key in `FIELDS`, and `schemas/meta.v4.json` is generated from that same
+  dict (§9.6). A POPSIGN driver gets the schema by construction, because it goes
+  through the `DatasetSource` seam (§9.5) rather than being a new notebook.
 - [x] ~~Rebuild `index.csv` after the canonical evals of the six pending runs~~ —
   **voided 2026-07-18**: those runs' weights were deleted with the old
   `src/models/` tree during the restructure, so their canonical evals can
@@ -139,9 +178,13 @@ Executed 2026-07-18 (full write-up: `docs/logs/daily/2026-07-18.md`):
   video tree (30,867 train / 33,600 test, ids unique, labels cross-checked
   against the filename). Unblocks the §2 pilot/bulk runs. Still only 1 of 4
   train parts (§2.2).
-- [ ] First v2-regime training runs (user) to seed the fresh registry —
-  re-establishes the FULL_543 baseline and ME_126 leader under the new
-  schema before any new ablation conclusions.
+- [x] First v2-regime training runs (user) to seed the fresh registry —
+  **done**: the registry holds 42 runs, all `v2-plateau-300` except the six
+  `fp-onecycle-300` 1st-place runs, 37 of them canonically evaluated. Note the
+  FULL_543 baseline was **not** re-established under v2 — every run uses
+  ME_126 / ME_132 / FP_118, so the "+3.1 pts over full-543" claim still rests
+  on the pre-reset v1 numbers whose weights are gone. Filed as its own item in
+  §3.1.
 - [ ] `popsign.2.model.ipynb` / `popsign.3.pipeline.ipynb` still predate the
   restructure (old paths, TF-era code) — modernize or retire alongside
   `popsign.1` (§0.1).
@@ -174,32 +217,21 @@ docs/
   `docs/README.md`, `README.md` and `CLAUDE.md` all previously said and which would
   number 2026-07-19 as the tail of week 29 rather than the start of week 30. All
   three updated; weekly titles now state the date range explicitly.
-- [ ] Close out `2026-30.md` on Sat 2026-07-25 (drop the "in progress" marker) and
-  open `2026-31.md`.
-
-### 0.6 Stray notebook/module state to clean up (found 2026-07-19)
-
-- [x] `experiments/extraction/popsign.0.dataset.extraction.ipynb` had a bare
-  `DATASETS = resolve_datasets()` scratch cell in §1 (an unguarded call that
-  would hit kagglehub on every top-to-bottom run). **Resolved 2026-07-19**: it
-  became the proper manifest-generation cell — guarded by `FORCE_REGENERATE`
-  and skipped entirely when both CSVs exist, so a plain re-run never reaches
-  `resolve_datasets()` at all. (`force_download=True` is not in the current
-  `sb.core.paths`; the ~870GB re-download hazard the original note described
-  no longer exists.)
-- [ ] `sb.core.paths::resolve_datasets` (uncommitted working-tree change)
-  hardcodes `D:/`/`E:/` `PATH_PARTS` and calls `p.unlink()` on directories
-  (raises on a real directory) — reconcile with the `.env`-driven policy.
-  **Status 2026-07-22**: this is the actual change that downloaded the
-  remaining 3 of 4 POPSIGN train dataset parts (§2.2) — `train-n-s-signs` to
-  `D:/datasets/…` (complete 07-20) and `train-t-z-signs` to `E:/datasets/…`
-  (complete 07-21) — so it did its job, but it's still uncommitted and still
-  hardcoded rather than `.env`-driven. `src/temp.py` (untracked) is a scratch
-  copy of an earlier version of this file, used to manually trigger the
-  a-e/f-m downloads by hand — clean up both once the real fix is committed.
-- [ ] `.env` is empty/missing at the repo root, so `POPSIGN_LANDMARKS_DRIVE`
-  is unset and extraction output falls back into `data/raw/popsign`.
-
+- [ ] **The log trail has a six-week hole (found 2026-09-04).** `2026-30.md`
+  still carries its "in progress" marker six weeks after the week ended, and
+  weeks **31–35 (2026-07-26 → 2026-08-29) have no weekly file at all** — including
+  the week containing the 1st-place port (daily log `2026-08-23.md` exists with
+  no weekly around it). Today's work (§9 execution + the workspace restructure)
+  has no daily log yet either. Concretely:
+  - [ ] Close `2026-30.md` (drop the marker, final summary).
+  - [ ] Decide whether to backfill 31–35 or record them as "no dev work" weeks —
+    do not invent narrative for weeks that had none; the honest version is a
+    one-line stub per empty week and a real file for the 08-23 week.
+  - [ ] Write `daily/2026-09-04.md` and `weekly/2026-36.md` for the current week.
+  - [ ] The deeper problem is that this is hand-maintained and drifts. §9.6
+    generated the registry-derived tables for exactly this reason; the narrative
+    logs were deliberately left manual, so the fix here is discipline (or a
+    reminder), not another generator.
 ---
 
 ## 1. Landmark Motion-Over-Time Analysis (GISLR)
@@ -649,12 +681,17 @@ is now a one-line config change. Awaiting user run.
   failing classes 22→9. Leaderboard updated in `src/models/README.md`.
   (A reproducibility re-run is included in the rebuilt notebook's default
   `TRAIN_SUBSETS`; drop it there to save ~25 GPU-min.)
-- [~] Exact 1st-place 118 (ME-126 minus the 8 pose landmarks) — isolates whether
+- [x] Exact 1st-place 118 (ME-126 minus the 8 pose landmarks) — isolates whether
   upper-body pose helps a *streaming* model (hand-dropout fallback hypothesis).
-  Queued as `FP_118` in the rebuilt `gislr.1` notebook — awaiting user run.
-- [~] **ME-132** (`ME_126` + pose wrist points {17-22}) — #2 by probe score;
-  tests the probe's prediction that the extra 6 landmarks add nothing. Queued
-  in the rebuilt `gislr.1` notebook — awaiting user run.
+  **Run and canonically evaluated**: `FP_118` has runs on all four v2
+  architectures. Best `FP_118` is bilstm 0.7525 vs ME_126's 0.7569 — i.e. the 8
+  upper-body pose landmarks are worth roughly +0.4 pts, small but consistent
+  across architectures.
+- [x] **ME-132** (`ME_126` + pose wrist points {17-22}) — #2 by probe score;
+  tests the probe's prediction that the extra 6 landmarks add nothing. **Run and
+  canonically evaluated** on all four architectures; the probe was right — best
+  ME_132 0.7476 sits below ME_126's 0.7569, so the 6 extra wrist points cost
+  rather than add. ME_126 remains the leader.
 - [~] **xy only** (drop z) — tests the z-noise finding in-model. Trained
   2026-07-17 for all three subsets (v1 regime, `COORDS="xy"`): train-loop val
   acc **ME_126-xy 74.92 / ME_132-xy 74.95 / FP_118-xy 74.54 — each beats its
@@ -663,7 +700,10 @@ is now a one-line config change. Awaiting user run.
   2026-07-17 (reads the checkpoint's `coords` key). **Caveat**: ME_132's two
   same-config xyz runs differ by ~2.5 pts (72.47 vs 74.95) — run-to-run
   variance is on the order of the subset deltas, so ablation conclusions need
-  the canonical evals (and ideally repeat runs).
+  the canonical evals (and ideally repeat runs). **Canonical evals now exist**
+  (37 of 42 runs, 2026-09-04) and every v2 run is `xy` — the z-drop is settled
+  and is the default. The repeat-run variance caveat stands and is why §3.1's
+  remaining conclusions should quote a spread, not a single number.
 - [ ] ME-126 + lag-1/lag-2 difference features (the 1st-place motion features) —
   note these are causal, so streaming-safe.
 
@@ -687,9 +727,11 @@ is now a one-line config change. Awaiting user run.
 - [x] Resume-safety: plateau counter + scheduler state persist in the
   checkpoint (`epochs_since_gain`, `finished`); resolve_run_dir resumes only
   unfinished runs (finished = early-stopped or cap reached).
-- [ ] Run the v2 regime (user) — start with the best subset — and compare
-  against its v1 counterpart on the canonical eval before adopting v2 as the
-  default family.
+- [x] Run the v2 regime (user) — **done and adopted**: `v2-plateau-300` is the
+  regime for all 36 non-1st-place runs. The v1 comparison it asked for cannot be
+  completed as written — the v1 weights were destroyed in the 2026-07-18 reset —
+  so the comparison that exists is train-loop numbers in the daily logs, not a
+  canonical one.
 
 ---
 
@@ -999,7 +1041,12 @@ notebooks are training drivers only; they no longer carry export code.
   data/labels, not the architecture — this is the Phase-1 §7.4 instrument).
 - [x] **Most-confused pairs** table extracted from the aggregate matrix (feeds
   §7 Phase 1.4).
-- [ ] Run the notebook (user) once the fresh-registry runs have canonical evals.
+- [x] Run the notebook (user) — run on 2026-07-19 (18-run aggregate) and again
+  on 2026-08-23 for the 1st-place port; its findings are what §7.1 closed on.
+- [ ] **Re-run it on the current 42-run registry.** It last ran against 18 runs;
+  since then the four-architecture × three-subset grid completed and six
+  1st-place runs landed. Only 1 of 42 run folders has a `confusion.png`, so the
+  per-run confusion artifacts are mostly missing.
 
 ### 6.2 Supporting module work (2026-07-19)
 
@@ -1133,14 +1180,22 @@ helped.
 Figure out whether this is overfitting, underfitting or a data/label ceiling
 *before* spending compute on new features.
 
-- [ ] Run the canonical eval on the current best checkpoint and fill in the
-  pending metrics: overall / macro / median class accuracy, `n_classes_below_50pct`
-  (§6.1 leaderboard surfaces all four).
-- [ ] Train/val accuracy gap at the best epoch. **train ≫ val ⇒ overfitting**,
-  prioritize §7.4 augmentation + regularization; **train ≈ val, both ~73% ⇒
-  underfitting the real signal**, prioritize §7.2 normalization and §7.3 motion.
-- [ ] Full 250×250 confusion matrix on the val set (§6.1 produces it).
-- [ ] Top 20–30 most-confused class pairs by off-diagonal mass (§6.1).
+- [x] Run the canonical eval on the current best checkpoint and fill in the
+  pending metrics — **done**: 37 of 42 runs are `eval_status: canonical`, best
+  is `1784447175` (bilstm/ME_126/xy) at 0.7569, best *streaming* is
+  `1784453891` (gru/ME_126/xy) at 0.7565. The 5 pending are the 1st-place
+  ablation arms from 2026-08-23.
+- [x] Train/val accuracy gap at the best epoch — **answered 2026-07-19**: train
+  90–99% vs val ~75%, gap 0.16–0.24. That is `train ≫ val`, so the verdict is
+  **overfitting**, and §7.4 (augmentation/regularization) outranks §7.3 on this
+  evidence. Full write-up: `docs/logs/daily/2026-07-19.md`.
+- [x] Full 250×250 confusion matrix on the val set — done, aggregate over 18 runs
+  (`docs/logs/daily/2026-07-19.md` §1.2) and per-run for the 1st-place port.
+- [x] Top 20–30 most-confused class pairs by off-diagonal mass — done; the pairs
+  are **semantic near-synonyms** (`awake`/`wake`, `mouth`/`lips`), and they
+  replicate on a completely different architecture and feature pipeline
+  (2026-08-23), which is what makes them a label/data property rather than an
+  artefact of one model.
 - [ ] **[Elevated to top priority per 2026-07-22 remarks]** Manually inspect a few
   sequences per confused pair (landmark-trajectory visualization) and classify
   each pair as distinguished by: **handshape only** (hand landmark
@@ -1722,6 +1777,11 @@ Still open, and deliberately so:
 
 
 ### 9.9 The reasoning §9.8 overruled (kept 2026-09-04)
+
+> **Historical record — nothing here is an open task.** These bullets were
+> written as checkboxes on 2026-09-04 and are kept in that form so the text is
+> unaltered, but every one of them was overruled or completed the same day by
+> §9.8. Do not pick work out of this section.
 
 Filed on 2026-09-04 as the case for deferring the restructure, and
 overruled the same day. Kept verbatim, because the numbers in it are the
