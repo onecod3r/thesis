@@ -57,11 +57,13 @@ Top 5 by canonical val accuracy (training-loop best where the canonical eval has
 
 | backend | what it is | setup |
 |---|---|---|
-| **`kaggle`** (default) | a **private Kaggle Dataset**. No new account — this repo already authenticates to Kaggle for the GISLR data — and a Kaggle inference kernel can attach the dataset directly, so the backup doubles as what a submission run loads (§6.3) | nothing; optionally `KAGGLE_ARTIFACT_DATASET=<user>/<slug>` |
+| **`kaggle`** (default) | a **Kaggle Model**, one variation per run: `<owner>/signbridge-checkpoints/pyTorch/run-<run_id>`. No new account — this repo already authenticates to Kaggle for the GISLR data | nothing; `KAGGLE_ARTIFACT_{OWNER,MODEL,FRAMEWORK}` override the defaults |
 | `local` | any filesystem path: external drive, NAS share, or a OneDrive/Drive/Dropbox-synced folder. Zero dependencies | `SB_ARTIFACT_DIR=D:/backup/signbridge` |
 | `s3` | any S3-compatible endpoint — Backblaze B2, Wasabi, MinIO, Storj (or Cloudflare R2, if it is ever enabled) | `S3_ENDPOINT_URL` + `S3_BUCKET` + keys, and `uv sync --group ops` |
 
 A second folder on the same physical disk is not a backup — point `local` at something that survives this machine.
+
+**Why Models and not Datasets.** A Kaggle *Dataset* versions as one directory, so every push would re-upload all 707 MB and every restore would download the lot. A *Model* has variations that version independently, so a push sends **only the runs that are new** and a restore fetches **one checkpoint** (`kagglehub.model_download(handle, path="best.pt")`). Each variation also carries that run's `meta.json` beside its weights, so an uploaded checkpoint is self-describing. `pyTorch` is the framework segment because these are `.pt` state dicts — when the TFLite export (§6.2) is worth publishing it goes under the same model as a `tfLite` framework, which is what that segment is for. And a Kaggle inference kernel can attach a model directly, so the backup and the artifact a submission run loads (§6.3) are the same object.
 
 ```bash
 .venv/Scripts/sb-sync.exe status          # local vs manifest
@@ -308,7 +310,9 @@ POPSIGN_LANDMARKS_DRIVE=D:/    # or wherever the extraction-output drive is moun
 
 # Checkpoint backup (sb-sync): kaggle | local | s3
 SB_ARTIFACT_BACKEND=kaggle
-# KAGGLE_ARTIFACT_DATASET=<user>/signbridge-checkpoints   # kaggle, optional
+# KAGGLE_ARTIFACT_OWNER=<user>                            # kaggle, all optional
+# KAGGLE_ARTIFACT_MODEL=signbridge-checkpoints
+# KAGGLE_ARTIFACT_FRAMEWORK=pyTorch                       # tfLite for an export
 # SB_ARTIFACT_DIR=D:/backup/signbridge                    # local
 # S3_ENDPOINT_URL=... S3_BUCKET=... S3_ACCESS_KEY_ID=... S3_SECRET_ACCESS_KEY=...
 ```

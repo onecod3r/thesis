@@ -74,8 +74,6 @@ import hashlib
 import json
 import os
 import shutil
-import subprocess
-import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -144,6 +142,17 @@ class Backend:
         """Fetch one file to ``dest`` (a temp path the caller then verifies)."""
         raise NotImplementedError
 
+    def put_group(self, run_id: str, files: dict[str, Path]) -> dict[str, str]:
+        """Store every file of one run; returns ``{key: location}``.
+
+        The unit is a run because some backends commit per run rather than per
+        file — Kaggle uploads one model variation. Grouping here, instead of
+        letting the caller record a per-file success the backend has not
+        committed yet, is what stops the manifest claiming an upload that never
+        happened.
+        """
+        return {key: self.put(key, path) for key, path in files.items()}
+
     def finish(self, pushed: list[str]) -> None:
         """Called once after a push batch — for backends that commit in bulk."""
 
@@ -182,17 +191,37 @@ class LocalBackend(Backend):
 
 
 class KaggleBackend(Backend):
-    """A private Kaggle Dataset, using the credentials this repo already has.
+    """A **Kaggle Model**, using the credentials this repo already has.
 
-    Kaggle versions a dataset as a whole directory, so `push` stages *every*
-    checkpoint and uploads one new version. Staging uses hard links where the
-    filesystem allows it (NTFS does), so the 707 MB is not duplicated on disk.
+    Kaggle has two artifact types and the difference matters here. A *Dataset*
+    versions as one directory, so every push re-uploads the whole 707 MB and
+    every restore downloads it. A *Model* has **variations**, each versioned
+    independently — so one variation per run means a push uploads only the runs
+    that are new, and a restore fetches exactly one checkpoint.
+
+    Handle layout (``kagglehub.model_upload``)::
+
+        bracu23101281/signbridge-checkpoints/pyTorch/run-1784447175
+        └─ owner ──┘ └── model ───────────┘ └─fw─┘ └── variation ──┘
+
+    ``pyTorch`` is the framework slug because these are `.pt` state dicts; when
+    the TFLite export (§6.2) is worth publishing it goes under the same model as
+    a ``tfLite`` framework, which is exactly what the segment is for.
+
+    Each variation carries the run's ``meta.json`` next to its weights, so an
+    uploaded checkpoint is self-describing: the provenance block, the
+    hyperparameters and the canonical metrics travel with the bytes.
     """
 
     name = "kaggle"
 
     def __init__(self):
-        self.slug = env_value("KAGGLE_ARTIFACT_DATASET") or f"{self._user()}/signbridge-checkpoints"
+        self.owner = env_value("KAGGLE_ARTIFACT_OWNER") or self._user()
+        self.model = env_value("KAGGLE_ARTIFACT_MODEL", "signbridge-checkpoints")
+        self.framework = env_value("KAGGLE_ARTIFACT_FRAMEWORK", "pyTorch")
+        # Kaggle applies its own default when this is omitted; set
+        # KAGGLE_ARTIFACT_LICENSE if the upload is rejected for the want of one.
+        self.license = env_value("KAGGLE_ARTIFACT_LICENSE")
         self.stage = TEMP_DIR / "artifact_stage"
 
     @staticmethod
@@ -204,74 +233,52 @@ class KaggleBackend(Backend):
         except Exception as exc:  # no credentials, no network, API change
             raise SystemExit(
                 "could not determine the Kaggle username — set "
-                "KAGGLE_ARTIFACT_DATASET=<user>/<slug> in .env "
+                "KAGGLE_ARTIFACT_OWNER in .env "
                 f"({type(exc).__name__})") from None
 
+    def handle(self, run_id: str) -> str:
+        return f"{self.owner}/{self.model}/{self.framework}/run-{run_id}"
+
     def describe(self) -> dict:
-        return {"backend": self.name, "location": f"kaggle://{self.slug}"}
+        return {"backend": self.name,
+                "location": f"kaggle://models/{self.owner}/{self.model}/{self.framework}"}
 
-    def put(self, key: str, path: Path) -> str:
-        dest = self.stage / key
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        if dest.exists():
-            dest.unlink()
-        try:
-            os.link(path, dest)  # NTFS hard link: no second copy of the bytes
-        except OSError:
-            shutil.copy2(path, dest)
-        return f"kaggle://{self.slug}/{key}"
+    def put_group(self, run_id: str, files: dict[str, Path]) -> dict[str, str]:
+        """Upload one run as one model variation — a single new version."""
+        import kagglehub
 
-    def stage_all(self, objects: dict) -> None:
-        """Kaggle replaces the dataset with what you upload, so everything the
-        manifest claims must be present — not just what changed this run."""
-        for key in objects:
-            local = MODELS_DIR / key
-            if local.is_file():
-                self.put(key, local)
+        run_stage = self.stage / f"run-{run_id}"
+        if run_stage.exists():
+            shutil.rmtree(run_stage)
+        run_stage.mkdir(parents=True)
+        for key, path in files.items():
+            dest = run_stage / key.split("/")[1]
+            try:
+                os.link(path, dest)  # NTFS hard link: no second copy of the bytes
+            except OSError:
+                shutil.copy2(path, dest)
+        # the run record travels with the weights
+        meta = MODELS_DIR / run_id / "meta.json"
+        if meta.is_file():
+            shutil.copy2(meta, run_stage / "meta.json")
 
-    def finish(self, pushed: list[str]) -> None:
-        meta = {
-            "title": "signbridge model checkpoints",
-            "id": self.slug,
-            "licenses": [{"name": "unknown"}],
-        }
-        (self.stage / "dataset-metadata.json").write_text(
-            json.dumps(meta, indent=2), encoding="utf-8")
-        exists = self._exists()
-        note = f"{len(pushed)} checkpoint(s) added {datetime.now():%Y-%m-%d %H:%M}"
-        cmd = (["datasets", "version", "-p", str(self.stage), "-m", note, "-r", "zip"]
-               if exists else
-               ["datasets", "create", "-p", str(self.stage), "-r", "zip"])
-        print(f"  kaggle {' '.join(cmd)}")
-        self._kaggle(*cmd)
-        if not exists:
-            print(f"\nCreated {self.slug} as PRIVATE. Keep it private: these are "
-                  "trained weights, and the dataset page is otherwise world-readable.")
-
-    def _exists(self) -> bool:
-        out = self._kaggle("datasets", "list", "-m", "-s", self.slug.split("/")[-1],
-                           check=False)
-        return self.slug in (out or "")
-
-    @staticmethod
-    def _kaggle(*args: str, check: bool = True) -> str | None:
-        exe = Path(sys.executable).parent / "kaggle.exe"
-        cmd = [str(exe) if exe.exists() else "kaggle", *args]
-        try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
-        except (OSError, subprocess.SubprocessError) as exc:
-            raise SystemExit(f"kaggle CLI failed to start: {exc}") from None
-        if check and r.returncode != 0:
-            raise SystemExit(f"kaggle {' '.join(args)} failed:\n{r.stderr.strip()}")
-        return r.stdout
+        handle = self.handle(run_id)
+        kwargs = {"license_name": self.license} if self.license else {}
+        kagglehub.model_upload(
+            handle=handle,
+            local_model_dir=str(run_stage),
+            version_notes=f"run {run_id} · {datetime.now():%Y-%m-%d %H:%M}",
+            **kwargs,
+        )
+        shutil.rmtree(run_stage, ignore_errors=True)
+        return {key: f"{handle}/{key.split('/')[1]}" for key in files}
 
     def get(self, key: str, rec: dict, dest: Path) -> None:
         import kagglehub
 
-        root = Path(kagglehub.dataset_download(self.slug))
-        src = root / key
-        if not src.is_file():
-            raise SystemExit(f"{key} is not in the downloaded dataset at {root}")
+        run_id, filename = key.split("/")
+        # `path` fetches one file out of the variation rather than the bundle
+        src = Path(kagglehub.model_download(self.handle(run_id), path=filename))
         shutil.copy2(src, dest)
 
 
@@ -396,25 +403,31 @@ def cmd_push(args) -> None:
 
     backend = get_backend(args.backend)
     manifest["remote"] = backend.describe()
-    if isinstance(backend, KaggleBackend):
-        # Kaggle versions the whole directory: stage what is already claimed too
-        backend.stage_all(objects)
+
+    groups: dict[str, dict[str, Path]] = {}
     for key, path in todo:
-        digest = sha256_file(path)
-        location = backend.put(key, path)
-        objects[key] = {
-            "run_id": int(key.split("/")[0]),
-            "file": key.split("/")[1],
-            "bytes": path.stat().st_size,
-            "sha256": digest,
-            "backend": backend.name,
-            "remote_key": location,
-            "uploaded_at": datetime.now().isoformat(timespec="seconds"),
-        }
-        save_manifest(manifest)  # after each object: an interrupt loses nothing
-        print(f"  staged {key} -> {location}")
+        groups.setdefault(key.split("/")[0], {})[key] = path
+
+    for run_id, files in groups.items():
+        locations = backend.put_group(run_id, files)
+        for key, path in files.items():
+            objects[key] = {
+                "run_id": int(run_id),
+                "file": key.split("/")[1],
+                "bytes": path.stat().st_size,
+                "sha256": sha256_file(path),
+                "backend": backend.name,
+                "remote_key": locations[key],
+                "uploaded_at": datetime.now().isoformat(timespec="seconds"),
+            }
+        # saved per RUN, not per file: an interrupt leaves the manifest
+        # describing exactly the runs that actually landed
+        save_manifest(manifest)
+        print(f"  pushed run {run_id} ({len(files)} file(s)) "
+              f"-> {locations[next(iter(files))]}")
     backend.finish([k for k, _ in todo])
-    print(f"\n{len(todo)} object(s) pushed; manifest at {MANIFEST}")
+    print(f"\n{len(todo)} object(s) in {len(groups)} run(s) pushed; "
+          f"manifest at {MANIFEST}")
 
 
 def cmd_pull(args) -> None:

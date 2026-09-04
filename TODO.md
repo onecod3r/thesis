@@ -1524,13 +1524,19 @@ be completed.
   `sb-sync` now dispatches on `SB_ARTIFACT_BACKEND` instead of assuming one
   provider — the manifest, hashing and verification are shared, only the byte
   transport differs:
-  - **`kaggle`** (new default) — a private Kaggle Dataset. The reason to prefer
-    it here is not storage: this repo *already* authenticates to Kaggle
-    (`whoami` → `bracu23101281`) so there is no new account, no card and no new
-    secret, and a Kaggle **inference kernel can attach the dataset directly**,
-    which means the backup and the artifact a submission run loads (§6.3) are
-    the same object. Cost: Kaggle versions whole datasets, so a push re-uploads
-    all ~707 MB. Staging uses NTFS hard links, so it does not duplicate on disk.
+  - **`kaggle`** (new default) — a **Kaggle Model**, one variation per run:
+    `bracu23101281/signbridge-checkpoints/pyTorch/run-<run_id>` via
+    `kagglehub.model_upload`. This repo *already* authenticates to Kaggle
+    (`whoami` → `bracu23101281`), so there is no new account, no card and no new
+    secret, and a Kaggle **inference kernel can attach a model directly** —
+    the backup and the artifact a submission run loads (§6.3) become the same
+    object. **Models, not Datasets, on purpose**: a Dataset versions as one
+    directory, so every push would re-send all 707 MB and every restore would
+    pull the lot; a Model's variations version independently, so a push uploads
+    only the new runs and `model_download(handle, path="best.pt")` restores
+    exactly one. Each variation carries its run's `meta.json` beside the
+    weights. `pyTorch` is the framework segment; a TFLite export (§6.2) would
+    go under the same model as `tfLite`.
   - **`local`** — any path: external drive, NAS share, or a synced folder. Zero
     dependencies, works this minute. Refuses to run without `SB_ARTIFACT_DIR`,
     and the docs say plainly that a folder on the same disk is not a backup.
