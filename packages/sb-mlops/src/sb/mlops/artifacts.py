@@ -16,14 +16,16 @@ Backends
 Pick one with ``SB_ARTIFACT_BACKEND`` in the repo ``.env``. They differ only in
 where bytes land; the manifest, the hashing and the verification are identical.
 
-``kaggle`` (default, recommended here)
-    A **private Kaggle Dataset**. Costs nothing extra: this repo already
-    authenticates to Kaggle for the GISLR competition data, so there is no new
-    account, no card on file and no new secret. Kaggle versions the dataset for
-    you, and — the part that matters beyond backup — a Kaggle *inference kernel*
-    can attach the dataset directly, so the same artifact that is the backup is
-    also what a submission run loads (TODO §6.3). Push uploads the whole set
-    (~707 MB, minutes); that is the price of Kaggle's whole-dataset versioning.
+``kaggle`` (default, and what this repo uses)
+    A **Kaggle Model**, one variation per configuration
+    (``<owner>/signbridge-gislr/pyTorch/<arch>-<subset><-coords>/<version>``).
+    Costs nothing extra: this repo already authenticates to Kaggle for the GISLR
+    competition data, so there is no new account, no card on file and no new
+    secret. Models rather than Datasets, for two reasons that matter in daily
+    use — a push uploads **only what is new** instead of re-sending everything,
+    and a restore fetches **one file** instead of the whole bundle. And a Kaggle
+    *inference kernel can attach a model directly*, so the backup and the
+    artifact a submission run loads (TODO §6.3) are the same object.
 
 ``local``
     Any filesystem path: an external drive, a NAS share, or a folder that
@@ -46,8 +48,11 @@ Configuration (repo-root ``.env``, never committed)::
 
     SB_ARTIFACT_BACKEND=kaggle         # kaggle | local | s3
 
-    # kaggle: the dataset slug. Defaults to <your-username>/signbridge-checkpoints
-    KAGGLE_ARTIFACT_DATASET=bracu23101281/signbridge-checkpoints
+    # kaggle: all optional — owner defaults to the authenticated user
+    KAGGLE_ARTIFACT_OWNER=bracu23101281
+    KAGGLE_ARTIFACT_MODEL=signbridge-gislr
+    KAGGLE_ARTIFACT_FRAMEWORK=pyTorch     # tfLite for an exported model
+    KAGGLE_ARTIFACT_LICENSE=              # only if Kaggle rejects the upload
 
     # local:
     SB_ARTIFACT_DIR=D:/backup/signbridge
@@ -59,14 +64,20 @@ Configuration (repo-root ``.env``, never committed)::
     S3_SECRET_ACCESS_KEY=...
     S3_PREFIX=models                   # optional
 
-Runs from any CWD. `push` is a dry run unless `--apply`; nothing is ever deleted
-remotely by this script.
+The lifecycle, and the reason `best.pt` is usually **not** on this disk::
+
+    train -> sb-evaluate -> sb-sync push --apply -> sb-sync prune --apply
+
+`push` is a dry run unless `--apply`, and nothing is ever deleted *remotely* by
+this script. `prune` is the only sanctioned way to delete a checkpoint locally:
+it downloads the remote copy and unlinks the local file only when the manifest
+hash, the remote hash and the local hash all agree.
 
     sb-sync status
-    sb-sync push
-    sb-sync push --apply
-    sb-sync pull 1784447175
-    sb-sync pull --all
+    sb-sync push [--apply] [--limit N]
+    sb-sync pull 1784447175 | --all
+    sb-sync prune [--apply]        # verify against the remote, then delete
+    sb-sync drop-resume [--apply]  # last.pt of FINISHED runs only
 """
 
 import argparse
@@ -156,6 +167,15 @@ class Backend:
     def finish(self, pushed: list[str]) -> None:
         """Called once after a push batch — for backends that commit in bulk."""
 
+    def download_cache(self) -> Path | None:
+        """Where this backend leaves downloaded copies, if anywhere.
+
+        `prune` fetches every object purely to verify it. Freeing space in the
+        registry while an equal number of bytes piles up in a cache would defeat
+        the exercise, so a backend that caches says where.
+        """
+        return None
+
 
 class LocalBackend(Backend):
     """A directory somewhere that is not this disk."""
@@ -227,9 +247,11 @@ class KaggleBackend(Backend):
     name = "kaggle"
 
     def __init__(self):
-        self.owner = env_value("KAGGLE_ARTIFACT_OWNER") or self._user()
-        self.model = env_value("KAGGLE_ARTIFACT_MODEL", "signbridge-gislr")
-        self.framework = env_value("KAGGLE_ARTIFACT_FRAMEWORK", "pyTorch")
+        # str(), not the bare env_value: these are path and handle components,
+        # and every one of them has a non-None fallback
+        self.owner = str(env_value("KAGGLE_ARTIFACT_OWNER") or self._user())
+        self.model = str(env_value("KAGGLE_ARTIFACT_MODEL", "signbridge-gislr"))
+        self.framework = str(env_value("KAGGLE_ARTIFACT_FRAMEWORK", "pyTorch"))
         # Kaggle applies its own default when this is omitted; set
         # KAGGLE_ARTIFACT_LICENSE if an upload is rejected for the want of one.
         self.license = env_value("KAGGLE_ARTIFACT_LICENSE")
@@ -324,6 +346,10 @@ class KaggleBackend(Backend):
                 for rec in load_manifest().get("objects", {}).values()
                 if str(rec.get("remote_key", "")).startswith(prefix)}
         return len(seen) + 1
+
+    def download_cache(self) -> Path | None:
+        cache = Path.home() / ".cache" / "kagglehub" / "models" / self.owner / self.model
+        return cache if cache.exists() else None
 
     def get(self, key: str, rec: dict, dest: Path) -> None:
         import kagglehub
@@ -596,6 +622,15 @@ def cmd_prune(args) -> None:
             print(f"  verified + deleted {key} ({size / 1e6:.1f} MB)")
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    if not getattr(args, "keep_cache", False):
+        cache = backend.download_cache()
+        if cache is not None:
+            cached = sum(f.stat().st_size for f in cache.rglob("*") if f.is_file())
+            shutil.rmtree(cache, ignore_errors=True)
+            freed += cached
+            print(f"  cleared {cached / 1e6:.0f} MB of verification downloads "
+                  f"from {cache}")
 
     print(f"\n{deleted} file(s) deleted, {freed / 1e6:.0f} MB freed")
     for key, why in refused:
