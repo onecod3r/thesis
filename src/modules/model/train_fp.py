@@ -280,6 +280,9 @@ def train_firstplace_run(cfg: dict, subset_name: str, hyp: dict,
         config_path=cfg.get("_config_path"),
         config_obj=cfg,
         feature_pipeline=P.PIPELINE_FIRSTPLACE,
+        feature_cache_key=D.feature_cache_key(
+            subset, coords, data_dir, pipeline=F.PIPELINE,
+            pipeline_version=F.PIPELINE_VERSION, nan_policy=F.NAN_POLICY),
         n_videos=len(train_split) + len(val_split),
     )
     P.warn_if_dirty(prov, label=f"{cfg['dataset']}/{arch}/{tag}")

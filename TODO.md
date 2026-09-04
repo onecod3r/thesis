@@ -1412,18 +1412,35 @@ metric is *not* at risk — `eval_gru.py` reproduces the split and preprocessing
 straight from raw parquet and never touches a feature cache. The hazard is to
 **training inputs**, which is bad enough on its own.
 
-- [ ] Key caches by a hash of everything that determines their bytes: pipeline
+- [x] Key caches by a hash of everything that determines their bytes: pipeline
   name + pipeline version, `sha256(subset.array.tobytes())`, coords, NaN policy,
   and the dataset ref — not the subset's human name.
-- [ ] **Migrate by rename + sidecar, not rebuild.** `data/cache/gislr/features/`
+- [x] **Migrate by rename + sidecar, not rebuild.** `data/cache/gislr/features/`
   is **29 GB**; recomputing it means re-decoding 94,477 parquets per subset.
   Compute the key for each existing file from the current subset definitions,
   rename in place, and drop a `<key>.json` sidecar recording the inputs. If a
   definition has already drifted, the rename produces a key that no config asks
   for — which is exactly the detection this task is for.
-- [ ] Record `feature_cache_key` in the §9.1 provenance block, so "are these two
+- [x] Record `feature_cache_key` in the §9.1 provenance block, so "are these two
   runs comparable on inputs?" becomes a field equality check instead of a
   promise.
+
+**Done 2026-09-04.** `data.feature_cache_key()` hashes pipeline + version,
+dataset, subset name **and its index array**, coords, NaN policy, rows-per-frame,
+split strategy/seed, and the `train.csv` fingerprint; caches moved to
+`features/<pipeline>/<key>/{train,val}_{data,offsets}.npy` with a
+`cache_key.json` sidecar. `modules/scripts/migrate_feature_caches.py` relocated
+**14 groups / 30.3 GB by rename** (dry-run by default, `--apply` to move), all 14
+passing a shape check (offsets ↔ split size, bytes ↔ frames × landmarks ×
+channels). Migrated sidecars are stamped `assigned_by: "migration"`,
+`verified: "shape"` — the key is *asserted* from today's subset definitions,
+because the old layout recorded nothing about the definitions that built it;
+that is exactly the hole this closes going forward. Verified after the move:
+every (subset, coords) resolves to its migrated directory with no rebuild, and a
+subset redefined under the same name — including a same-count index swap, which
+the shape check cannot catch — produces a different key. `subset_tag` survives as
+the *human* handle (registry pointer keys, progress bars) and is documented as no
+longer being the cache identity.
 
 ### 9.3 Off-machine artifact store (Cloudflare R2)
 

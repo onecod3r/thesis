@@ -178,7 +178,8 @@ sign2speech/
     │   ├── paths.py                  # canonical tree constants (absolute, CWD-independent) + lazy dataset resolution + cleanup_temp()
     │   ├── model/                    # unified training stack behind gislr.1.models.training.ipynb
     │   │   ├── architectures.py      # StreamingGRU / StreamingLSTM / BiLSTM / CausalConv1D / Conv1DTransformer + ARCHS registry (single definition, shared with eval)
-    │   │   ├── data.py               # canonical split, per-subset feature caches, in-RAM dataset
+    │   │   ├── data.py               # canonical split, content-addressed feature caches, in-RAM dataset
+│   │   ├── provenance.py         # what actually ran: commit, config hash, feature-cache key, dataset ref, env
     │   │   ├── features.py           # 1st-place input pipeline: NaN-preserving cache, normalization, lag features, augmentation
     │   │   ├── optim.py              # Lookahead, AWP, cosine one-cycle (what the 1st-place recipe needs and torch lacks)
     │   │   ├── train_fp.py           # 1st-place training driver (cosine, AWP, collapse/plateau stops) — same registry/split as train.py
@@ -191,6 +192,7 @@ sign2speech/
     │   ├── scripts/                  # project Python CLIs (run from anywhere — they bootstrap their own imports)
     │   │   ├── eval_gru.py           # canonical per-class eval of any run (all archs, xy/xyz); promotes meta.json to "canonical"
     │   │   ├── build_model_index.py  # flattens all meta.json files into data/models/index.csv + answers filter queries
+│   │   ├── migrate_feature_caches.py # one-shot: flat name-keyed caches → content-addressed dirs (rename, never rebuild)
     │   │   ├── extract_popsign.py    # POPSIGN extraction: pilot benchmark + resumable bulk run (worker pool — cannot run in a notebook)
     │   │   └── tune_confidence.py    # POPSIGN confidence-threshold sweep (same reason)
     │   └── dataset/landmark/
@@ -201,7 +203,10 @@ sign2speech/
     └── data/                         # gitignored EXCEPT the model registry (data/models/)
         ├── raw/                      # extracted-from-source data (POPSIGN landmark npz: raw/popsign/{train,test}/)
         ├── cache/                    # reusable derived artifacts, one subtree per dataset:
-        │   ├── gislr/features/       #   per-subset feature caches (GBs, shared across architecture notebooks)
+        │   ├── gislr/features/<pipeline>/<key>/   #   feature caches, CONTENT-ADDRESSED (GBs, shared across
+        │   │                         #   architectures): <key> hashes pipeline+version, the subset's index
+        │   │                         #   array, coords, NaN policy and the dataset manifest, so a redefined
+        │   │                         #   subset can't silently reuse the old array. cache_key.json per dir
         │   ├── gislr/motion_analysis/, gislr/subset_comparison/   # diagnostic-notebook caches
         │   ├── popsign/dataframes/, popsign/extraction/           # POPSIGN manifests + extraction measurements
         │   └── runs/                 #   run-dir pointer files (auto-resume)
@@ -244,7 +249,7 @@ The Jupyter kernel must use this project's `uv`-managed virtual environment (`.v
 
 1. `src/gislr.0.dataset.motion-energy.ipynb` — *optional diagnostic*: per-video / per-category / global landmark motion-energy analysis. Executed end-to-end; findings in `docs/logs/daily/2026-07-15.md`. (Caches live at `data/cache/gislr/motion_analysis/`; the pre-restructure caches were cleared, so a re-run recomputes them.)
 2. `src/gislr.0.dataset.subset-comparison.ipynb` — *diagnostic*: landmark-subset discriminability comparison across three scopes, scoring the subsets registered in `modules/dataset/landmark/subsets.py`. Findings in `docs/logs/daily/2026-07-16.md`.
-3. `src/gislr.1.models.training.ipynb` — the training stage, **all four architectures in one notebook**: shared feature caches (`data/cache/gislr/features/`, skip-if-exists, built once and reused by every architecture), then one section per architecture (`StreamingGRU`, `StreamingLSTM`, `BiLSTM`, `CausalConv1D`) calling `modules.model.train_from_config`. Hyperparameters come from `src/config/gislr.training.json` (regime **v2-plateau-300**), not from cells. One epoch-seconds registry folder per (architecture, subset), `meta.json` + `assets/history.json` updated every epoch, one progress bar per run. `bilstm` is an **offline-only accuracy reference** (never a deployment candidate); the other three are streaming-viable. Per-class evaluation is handed off to `modules/scripts/eval_gru.py`. **Training only** — no export section.
+3. `src/gislr.1.models.training.ipynb` — the training stage, **all four architectures in one notebook**: shared feature caches (`data/cache/gislr/features/<pipeline>/<key>/`, content-addressed so skip-if-exists is safe, built once and reused by every architecture), then one section per architecture (`StreamingGRU`, `StreamingLSTM`, `BiLSTM`, `CausalConv1D`) calling `modules.model.train_from_config`. Hyperparameters come from `src/config/gislr.training.json` (regime **v2-plateau-300**), not from cells. One epoch-seconds registry folder per (architecture, subset), `meta.json` + `assets/history.json` updated every epoch, one progress bar per run. `bilstm` is an **offline-only accuracy reference** (never a deployment candidate); the other three are streaming-viable. Per-class evaluation is handed off to `modules/scripts/eval_gru.py`. **Training only** — no export section.
 4. `src/gislr.1.models.firstplace.ipynb` — the **1st-place solution recreation** (TODO §4.2), a parallel stage-1 track rather than a step in the main sequence. Builds its own NaN-preserving feature cache, then trains `Conv1DTransformer` under regime `fp-onecycle-300`. Read its §0 before running: it explains why the model is offline-only, why a single run on the canonical split should not be expected to reproduce the ~89% leaderboard figure, and which cell to check for the time estimate. Hands off to the same `eval_gru.py` canonical evaluation.
 5. `src/gislr.2.models.evaluation.ipynb` — **everything after training** (TODO §6): DuckDB leaderboard over all `meta.json` files, canonical-eval backfill, top-5 learning-curve overlay, per-run and aggregate confusion matrices + most-confused pairs, arch-generic TFLite export, and the Kaggle submission queue (untested runs only, 100/day cap). All GISLR evaluation and submission lives here and nowhere else.
 

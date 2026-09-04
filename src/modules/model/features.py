@@ -44,7 +44,14 @@ import pyarrow.parquet as pq
 import torch
 from torch.utils.data import Dataset, Sampler
 
+from modules.model import data as D
 from modules.model.data import FEATURES_DIR, ROWS_PER_FRAME, subset_tag
+
+# Feature-cache identity for THIS pipeline (TODO §9.2). Bump the version when a
+# change here alters the cached bytes; the key moves and nothing stale is reused.
+PIPELINE = "firstplace_v1"
+PIPELINE_VERSION = 1
+NAN_POLICY = "preserve"  # the whole reason this pipeline has its own cache
 
 MAX_LEN = 384  # 1st-place CFG.max_len — a temporal CROP bound, not a subsample
 REF_LANDMARK = 17  # raw holistic row used as the translation reference (a lip
@@ -118,12 +125,21 @@ def load_video_raw(path: Path, rows: np.ndarray, coords: str = "xy") -> np.ndarr
 def build_nan_cache(df, prefix: str, subset, coords: str, data_dir: Path,
                     progress=None) -> tuple[Path, Path]:
     """Flat float32 array + frame offsets, NaNs preserved. Skip-if-exists,
-    atomic writes — same contract as ``data.build_subset_cache``, different file
-    suffix (``_nan_``) so the two caches never collide."""
-    FEATURES_DIR.mkdir(parents=True, exist_ok=True)
-    tag = subset_tag(subset.name, coords)
-    data_path = FEATURES_DIR / f"{prefix}_{tag}_nan_data.npy"
-    off_path = FEATURES_DIR / f"{prefix}_{tag}_nan_offsets.npy"
+    atomic writes — same contract as ``data.build_subset_cache``.
+
+    The two pipelines can no longer collide by construction rather than by
+    filename convention: this one addresses ``features/firstplace_v1/<key>/``
+    and its key carries ``nan_policy="preserve"`` (TODO §9.2).
+    """
+    inputs = D.cache_inputs(subset, coords, data_dir,
+                            pipeline=PIPELINE, pipeline_version=PIPELINE_VERSION,
+                            nan_policy=NAN_POLICY)
+    root = FEATURES_DIR / PIPELINE / D.feature_cache_key(
+        subset, coords, data_dir, pipeline=PIPELINE,
+        pipeline_version=PIPELINE_VERSION, nan_policy=NAN_POLICY)
+    root.mkdir(parents=True, exist_ok=True)
+    data_path = root / f"{prefix}_data.npy"
+    off_path = root / f"{prefix}_offsets.npy"
     if data_path.exists() and off_path.exists():
         return data_path, off_path
 
@@ -145,7 +161,9 @@ def build_nan_cache(df, prefix: str, subset, coords: str, data_dir: Path,
         tmp = target.with_suffix(".tmp.npy")
         np.save(tmp, payload)
         os.replace(tmp, target)
-    print(f"{prefix}/{tag} (nan-preserving): cached {len(df)} videos, "
+    D.write_cache_sidecar(root, inputs)
+    print(f"{prefix}/{subset_tag(subset.name, coords)} [{root.name}] "
+          f"(nan-preserving): cached {len(df)} videos, "
           f"{flat.nbytes / 1e9:.2f} GB ({time.time() - t0:.0f}s)")
     return data_path, off_path
 

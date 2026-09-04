@@ -275,6 +275,7 @@ def train_run(
         config_path=config_path,
         config_obj=config_obj,
         feature_pipeline=P.PIPELINE_BASE,
+        feature_cache_key=D.feature_cache_key(subset, coords, data_dir),
         n_videos=len(train_split) + len(val_split),
     )
     P.warn_if_dirty(prov, label=f"{dataset}/{arch}/{tag}")
