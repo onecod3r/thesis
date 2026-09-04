@@ -1,0 +1,93 @@
+{
+  "schema_version": 4,
+  "run_id": 1787495142,
+  "created": "2026-08-23T20:25:42",
+  "dataset": "gislr",
+  "architecture": "conv1d_transformer",
+  "model_name": "Conv1DTransformer",
+  "streaming": false,
+  "subset": "FP_118",
+  "coords": "xy",
+  "n_landmarks": 118,
+  "feature_dim": 708,
+  "n_classes": 250,
+  "n_params": 1830040,
+  "split": {
+    "strategy": "stratified 90/10",
+    "random_state": 42,
+    "n_val": 9448
+  },
+  "training": {
+    "regime": "fp-onecycle-300",
+    "source": "gislr.1.models.firstplace.ipynb",
+    "epoch_cap": 300,
+    "epochs_trained": 18,
+    "best_epoch": 15,
+    "early_stopped": true,
+    "stop_reason": "collapse",
+    "finished": true,
+    "wall_time_min": 5.5
+  },
+  "hyperparameters": {
+    "batch_size": 512,
+    "lr": 0.004,
+    "hidden_size": 192,
+    "num_layers": 2,
+    "dropout": 0.2,
+    "kernel_size": 17,
+    "num_heads": 4,
+    "expand": 2,
+    "late_dropout": 0.8,
+    "late_dropout_start_epoch": 15,
+    "weight_decay": 0.1,
+    "epochs": 300,
+    "warmup_epochs": 0,
+    "lr_min_ratio": 0.002,
+    "grad_clip": 1.0,
+    "label_smoothing": 0.1,
+    "awp_delta": 0.2,
+    "awp_start_epoch": 15,
+    "lookahead_k": 5,
+    "lookahead_alpha": 0.5,
+    "num_workers": 8,
+    "es_patience": 30,
+    "es_min_delta": 0.001,
+    "collapse_ratio": 0.5,
+    "collapse_patience": 3,
+    "stop_after_epoch": 25,
+    "seed": 42,
+    "max_seq_len": 384,
+    "loss": "CE + label smoothing 0.1",
+    "precision": "AMP",
+    "features": "firstplace(norm+lag1+lag2)",
+    "diff_mode": "forward",
+    "augment": true
+  },
+  "metrics": {
+    "train_val_acc": 0.734,
+    "eval_status": "pending",
+    "overall_accuracy": null,
+    "macro_accuracy": null,
+    "median_class_accuracy": null,
+    "n_classes_below_50pct": null
+  },
+  "checkpoints": {
+    "best": "best.pt",
+    "last": "last.pt"
+  },
+  "assets": {
+    "landmarks": "assets/landmarks.npy",
+    "history": "assets/history.json"
+  },
+  "submission": {
+    "tested": false,
+    "platform": null,
+    "submitted_at": null,
+    "public_score": null,
+    "private_score": null,
+    "reference": null,
+    "notes": ""
+  },
+  "notes": "FP_118 \u00b7 1st-place port (TODO \u00a74.2) \u00b7 regime fp-onecycle-300. ABLATION C_control (no change) \u2014 \u00a75b, NOT a leaderboard run",
+  "provenance": null
+}
