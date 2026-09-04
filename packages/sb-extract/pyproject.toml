@@ -1,0 +1,30 @@
+[project]
+    name = "sb-extract"
+    version = "0.1.0"
+    description = "Stage 1: video -> MediaPipe Holistic landmark tensors (resumable, resource-capped, CPU worker pool)"
+    requires-python = ">=3.12"
+    dependencies = [
+        "sb-core",
+        "mediapipe>=0.10.35",
+        "opencv-python>=5.0.0.93",
+        "numpy>=2.5.1",
+        "pandas>=3.0.3",
+        "psutil>=6.0.0",
+        "tqdm>=4.67.0",
+        "matplotlib>=3.11.0",
+    ]
+
+[build-system]
+    requires      = ["hatchling"]
+    build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+    # PEP 420 namespace: every package ships part of the `sb` namespace, and no
+    # `sb/__init__.py` exists anywhere -- that is what lets them coexist.
+    packages = ["src/sb"]
+
+[tool.uv.sources]
+    sb-core = { workspace = true }
+
+[project.scripts]
+    sb-extract = "sb.extract.cli:main"

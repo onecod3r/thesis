@@ -8,18 +8,19 @@ wheels/
 .venv
 .env
 
-# data tree (src/data/) — raw datasets live in kagglehub's cache or on the
-# POPSIGN_LANDMARKS_DRIVE, derived caches in src/data/cache/, scratch in
-# src/data/temp/ (deleted after use). None of it enters the repo.
-# The one committed subtree is the model registry (src/data/models/):
-# index.csv + per-run meta.json + assets/ are tracked, weights (*.pt) are not.
-src/data/*
-!src/data/models/
-src/data/models/**/*.pt
-src/data/models/*/export/
+# The data tree is NEVER committed — no exceptions, no negation rules.
+# Raw datasets live in kagglehub's cache or on the POPSIGN_LANDMARKS_DRIVE,
+# derived caches in data/cache/, scratch in data/temp/ (deleted after use).
+data/
 
-# model-export artifacts (TFLite chain: ONNX → TF SavedModel → TFLite)
+# The registry IS committed — run records, the index and per-run assets — but
+# never the weights. It sits at the top level precisely so that committed
+# artifacts do not live inside an ignored tree.
+registry/**/*.pt
+registry/**/export/
+
+# model-export artifacts (TFLite chain: Keras rebuild → TFLite)
 *.onnx
 *.tflite
-src/saved_model_dir/
-src/final_saved_model/
+saved_model_dir/
+final_saved_model/

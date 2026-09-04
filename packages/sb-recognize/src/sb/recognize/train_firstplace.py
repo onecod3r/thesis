@@ -1,0 +1,539 @@
+"""Training driver for the 1st-place port (TODO §4.2).
+
+Why this is not ``sb.recognize.train``: that driver implements regime
+``v2-plateau-300`` — ReduceLROnPlateau + early stopping on a val-accuracy
+plateau, one fixed feature tensor per subset, no augmentation. The 1st-place
+recipe is a different regime in every one of those respects (fixed-length cosine
+one-cycle, no early stop, per-sample augmentation, AWP, Lookahead), and folding
+both into one function would mean a driver full of branches where the existing
+one is a straight line. Everything downstream is shared unchanged: the same
+canonical split, the same registry layout, the same ``meta.json`` schema, so a
+run from here lands on the same leaderboard as every other run.
+
+    from sb.recognize.train_firstplace import train_firstplace
+    run_dir = train_firstplace()          # config-driven, one run per subset
+
+Faithfulness to the reference, and the three places this deviates:
+
+1. **Padding to the batch max**, not to a fixed 384 frames (``features.collate_fn``)
+   — numerically identical given masking, ~10x less wasted compute.
+2. **Masked BatchNorm** (``architectures.MaskedBatchNorm1d``) — the reference
+   lets padded frames into the batch statistics; with variable-length batches
+   that would make normalization depend on how a batch was bucketed.
+3. **Best checkpoint by val accuracy**, not val loss — accuracy is the registry's
+   comparable metric (`metrics.train_val_acc`) and what the canonical eval
+   reproduces. Val loss is still recorded in ``assets/history.json``.
+4. **The run can stop early**, which the reference's fixed-length cosine never
+   does — a val-accuracy plateau (``es_patience``) or a collapse
+   (``collapse_ratio``/``collapse_patience``). See below.
+5. **BatchNorm running statistics are frozen during AWP's adversarial forward**
+   (``optim.frozen_bn_stats``) — the reference's Keras AWP has the same flaw,
+   but it is a bug either way and it is the one that ended run 1787483814.
+
+Deviations 1-2 should if anything help; 3 only changes which epoch is kept;
+4-5 exist because of what run 1787483814 did.
+
+**Why stopping conditions exist in a fixed-length regime** (run 1787483814,
+2026-08-23): at the exact step AWP and LateDropout switch on (epoch 15), the
+run diverged — train loss went 2.01 -> 5.79 and pinned at ln(250)=5.52,
+val accuracy 0.746 -> 0.017, and it never recovered. 285 of 300 epochs were
+spent training a dead model. Two guards now catch that:
+
+- ``es_patience`` / ``es_min_delta`` — the ordinary plateau stop, same
+  semantics as ``sb.recognize.train``'s ``v2-plateau-300``. Patience is
+  deliberately generous here because a one-cycle cosine makes most of its
+  late gains while the LR anneals.
+- ``collapse_ratio`` / ``collapse_patience`` — the fast guard. If val accuracy
+  sits below ``collapse_ratio * best`` for ``collapse_patience`` consecutive
+  epochs, or the training loss goes non-finite, the run stops immediately
+  rather than burning the remaining epochs. This is what turns the failure
+  above into a ~3-epoch loss instead of a 2-hour one.
+
+Both are recorded: ``meta.json`` gets ``training.early_stopped`` and
+``training.stop_reason`` ("completed" / "plateau" / "collapse" / "nan").
+
+``stop_after_epoch`` is the third, and it exists for ablations: it ends the run
+after N epochs **without changing the cosine schedule**, which is still laid out
+over the full ``epochs``. Setting ``epochs`` to 20 instead would compress the
+one-cycle so that epoch 15 sits at 15% of the peak LR — a different experiment
+from the one you meant to run. 0 disables it.
+"""
+
+import json
+import time
+from datetime import datetime
+from pathlib import Path
+
+import numpy as np
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+from tqdm.auto import tqdm
+
+from sb.core.subsets import get_subset
+from sb.recognize import data as D
+from sb.recognize.features import firstplace_v1 as F
+from sb.mlops import run as P
+from sb.mlops import registry as R
+from sb.recognize.architectures import ARCHS, build_model
+from sb.recognize.optim import AWP, Lookahead, cosine_one_cycle, frozen_bn_stats
+from sb.recognize.sources import get_source
+from sb.recognize.train import _atomic_write_json, atomic_torch_save
+from sb.core.paths import EXPERIMENTS_DIR
+
+DEFAULT_CONFIG = EXPERIMENTS_DIR / "recognition" / "configs" / "gislr.firstplace.json"
+
+REQUIRED_HYP_KEYS = (
+    "batch_size", "lr", "hidden_size", "num_layers", "dropout", "kernel_size",
+    "num_heads", "expand", "late_dropout", "late_dropout_start_epoch",
+    "weight_decay", "epochs", "warmup_epochs", "lr_min_ratio", "grad_clip",
+    "label_smoothing", "awp_delta", "awp_start_epoch", "lookahead_k",
+    "lookahead_alpha", "num_workers", "es_patience", "es_min_delta",
+    "collapse_ratio", "collapse_patience", "stop_after_epoch",
+)
+
+
+def load_fp_config(path: Path | str = DEFAULT_CONFIG) -> dict:
+    """Read + validate the 1st-place training config.
+
+    Same principle as ``sb.recognize.config``: no notebook cell owns a
+    hyperparameter, and a missing/typo'd key fails here rather than an hour into
+    a run.
+    """
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(f"1st-place training config not found: {path}")
+    raw = json.loads(path.read_text(encoding="utf-8"))
+
+    for key in ("schema_version", "dataset", "architecture", "regime", "source",
+                "coords", "subsets", "features", "hyp"):
+        assert key in raw, f"{path}: missing top-level key {key!r}"
+    assert raw["schema_version"] == 1, f"{path}: unsupported schema_version"
+    assert raw["architecture"] in ARCHS, f"{path}: unknown architecture"
+    assert raw["coords"] == "xy", (
+        f"{path}: the 1st-place pipeline is xy-only (its Preprocess drops z "
+        "after normalizing); coords must be 'xy'")
+    assert raw["subsets"], f"{path}: `subsets` is empty"
+
+    missing = [k for k in REQUIRED_HYP_KEYS if k not in raw["hyp"]]
+    assert not missing, f"{path}: hyp block missing {missing}"
+    assert raw["features"]["diff_mode"] in ("forward", "backward"), (
+        f"{path}: features.diff_mode must be 'forward' or 'backward'")
+    # where this config came from; provenance records it and hashes the public
+    # values, so a cfg edited in a notebook cell (the §5b ablation arms) hashes
+    # differently from the file it started as
+    raw["_config_path"] = str(path)
+    return raw
+
+
+def _build_meta(*, run_dir, cfg, subset, feature_dim, n_params, n_classes, hyp,
+                provenance, history, best_val_acc, epochs_done, finished,
+                wall_time_min, notes, early_stopped=False, stop_reason=None):
+    arch = cfg["architecture"]
+    spec = ARCHS[arch]
+    best_epoch = (int(np.argmax(history["val_acc"])) + 1) if history["val_acc"] else None
+    return {
+        "schema_version": R.SCHEMA_VERSION,
+        "run_id": int(run_dir.name),
+        "created": datetime.fromtimestamp(int(run_dir.name)).isoformat(),
+        "dataset": cfg["dataset"],
+        "architecture": arch,
+        "model_name": spec.model_name,
+        "streaming": spec.streaming,
+        "subset": subset.name,
+        "coords": cfg["coords"],
+        "n_landmarks": len(subset),
+        "feature_dim": int(feature_dim),
+        "n_classes": int(n_classes),
+        "n_params": int(n_params),
+        "split": {
+            "strategy": "stratified 90/10",
+            "random_state": D.SEED,
+            "n_val": D.N_VAL,
+        },
+        "training": {
+            "regime": cfg["regime"],
+            "source": cfg["source"],
+            "epoch_cap": hyp["epochs"],
+            "epochs_trained": epochs_done,
+            "best_epoch": best_epoch,
+            "early_stopped": early_stopped,
+            "stop_reason": stop_reason,
+            "finished": finished,
+            "wall_time_min": round(wall_time_min, 1),
+        },
+        "hyperparameters": {
+            **hyp,
+            "seed": D.SEED,
+            "max_seq_len": cfg["features"]["max_len"],
+            "loss": f"CE + label smoothing {hyp['label_smoothing']}",
+            "precision": "AMP",
+            # what makes this run's INPUT different from every other registry
+            # run — without these three the comparison is unattributable
+            "features": "firstplace(norm+lag1+lag2)",
+            "diff_mode": cfg["features"]["diff_mode"],
+            "augment": cfg["features"]["augment"],
+        },
+        # what state of the world produced this run (schema v4, TODO §9.1)
+        "provenance": provenance,
+        "metrics": {
+            "train_val_acc": round(float(best_val_acc), 4),
+            "eval_status": "pending",
+            "overall_accuracy": None,
+            "macro_accuracy": None,
+            "median_class_accuracy": None,
+            "n_classes_below_50pct": None,
+        },
+        "checkpoints": {"best": R.CKPT_BEST, "last": R.CKPT_LAST},
+        "assets": {
+            "landmarks": "assets/landmarks.npy",
+            "history": "assets/history.json",
+        },
+        "submission": dict(R.SUBMISSION_DEFAULT),
+        "notes": notes,
+    }
+
+
+def _is_finished(last_ckpt: Path) -> bool:
+    ck = torch.load(last_ckpt, map_location="cpu", weights_only=False)
+    return ck.get("finished", ck["epoch"] + 1 >= ck["hyp"]["epochs"])
+
+
+def _evaluate(model, loader, criterion, device, bar, phase):
+    model.eval()
+    total_loss, correct, total = 0.0, 0, 0
+    n_batches = len(loader)
+    with torch.no_grad():
+        for b, (feats, lengths, labels) in enumerate(loader):
+            feats = feats.to(device, non_blocking=True)
+            labels = labels.to(device, non_blocking=True)
+            with torch.amp.autocast("cuda"):
+                logits = model(feats, lengths)
+                loss = criterion(logits, labels)
+            total_loss += loss.item() * labels.size(0)
+            correct += (logits.argmax(-1) == labels).sum().item()
+            total += labels.size(0)
+            if b % 10 == 0 or b == n_batches - 1:
+                bar.set_postfix_str(
+                    f"{phase} {b + 1}/{n_batches} · loss {total_loss / total:.4f} "
+                    f"· acc {correct / total:.4f}", refresh=True)
+    return total_loss / total, correct / total
+
+
+def train_firstplace(config: dict | None = None, subsets: list[str] | None = None,
+                     data_dir: Path | None = None) -> dict[str, Path]:
+    """Train the 1st-place port for every configured subset. Returns
+    {subset_name: run_dir}. Reads the config from disk on every call, so the
+    notebook cell can be re-run alone after editing it."""
+    cfg = config or load_fp_config()
+    names = subsets if subsets is not None else cfg["subsets"]
+    hyp = dict(cfg["hyp"])
+
+    print(f"{cfg['architecture']} · regime {cfg['regime']} · coords {cfg['coords']} "
+          f"· subsets {names}")
+    print(f"  features: max_len={cfg['features']['max_len']} "
+          f"diff_mode={cfg['features']['diff_mode']} "
+          f"augment={cfg['features']['augment']}")
+    print(f"  AWP delta={hyp['awp_delta']} from epoch {hyp['awp_start_epoch']} "
+          f"· Lookahead k={hyp['lookahead_k']} · label smoothing "
+          f"{hyp['label_smoothing']} · grad_clip {hyp['grad_clip'] or 'off'}")
+    print(f"  stops: plateau after {hyp['es_patience']} epochs without a "
+          f"+{hyp['es_min_delta']} val-acc gain · collapse after "
+          f"{hyp['collapse_patience']} epochs below "
+          f"{hyp['collapse_ratio']:.0%} of best"
+          + (f" · hard stop at epoch {hyp['stop_after_epoch']} "
+             f"(schedule still over {hyp['epochs']})"
+             if hyp.get("stop_after_epoch") else ""))
+
+    return {name: train_firstplace_run(cfg, name, hyp, data_dir=data_dir)
+            for name in names}
+
+
+def train_firstplace_run(cfg: dict, subset_name: str, hyp: dict,
+                         data_dir: Path | None = None) -> Path:
+    """One registry run of the 1st-place recipe. Auto-resumes an interrupted run
+    in place; never reuses a finished one."""
+    assert torch.cuda.is_available(), (
+        "training requires the CUDA build of torch (uv sync)")
+    device = torch.device("cuda")
+    torch.backends.cudnn.benchmark = True
+
+    # the dataset seam (TODO §9.5): nothing below names GISLR
+    arch = cfg["architecture"]
+    coords = cfg["coords"]
+    fcfg = cfg["features"]
+    dataset = cfg["dataset"]
+    ds = get_source(dataset)
+    data_dir = data_dir or ds.resolve_dir()
+    sign2idx = ds.label_map(data_dir)
+    subset = get_subset(subset_name)
+    tag = D.subset_tag(subset_name, coords)
+    feature_dim = len(subset) * F.CHANNELS_PER_LANDMARK
+
+    train_split, val_split = ds.canonical_split(data_dir, sign2idx)
+    tr_data, tr_off = F.build_cache(train_split, "train", subset, coords,
+                                        data_dir, dataset=dataset)
+    va_data, va_off = F.build_cache(val_split, "val", subset, coords,
+                                        data_dir, dataset=dataset)
+
+    # Captured per driver invocation, so a resumed run records the state of its
+    # most recent invocation — the one that produced its latest epochs.
+    prov = P.build(
+        dataset=dataset,
+        data_dir=data_dir,
+        config_path=cfg.get("_config_path"),
+        config_obj=cfg,
+        feature_pipeline=F.PIPELINE,
+        feature_cache_key=F.cache_key(subset, coords, data_dir, dataset),
+        kaggle_ref=ds.kaggle_ref,
+        manifest=ds.manifest,
+        n_videos=len(train_split) + len(val_split),
+    )
+    P.warn_if_dirty(prov, label=f"{dataset}/{arch}/{tag}")
+
+    torch.manual_seed(D.SEED)
+    np.random.seed(D.SEED)
+    n_workers = int(hyp["num_workers"])
+    train_ds = F.FirstPlaceDataset(
+        train_split, tr_data, tr_off, subset, augment_data=fcfg["augment"],
+        max_len=fcfg["max_len"], diff_mode=fcfg["diff_mode"], seed=D.SEED,
+        mmap=n_workers > 0)
+    val_ds = F.FirstPlaceDataset(
+        val_split, va_data, va_off, subset, augment_data=False,
+        max_len=fcfg["max_len"], diff_mode=fcfg["diff_mode"], seed=D.SEED,
+        mmap=n_workers > 0)
+    # length-bucketed batching: GISLR lengths are heavily skewed (median 22,
+    # p99 219), so randomly composed batches pad to the tail and waste ~6x the
+    # compute. See features.LengthBucketedBatchSampler.
+    train_sampler = F.LengthBucketedBatchSampler(
+        F.cached_lengths(tr_off), hyp["batch_size"], shuffle=True,
+        drop_last=True, seed=D.SEED)
+    val_sampler = F.LengthBucketedBatchSampler(
+        F.cached_lengths(va_off), hyp["batch_size"], shuffle=False,
+        drop_last=False, seed=D.SEED)
+    # Workers overlap the numpy augmentation with GPU compute, and that is the
+    # single biggest win here: measured 640 ms/step at num_workers=0 vs 101 ms
+    # at 8 (batch 512), i.e. the dataloader was ~85% of the step. Gains flatten
+    # past 8, so the config's default is the knee rather than the core count.
+    # Windows spawn is the fragile path in this repo, and it works here for two
+    # specific reasons: the dataset class lives in an importable module rather
+    # than __main__ (as with the POPSIGN pool, TODO 2.3), and FirstPlaceDataset
+    # opens its ~3 GB cache lazily per process — holding it as an attribute
+    # makes spawn pickle the array to every worker and fail with OSError 22.
+    train_loader = DataLoader(
+        train_ds, batch_sampler=train_sampler, collate_fn=F.collate_fn,
+        num_workers=n_workers, persistent_workers=n_workers > 0,
+        prefetch_factor=2 if n_workers > 0 else None,
+        # pin_memory stays False: a padded batch at 512 is ~557 MB, and pinning
+        # it across workers exhausts page-locked host memory (the pin thread
+        # then raises "CUDA error: out of memory").
+        pin_memory=False)
+    val_loader = DataLoader(
+        val_ds, batch_sampler=val_sampler, collate_fn=F.collate_fn,
+        num_workers=n_workers, persistent_workers=n_workers > 0,
+        prefetch_factor=2 if n_workers > 0 else None,
+        # pin_memory stays False: a padded batch at 512 is ~557 MB, and pinning
+        # it across workers exhausts page-locked host memory (the pin thread
+        # then raises "CUDA error: out of memory").
+        pin_memory=False)
+
+    steps_per_epoch = len(train_loader)
+    total_steps = steps_per_epoch * hyp["epochs"]
+    # LateDropout and AWP both switch on partway through training; the config
+    # says "epoch", the implementations count optimizer steps
+    build_hyp = {**hyp,
+                 "late_dropout_start_step": hyp["late_dropout_start_epoch"] * steps_per_epoch}
+    model = build_model(arch, feature_dim, len(sign2idx), build_hyp).to(device)
+    n_params = sum(p.numel() for p in model.parameters())
+
+    optimizer = torch.optim.RAdam(model.parameters(), lr=hyp["lr"],
+                                  weight_decay=hyp["weight_decay"],
+                                  decoupled_weight_decay=True)
+    lookahead = Lookahead(optimizer, k=hyp["lookahead_k"],
+                          alpha=hyp["lookahead_alpha"])
+    scheduler = cosine_one_cycle(optimizer, total_steps,
+                                 warmup_steps=hyp["warmup_epochs"] * steps_per_epoch,
+                                 lr_min_ratio=hyp["lr_min_ratio"])
+    awp = AWP(model, delta=hyp["awp_delta"],
+              start_step=hyp["awp_start_epoch"] * steps_per_epoch)
+    criterion = nn.CrossEntropyLoss(label_smoothing=hyp["label_smoothing"])
+    scaler = torch.amp.GradScaler("cuda")
+
+    run_dir = R.resolve_run_dir(f"{cfg['dataset']}_{arch}_{tag}", _is_finished)
+    np.save(run_dir / "assets" / "landmarks.npy", subset.array)
+
+    last, best = run_dir / R.CKPT_LAST, run_dir / R.CKPT_BEST
+    start_epoch, best_val_acc, wall_min, global_step = 0, 0.0, 0.0, 0
+    epochs_since_gain, collapse_epochs = 0, 0
+    history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": [], "lr": []}
+    if last.exists():
+        ck = torch.load(last, map_location=device, weights_only=False)
+        model.load_state_dict(ck["model_state"])
+        optimizer.load_state_dict(ck["optimizer_state"])
+        lookahead.load_state_dict(ck["lookahead_state"])
+        scheduler.load_state_dict(ck["scheduler_state"])
+        start_epoch = ck["epoch"] + 1
+        best_val_acc, history = ck["best_val_acc"], ck["history"]
+        wall_min = ck.get("wall_time_min", 0.0)
+        global_step = ck.get("global_step", start_epoch * steps_per_epoch)
+        epochs_since_gain = ck.get("epochs_since_gain", 0)
+        collapse_epochs = ck.get("collapse_epochs", 0)
+
+    meta_kw = dict(run_dir=run_dir, cfg=cfg, subset=subset, feature_dim=feature_dim,
+                   n_params=n_params, n_classes=len(sign2idx), hyp=hyp,
+                   provenance=prov,
+                   notes=(f"{subset_name} · 1st-place port (TODO §4.2) · "
+                          f"regime {cfg['regime']}."
+                          + (f" {cfg['notes_suffix']}" if cfg.get("notes_suffix") else "")))
+
+    bar = tqdm(total=hyp["epochs"], initial=start_epoch, dynamic_ncols=True,
+               desc=f"{cfg['dataset']}/{arch}/{tag} · run {run_dir.name}")
+    bar.write(f"{tag}: {n_params / 1e6:.2f}M params · feature_dim {feature_dim} "
+              f"· {steps_per_epoch} steps/epoch")
+    if start_epoch:
+        bar.write(f"{tag}: resumed at epoch {start_epoch}, best {best_val_acc:.4f}, "
+                  f"plateau {epochs_since_gain}/{hyp['es_patience']}")
+
+    t0 = time.time()
+    for epoch in range(start_epoch, hyp["epochs"]):
+        train_ds.set_epoch(epoch)       # fresh, reproducible augmentation
+        train_sampler.set_epoch(epoch)  # ...and a fresh bucketing/shuffle
+        model.train()
+        total_loss, correct, total, n_awp = 0.0, 0, 0, 0
+        n_batches = len(train_loader)
+        for b, (feats, lengths, labels) in enumerate(train_loader):
+            feats = feats.to(device, non_blocking=True)
+            labels = labels.to(device, non_blocking=True)
+
+            optimizer.zero_grad(set_to_none=True)
+            with torch.amp.autocast("cuda"):
+                logits = model(feats, lengths)
+                loss = criterion(logits, labels)
+            scaler.scale(loss).backward()
+
+            # AWP: re-take the gradient at an adversarially perturbed point.
+            # Safe with the scaler because the perturbation is scale-invariant
+            # (sb.recognize.optim.AWP), so no second unscale_ is needed.
+            if awp.active(global_step) and awp.perturb():
+                optimizer.zero_grad(set_to_none=True)
+                # the perturbed forward exists only for its gradient — letting
+                # it move the BatchNorm running stats is what killed run
+                # 1787483814 (optim.frozen_bn_stats)
+                with frozen_bn_stats(model), torch.amp.autocast("cuda"):
+                    adv_loss = criterion(model(feats, lengths), labels)
+                scaler.scale(adv_loss).backward()
+                awp.restore()
+                n_awp += 1
+
+            scaler.unscale_(optimizer)
+            if hyp["grad_clip"]:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), hyp["grad_clip"])
+            scaler.step(optimizer)
+            scaler.update()
+            lookahead.sync()  # slow-weight pull, every k completed steps
+            scheduler.step()  # per-batch cosine, as in the reference
+            global_step += 1
+
+            total_loss += loss.item() * labels.size(0)
+            correct += (logits.argmax(-1) == labels).sum().item()
+            total += labels.size(0)
+            if b % 10 == 0 or b == n_batches - 1:
+                bar.set_postfix_str(
+                    f"ep{epoch + 1} train {b + 1}/{n_batches} · "
+                    f"loss {total_loss / total:.4f} · acc {correct / total:.4f}"
+                    + (f" · awp {n_awp}" if n_awp else ""), refresh=True)
+        tr_loss, tr_acc = total_loss / total, correct / total
+
+        val_loss, val_acc = _evaluate(model, val_loader, criterion, device, bar,
+                                      f"ep{epoch + 1} val")
+        history["train_loss"].append(tr_loss)
+        history["train_acc"].append(tr_acc)
+        history["val_loss"].append(val_loss)
+        history["val_acc"].append(val_acc)
+        history["lr"].append(optimizer.param_groups[0]["lr"])
+        is_best = val_acc > best_val_acc
+        # plateau: only a gain > es_min_delta resets the counter (is_best still
+        # saves the checkpoint on ANY improvement)
+        epochs_since_gain = (0 if val_acc > best_val_acc + hyp["es_min_delta"]
+                             else epochs_since_gain + 1)
+        best_val_acc = max(best_val_acc, val_acc)
+        # collapse: val acc far below what this run already reached, for several
+        # epochs running — a diverged run, not a plateau
+        collapsed = (best_val_acc > 0
+                     and val_acc < hyp["collapse_ratio"] * best_val_acc)
+        collapse_epochs = collapse_epochs + 1 if collapsed else 0
+        stop_reason = None
+        if not np.isfinite(tr_loss) or not np.isfinite(val_loss):
+            stop_reason = "nan"
+        elif collapse_epochs >= hyp["collapse_patience"]:
+            stop_reason = "collapse"
+        elif epochs_since_gain >= hyp["es_patience"]:
+            stop_reason = "plateau"
+        elif hyp.get("stop_after_epoch") and epoch + 1 >= hyp["stop_after_epoch"]:
+            stop_reason = "stop_after_epoch"
+        early_stop = stop_reason is not None
+        finished = early_stop or (epoch + 1 >= hyp["epochs"])
+        wall_now = wall_min + (time.time() - t0) / 60
+
+        state = {
+            "epoch": epoch,
+            "model_state": model.state_dict(),
+            "optimizer_state": optimizer.state_dict(),
+            "lookahead_state": lookahead.state_dict(),
+            "scheduler_state": scheduler.state_dict(),
+            "best_val_acc": best_val_acc,
+            "history": history,
+            "sign2idx": sign2idx,
+            "hyp": {**build_hyp, "seed": D.SEED,
+                    "max_seq_len": fcfg["max_len"]},
+            "feature_dim": feature_dim,
+            "landmarks": subset.array.tolist(),
+            "subset_name": subset_name,
+            "coords": coords,
+            "arch": arch,
+            "training_regime": cfg["regime"],
+            # tells modules/scripts/evaluate.py to score this run through the
+            # 1st-place preprocessing rather than the default one
+            "features": "firstplace",
+            "diff_mode": fcfg["diff_mode"],
+            "finished": finished,
+            "wall_time_min": wall_now,
+            "global_step": global_step,
+            "epochs_since_gain": epochs_since_gain,
+            "collapse_epochs": collapse_epochs,
+        }
+        atomic_torch_save(state, last)
+        if is_best:
+            atomic_torch_save(state, best)
+        _atomic_write_json(run_dir / "assets" / "history.json", history)
+        R.write_meta(run_dir, _build_meta(
+            **meta_kw, history=history, best_val_acc=best_val_acc,
+            epochs_done=epoch + 1, finished=finished, wall_time_min=wall_now,
+            early_stopped=early_stop,
+            stop_reason=stop_reason or ("completed" if finished else None)))
+
+        bar.set_postfix_str(
+            f"tr {tr_loss:.3f}/{tr_acc:.4f} · val {val_loss:.3f}/{val_acc:.4f} "
+            f"· best {best_val_acc:.4f}{' *' if is_best else ''} "
+            f"· lr {history['lr'][-1]:.2e} "
+            f"· plateau {epochs_since_gain}/{hyp['es_patience']}"
+            + (f" · collapse {collapse_epochs}/{hyp['collapse_patience']}"
+               if collapse_epochs else ""))
+        bar.update(1)
+        if early_stop:
+            reasons = {
+                "nan": "loss went non-finite",
+                "collapse": (f"val acc below {hyp['collapse_ratio']:.0%} of best "
+                             f"({best_val_acc:.4f}) for {hyp['collapse_patience']} "
+                             f"epochs — the run diverged, see history.json"),
+                "plateau": (f"no val-acc gain > {hyp['es_min_delta']} for "
+                            f"{hyp['es_patience']} epochs"),
+                "stop_after_epoch": (f"configured hard stop "
+                                     f"(stop_after_epoch={hyp['stop_after_epoch']})"),
+            }
+            bar.write(f"{tag}: STOPPED at epoch {epoch + 1} ({stop_reason}) — "
+                      f"{reasons[stop_reason]}")
+            break
+    bar.close()
+    print(f"{tag}: DONE best_val_acc={best_val_acc:.4f} run_dir={run_dir}")
+    return run_dir

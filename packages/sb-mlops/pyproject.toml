@@ -1,0 +1,29 @@
+[project]
+    name = "sb-mlops"
+    version = "0.1.0"
+    description = "Run records, the model registry, provenance capture, the queryable index, artifact sync and promotion"
+    requires-python = ">=3.12"
+    dependencies = [
+        "sb-core",
+        "numpy>=2.5.1",
+        "pandas>=3.0.3",
+        "duckdb>=1.5.4",
+    ]
+
+[build-system]
+    requires      = ["hatchling"]
+    build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+    # PEP 420 namespace: every package ships part of the `sb` namespace, and no
+    # `sb/__init__.py` exists anywhere -- that is what lets them coexist.
+    packages = ["src/sb"]
+
+[tool.uv.sources]
+    sb-core = { workspace = true }
+
+[project.scripts]
+    sb-index   = "sb.mlops.index:main"
+    sb-sync    = "sb.mlops.artifacts:main"
+    sb-docs    = "sb.mlops.docs:main"
+    sb-promote = "sb.mlops.promote:main"
