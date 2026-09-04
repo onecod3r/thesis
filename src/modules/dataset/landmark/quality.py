@@ -33,16 +33,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-# holistic row blocks (see extraction.GROUP_LAYOUT)
-GROUPS: dict[str, slice] = {
-    "face": slice(0, 468),
-    "left_hand": slice(468, 489),
-    "pose": slice(489, 522),
-    "right_hand": slice(522, 543),
-}
+from modules.dataset.landmark import spec
+
+# holistic row blocks — one definition, in the tensor spec. Re-exported here
+# (and imported from here by overlay.py) so existing callers are unchanged.
+GROUPS: dict[str, slice] = spec.GROUP_SLICES
 
 # pose rows are offset by 489; MediaPipe pose indices 11/13 = left shoulder/elbow
-POSE_OFFSET = 489
+POSE_OFFSET = spec.POSE_OFFSET
 LEFT_SHOULDER, LEFT_ELBOW = POSE_OFFSET + 11, POSE_OFFSET + 13
 RIGHT_SHOULDER, RIGHT_ELBOW = POSE_OFFSET + 12, POSE_OFFSET + 14
 
@@ -58,9 +56,16 @@ DEFAULT_WEIGHTS: dict[str, float] = {
 
 
 def load_landmarks(npz_path: Path) -> np.ndarray:
-    """(T, 543, 3) float32 with NaN preserved — NaN *is* the signal here."""
+    """(T, 543, 3) float32 with NaN preserved — NaN *is* the signal here.
+
+    Spec-checked on the way in (TODO §9.4): a file whose row layout drifted
+    would otherwise be scored as if the subset indices still applied to it.
+    ``dtype=None`` because widening float16 -> float32 is the point of this
+    loader.
+    """
     with np.load(npz_path) as d:
-        return d["landmarks"].astype(np.float32)
+        arr = d["landmarks"].astype(np.float32)
+    return spec.validate_tensor(arr, dtype=None, where=Path(npz_path).name)
 
 
 def _present(arr: np.ndarray, block: slice) -> np.ndarray:

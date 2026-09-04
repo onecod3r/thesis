@@ -26,8 +26,11 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-N_LANDMARKS = 543  # holistic rows per frame (ROWS_PER_FRAME)
-POSE_OFFSET = 489  # holistic row of pose landmark 0
+from modules.dataset.landmark import spec
+
+# the row layout is defined once, in spec.py (the stage-1 -> stage-2 contract)
+N_LANDMARKS = spec.N_LANDMARKS  # 543 holistic rows per frame (ROWS_PER_FRAME)
+POSE_OFFSET = spec.POSE_OFFSET  # 489 — holistic row of pose landmark 0
 
 
 def pose_rows(pose_indices: list[int]) -> list[int]:

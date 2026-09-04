@@ -1493,13 +1493,37 @@ pose 489–521, right hand 522–542). That row order is what makes the
 `subsets.py` indices valid for POPSIGN, i.e. it is load-bearing for a
 cross-dataset claim, and nothing checks it.
 
-- [ ] `modules/dataset/landmark/spec.py`: versioned `LANDMARK_TENSOR_V1`
+- [x] `modules/dataset/landmark/spec.py`: versioned `LANDMARK_TENSOR_V1`
   (row count, group offsets, dtype, NaN policy, required npz keys) +
   `validate_tensor(arr)` / `validate_npz(path)`.
-- [ ] Call it in `extraction.py` before the atomic write, and in every loader
+- [x] Call it in `extraction.py` before the atomic write, and in every loader
   that reads an npz.
-- [ ] README's prose format block becomes a pointer to the spec (§9.6's rule:
+- [x] README's prose format block becomes a pointer to the spec (§9.6's rule:
   one source of truth, and it is the code).
+
+**Done 2026-09-04.** `spec.py` holds `GROUPS` / `GROUP_SLICES` / `POSE_OFFSET` /
+`NPZ_KEYS` and `spec()` (the contract as data). The row layout had been restated
+in **four** places — `extraction.GROUP_LAYOUT`, `quality.GROUPS`, `subsets`'
+constants, README prose — and all four now derive from the one definition;
+`overlay.py`'s `from quality import GROUPS, POSE_OFFSET` still works because
+those are re-exports. `validate_tensor` sits on the extraction write path
+(structural only, measured **0.3 µs/call**, so 33.6k videos cost ~10 ms total)
+and `quality.load_landmarks` validates on read with `dtype=None` (widening
+float16 → float32 is that loader's job).
+
+Two judgement calls worth recording:
+- **T = 0 is valid.** A clip whose frames all failed to decode is a recorded
+  outcome, not a malformed file.
+- **An all-NaN tensor is valid too** — first written as a rejection, then
+  removed: "nothing was detected in this clip" is a *quality* signal that
+  `quality.py`'s detection-rate proxies exist to score, not a structural
+  violation. Infinities stay rejected: they cannot come out of the pipeline and
+  they silently destroy normalization downstream.
+
+Verified: six violation classes rejected (row count, dtype, `num_frames`
+mismatch, missing key, infinities, non-array), valid/T=0/all-NaN files accepted,
+and — the thing that mattered after refactoring `subsets.py` — every §9.2 cache
+key is byte-identical, so no migrated cache was orphaned.
 
 ### 9.5 Dataset seam in the training stack (do before POPSIGN training)
 

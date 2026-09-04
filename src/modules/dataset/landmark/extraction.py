@@ -51,14 +51,12 @@ import psutil
 from tqdm.auto import tqdm
 
 from modules import paths
+from modules.dataset.landmark import spec
 
-N_LANDMARKS = 543
-GROUP_LAYOUT = (          # (holistic row offset, result attribute, group size)
-    (0, "face_landmarks", 468),
-    (468, "left_hand_landmarks", 21),
-    (489, "pose_landmarks", 33),
-    (522, "right_hand_landmarks", 21),
-)
+N_LANDMARKS = spec.N_LANDMARKS  # 543 holistic rows/frame (spec.py is the definition)
+# (holistic row offset, result attribute, group size) — derived from the tensor
+# spec so the layout has exactly one definition (modules/dataset/landmark/spec.py)
+GROUP_LAYOUT = tuple((g.offset, g.result_attr, g.size) for g in spec.GROUPS)
 
 DEFAULT_CPU_FRACTION = 0.70   # ≤70% of logical cores
 DEFAULT_RAM_LIMIT_PCT = 70.0  # feeder blocks above this system-RAM usage
@@ -266,6 +264,9 @@ def _extract_one(job: tuple[str, str, str]) -> dict:
                      else np.empty((0, N_LANDMARKS, 3), dtype=np.float16))
         out = Path(out_path)
         out.parent.mkdir(parents=True, exist_ok=True)
+        # the stage-1 -> stage-2 contract, checked before anything is written:
+        # a malformed tensor must never reach the landmarks tree (TODO §9.4)
+        spec.validate_tensor(landmarks)
         tmp = out.with_suffix(".tmp.npz")
         np.savez_compressed(tmp, landmarks=landmarks,
                             fps=np.float32(fps), num_frames=np.int32(len(frames)))
