@@ -23,7 +23,7 @@ stale, trust the sections.
 | 2 | ~~Run the first checkpoint backup~~ — **done 2026-09-04**: 42 on Kaggle, local copies pruned after hash verification. Remaining: confirm the model is **private** | §9.3 | was the last single-copy risk |
 | 3 | **Notebook §5b: the three-arm AWP/LateDropout ablation** (~30 min) | §4.2 | the 1st-place port has collapsed at epoch 15 twice and neither switch has been run alone, so the recipe is still unmeasured |
 | 4 | **Regenerate the POPSIGN train manifest** (30,867 rows covers 1 of 4 parts) then start bulk train extraction | §2.2 | all four train parts are downloaded; the stale manifest is the only thing blocking the primary dataset |
-| 5 | **Run the plateau diagnosis's two GPU arms** — §7 train-split confusion, §8 per-pair separability probes | §7.1 | the CPU arms showed semantics is only ~2.7 of the 25 missing points; these two decide between §7.4 augmentation and §7.2 normalization |
+| 5 | **§7.2 normalization or §7.4 augmentation**, under §7.6's ablation protocol | §7.1 → §7.2/§7.4 | the diagnosis is complete: the plateau is a generalization gap (train confusion 0.012 vs val 0.273), and these are the two levers that attack one |
 | 6 | Re-run the evaluation notebook on the 42-run registry | §6.1 | it last ran against 18 runs; only 1 of 42 run folders has a confusion matrix |
 
 Decisions still owed by the user, blocking real work:
@@ -1247,20 +1247,36 @@ Figure out whether this is overfitting, underfitting or a data/label ceiling
     where the true label is usually outside the top 5. That points at the input
     representation, and **§7.2 normalization is the untested candidate** —
     nothing in the stack currently removes signer appearance or position.
-- [ ] **Run the two GPU arms of the diagnosis (user)** — they separate the last
-  two readings, and the notebook is built and waiting:
-  - **§7 train-split confusion.** Train acc is 90–99% vs val ~75%, so the model
-    separates *something*. Train confusion ≈ 0 on these pairs ⇒ generalization
-    failure (→ §7.4). Train confusion also high ⇒ representation ceiling
-    (→ §7.2/§7.3). ~2,000 clips of inference, a few minutes.
-  - **§8 per-pair separability probes.** A binary classifier that only ever sees
-    `awake`/`wake`. ≈0.95 ⇒ the signal is there and the 250-way head is not using
-    it; ≈0.55 ⇒ genuinely near-identical in these landmarks.
+- [x] **Both GPU arms run 2026-09-05 — the plateau is a GENERALIZATION GAP.**
+  - **§7 train-split confusion (run `1784447187`, 2,000 stratified train clips):**
+    mean symmetric confusion **0.273 on val vs 0.012 on train**, with **19 of 20
+    pairs at exactly zero** on train (only `awake`→`wake` shows any, at 0.25, and
+    one-directionally). The models separate these pairs on data they have seen
+    and fail on data they have not. **Not a label ceiling.** This settles the
+    §7.1 tension: the 07-19 overfitting verdict is the story, not the 08-23
+    label-ceiling read.
+  - **§8 separability probes:** median **0.628** on a *binary* task;
+    `awake`/`wake` at **0.463** (chance), robust to standardisation and stronger
+    regularisation (0.464 at C=0.01). `corr(confusion_rate, probe_accuracy) =
+    −0.72`. **§8b added and run:** pooled *velocity* does not rescue it either
+    (`velocity_gain` ≈ 0 for 6 of 7 pairs).
+  - Read §8 precisely: it bounds **time-pooled summaries**, not the landmarks.
+    Pooling destroys ordering and trajectory shape — exactly where `awake`
+    (repeated) and `wake` (single) differ — and the sequence models do beat the
+    probes (≈57% vs 46% recall on that pair). **It does not refute §7.3**, which
+    proposes per-frame velocity channels in a sequence model, a different claim.
 - [ ] Backfill top-k on more runs — only **1 of 31** has it (`sb-evaluate` began
   storing top-5 on 2026-09-04), so the near-miss split rests on a single run.
 - [ ] Two of the top-20 pairs (`finger`/`wait`, `animal`/`have`) are **not**
-  semantically related. Whatever drives those is not meaning — worth an eyeball
-  on the raw sequences, and it may be the more informative case.
+  semantically related. Whatever drives those is not meaning — and `finger`/`wait`
+  has the **highest** probe score of the whole set (0.790), i.e. it is the most
+  separable pair yet among the most confused. Worth an eyeball on raw sequences;
+  it may be the more informative case.
+- [ ] **§7.2 and §7.4 are now the evidence-backed levers**, because they are the
+  two that attack a generalization gap: normalization removes nuisance variance
+  from the input (nothing in the stack currently removes signer appearance or
+  position), augmentation expands the training distribution. Pick one and run
+  §7.6's controlled ablation protocol against the current ME-126 baseline.
 - [~] Per-class sample count vs per-class accuracy. If low accuracy correlates
   with low sample count this is **class imbalance**, and the fix is
   oversampling/class weighting, *not* feature engineering — record this
@@ -1558,7 +1574,7 @@ be completed.
   provider — the manifest, hashing and verification are shared, only the byte
   transport differs:
   - **`kaggle`** (new default) — a **Kaggle Model**, one variation per run:
-    `bracu23101281/signbridge-checkpoints/pyTorch/run-<run_id>` via
+    `bracu23101281/signbridge-gislr/pyTorch/<arch>-<subset><-coords>/<version>` via
     `kagglehub.model_upload`. This repo *already* authenticates to Kaggle
     (`whoami` → `bracu23101281`), so there is no new account, no card and no new
     secret, and a Kaggle **inference kernel can attach a model directly** —
