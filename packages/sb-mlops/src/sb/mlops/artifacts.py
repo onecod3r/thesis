@@ -419,6 +419,58 @@ def get_backend(name: str | None = None) -> Backend:
     return {"local": LocalBackend, "kaggle": KaggleBackend, "s3": S3Backend}[name]()
 
 
+# ------------------------------------------------------------- fetch on demand
+def ensure_local(run_dir: Path | str, filename: str = "best.pt", *,
+                 fetch: bool = True, verbose: bool = True) -> Path:
+    """Path to a run's checkpoint, downloading it from the remote if needed.
+
+    Checkpoints normally live on Kaggle and not on this disk, so every consumer
+    that loads one — evaluation, export — would otherwise have to tell the user
+    to go and fetch it. This does it for them, and verifies the sha256 against
+    the manifest before installing, so a fetched checkpoint is held to exactly
+    the standard `pull` and `prune` hold theirs to.
+
+    Raises rather than guessing when the run is not in the manifest: an absent
+    and unrecorded checkpoint is genuinely lost, and silently proceeding with
+    "some other file" would be worse than stopping.
+    """
+    run_dir = Path(run_dir)
+    dest = run_dir / filename
+    if dest.is_file():
+        return dest
+
+    key = f"{run_dir.name}/{filename}"
+    rec = load_manifest().get("objects", {}).get(key)
+    if rec is None:
+        raise SystemExit(
+            f"{filename} is not in {run_dir}, and the manifest has no record of "
+            f"it — this checkpoint exists nowhere. (Runs are backed up with "
+            f"`sb-sync push --apply` before being pruned.)")
+    if not fetch:
+        raise SystemExit(
+            f"{filename} is not in {run_dir}; it is at {rec['remote_key']}.\n"
+            f"  sb-sync pull {run_dir.name}")
+
+    backend = get_backend((load_manifest().get("remote") or {}).get("backend"))
+    if verbose:
+        print(f"fetching {key} from {rec['remote_key']} …", flush=True)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_suffix(".pt.tmp")
+    backend.get(key, rec, tmp)
+    digest = sha256_file(tmp)
+    if digest != rec["sha256"]:
+        tmp.unlink(missing_ok=True)
+        raise SystemExit(
+            f"{key}: sha256 mismatch — manifest {rec['sha256'][:16]}…, "
+            f"downloaded {digest[:16]}…. Refusing to use a checkpoint that is "
+            "not the file that was trained.")
+    os.replace(tmp, dest)
+    if verbose:
+        print(f"  {key} restored ({rec['bytes'] / 1e6:.1f} MB, sha256 verified)",
+              flush=True)
+    return dest
+
+
 # ------------------------------------------------------------------- commands
 def cmd_status(args) -> None:
     manifest = load_manifest()

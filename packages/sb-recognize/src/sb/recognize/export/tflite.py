@@ -43,6 +43,7 @@ import torch
 
 from sb.recognize.export import keras as KE
 from sb.mlops import registry as R
+from sb.mlops.artifacts import ensure_local
 from sb.recognize.architectures import build_model
 from sb.recognize.data import ROWS_PER_FRAME
 
@@ -52,7 +53,9 @@ TFLITE_SIZE_CAP_MB = 40.0  # competition storage cap
 
 def load_run_model(run_dir: Path, checkpoint: str = R.CKPT_BEST):
     """Rebuild a run's trained PyTorch model + its export metadata."""
-    ck = torch.load(run_dir / checkpoint, map_location="cpu", weights_only=False)
+    # weights live on Kaggle; fetch (sha256-verified) rather than fail
+    ck = torch.load(ensure_local(run_dir, checkpoint), map_location="cpu",
+                    weights_only=False)
     model = build_model(
         ck.get("arch", "gru"), ck["feature_dim"], len(ck["sign2idx"]), ck["hyp"]
     )

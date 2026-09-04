@@ -51,7 +51,10 @@ uv sync                     # install deps (Python >= 3.12; torch cu130 via [too
 - **Model artifacts live on Kaggle, not on this disk.** `best.pt` is pushed to a
   Kaggle **Model** and then deleted locally, so *a run folder normally has no
   weights in it*. Anything that loads a checkpoint (`sb-evaluate`, TFLite export)
-  must first `sb-sync pull <run_id>`. Naming follows Kaggle's own convention and
+  fetches it automatically via `sb.mlops.artifacts.ensure_local` — a `kagglehub`
+  download, sha256-verified against the manifest — so **never add a "pull it
+  first" step to a workflow**; call the thing and let it fetch. Learning curves
+  read the committed `assets/history.json` and need no checkpoint at all. Naming follows Kaggle's own convention and
   is derived, never typed by hand:
   `bracu23101281/signbridge-gislr/pyTorch/<arch>-<subset-tag>/<version>` — the
   **model** is the family (a POPSIGN model becomes `signbridge-popsign`, not a

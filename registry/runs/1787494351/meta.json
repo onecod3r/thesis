@@ -77,7 +77,8 @@
   },
   "assets": {
     "landmarks": "assets/landmarks.npy",
-    "history": "assets/history.json"
+    "history": "assets/history.json",
+    "learning_curves": "assets/learning_curves.png"
   },
   "submission": {
     "tested": false,

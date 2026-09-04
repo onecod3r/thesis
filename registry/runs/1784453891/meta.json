@@ -66,7 +66,8 @@
     "eval_summary": "assets/eval_summary.json",
     "val_predictions": "assets/val_predictions.npz",
     "submission_zip": "export/submission.zip",
-    "tflite": "export/model.tflite"
+    "tflite": "export/model.tflite",
+    "learning_curves": "assets/learning_curves.png"
   },
   "submission": {
     "tested": false,

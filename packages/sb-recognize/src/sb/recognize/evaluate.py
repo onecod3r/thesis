@@ -21,8 +21,9 @@ eval_status="canonical", and registers the new assets — rebuild the index
 afterwards with `sb-index`.
 
 **The checkpoint is usually not on this disk.** Weights are pushed to Kaggle and
-pruned locally, so start with `sb-sync pull <run_id>`; this script says so rather
-than failing on a missing file.
+pruned locally, so this fetches the run's `best.pt` through `kagglehub` on
+demand and verifies its sha256 against the manifest before using it. `--no-fetch`
+turns that off and prints where the file is instead.
 
 val_predictions.npz (labels + preds over the canonical val split, in split
 order) is what makes confusion matrices cheap: gislr.2.models.evaluation.ipynb
@@ -45,8 +46,9 @@ import pandas as pd
 import pyarrow.parquet as pq
 import torch
 
-from sb.mlops import run as P
 from sb.mlops import registry as R
+from sb.mlops import run as P
+from sb.mlops.artifacts import ensure_local
 from sb.recognize.architectures import build_model
 from sb.recognize.data import MAX_SEQ_LEN, ROWS_PER_FRAME
 from sb.recognize.sources import get_source
@@ -91,12 +93,17 @@ def load_video_firstplace(path, landmarks, coords, max_len, diff_mode):
     return feats, feats.shape[0]
 
 
-def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True) -> dict:
+def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True,
+                 fetch: bool = True) -> dict:
     """Canonical per-class evaluation of one registry run; returns the summary dict.
 
     Side effects (all inside the run folder): assets/per_class_accuracy.{csv,png},
     assets/eval_summary.json, assets/val_predictions.npz, and meta.json promoted
     to eval_status="canonical". Safe to re-run — everything is overwritten.
+
+    The checkpoint is downloaded from the artifact remote when it is not on this
+    disk, which is the normal state — weights live on Kaggle. ``fetch=False``
+    turns that off and reports where the file is instead.
     """
     run_dir = Path(run_dir)
     assert (run_dir / "meta.json").is_file(), f"not a registry run folder: {run_dir}"
@@ -116,15 +123,10 @@ def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True) -
     _, val_split = source.canonical_split(data_dir, sign2idx)
     log(f"dataset: {source.name} · val split: {len(val_split)} videos")
 
-    # Checkpoints normally live on Kaggle, not on this disk (see README
-    # § "Checkpoints live on Kaggle"), so an absent file is the expected case
-    # rather than a broken run — say what to do about it.
-    ckpt_path = run_dir / checkpoint
-    if not ckpt_path.is_file():
-        raise SystemExit(
-            f"{checkpoint} is not in {run_dir}. Checkpoints are pushed to Kaggle "
-            f"and pruned locally, so fetch it first:\n"
-            f"  sb-sync pull {run_dir.name}")
+    # Checkpoints normally live on Kaggle, not on this disk, so an absent file
+    # is the expected case rather than a broken run: fetch it (sha256-verified
+    # against the manifest) instead of making the caller go and do it.
+    ckpt_path = ensure_local(run_dir, checkpoint, fetch=fetch, verbose=verbose)
     ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
     arch = ckpt.get("arch", "gru")
     coords = ckpt.get("coords", "xyz")
@@ -255,12 +257,15 @@ def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True) -
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("run_dir", help="registry run folder (src/data/models/<run_id>/)")
+    ap.add_argument("--no-fetch", dest="fetch", action="store_false",
+                    help="do not download the checkpoint if it is missing; "
+                         "report where it is instead")
     ap.add_argument("--checkpoint", default=R.CKPT_BEST,
                     help=f"checkpoint file inside the run folder (default {R.CKPT_BEST})")
     args = ap.parse_args()
     import matplotlib
     matplotlib.use("Agg")  # headless CLI; the notebook path keeps its backend
-    evaluate_run(args.run_dir, checkpoint=args.checkpoint)
+    evaluate_run(args.run_dir, checkpoint=args.checkpoint, fetch=args.fetch)
 
 
 if __name__ == "__main__":

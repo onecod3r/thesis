@@ -53,7 +53,9 @@ Top 5 by canonical val accuracy (training-loop best where the canonical eval has
 
 ### Checkpoints live on Kaggle
 
-**A run folder normally contains no weights.** `best.pt` is uploaded to a Kaggle Model and then deleted locally, so anything that loads a checkpoint — `sb-evaluate`, the TFLite export — starts with `sb-sync pull <run_id>`. This is what keeps 700 MB+ of `.pt` off a single disk after the 2026-07-18 reset destroyed 8 runs' weights.
+**A run folder normally contains no weights.** `best.pt` is uploaded to a Kaggle Model and then deleted locally — this is what keeps 700 MB+ of `.pt` off a single disk after the 2026-07-18 reset destroyed 8 runs' weights.
+
+**Nothing needs fetching by hand.** `sb-evaluate` and the TFLite export call `sb.mlops.artifacts.ensure_local`, which downloads the run's checkpoint through `kagglehub` and verifies its sha256 against the manifest before using it — so testing a run is one command whether or not the weights happen to be on disk. `--no-fetch` reports where the file is instead of downloading. Learning curves never need a checkpoint at all: they read the committed `assets/history.json`.
 
 The backend is chosen by `SB_ARTIFACT_BACKEND` in `.env`:
 

@@ -13,9 +13,10 @@ def load_history(run_dir: Path) -> dict:
     """Per-epoch history for a run: {train_loss, train_acc, val_loss, val_acc, lr}.
 
     Prefers assets/history.json (written every epoch since schema v3) and falls
-    back to last.pt for runs trained before that asset existed — the evaluation
-    notebook plots curves for every run either way, and only needs the (large,
-    gitignored) checkpoint for the older ones.
+    back to last.pt for runs trained before that asset existed. The fallback is
+    increasingly moot: `last.pt` is dropped for finished runs once the weights
+    are backed up, so history.json is in practice the only source — and being
+    committed, it is the one that survives.
     """
     hist_path = run_dir / "assets" / "history.json"
     if hist_path.is_file():
@@ -23,8 +24,9 @@ def load_history(run_dir: Path) -> dict:
     ck_path = run_dir / R.CKPT_LAST
     if not ck_path.is_file():
         raise FileNotFoundError(
-            f"{run_dir.name}: no assets/history.json and no {R.CKPT_LAST} — "
-            "learning curves unavailable for this run"
+            f"{run_dir.name}: no assets/history.json, and {R.CKPT_LAST} is not "
+            "on this disk (dropped once the run was backed up) — learning "
+            "curves are unavailable for this run"
         )
     history = torch.load(ck_path, map_location="cpu", weights_only=False)["history"]
     hist_path.parent.mkdir(exist_ok=True)
@@ -33,11 +35,15 @@ def load_history(run_dir: Path) -> dict:
 
 
 def save_learning_curves(run_dir: Path, title: str | None = None):
-    """Plot loss/accuracy/LR curves from the run's last checkpoint, save to
-    assets/learning_curves.png, register the asset in meta.json, and return the
-    figure (for inline display in a notebook). Reads only from disk."""
-    ck = torch.load(run_dir / R.CKPT_LAST, map_location="cpu", weights_only=False)
-    h = ck["history"]
+    """Plot loss/accuracy/LR curves, save to assets/learning_curves.png, register
+    the asset in meta.json, and return the figure (for inline display).
+
+    Reads :func:`load_history`, not the checkpoint. `last.pt` is dropped for
+    finished runs once their weights are on Kaggle, so a plot that needed it
+    would stop working for exactly the runs worth plotting; `assets/history.json`
+    is committed and always there.
+    """
+    h = load_history(run_dir)
     fig, axes = plt.subplots(1, 3, figsize=(16, 4))
     axes[0].plot(h["train_loss"], label="train")
     axes[0].plot(h["val_loss"], label="val")

@@ -47,5 +47,42 @@
     ]
   ],
   "n_classes_below_50pct": 8,
-  "median_class_accuracy": 0.7567567567567568
+  "median_class_accuracy": 0.7567567567567568,
+  "provenance": {
+    "git_commit": "aaee32ffa6f0ef505d7d307e51ef44eaf901537a",
+    "git_branch": "main",
+    "git_dirty": true,
+    "code_dirty": true,
+    "dirty_code_paths": [
+      "packages/sb-mlops/src/sb/mlops/artifacts.py",
+      "packages/sb-recognize/src/sb/recognize/evaluate.py",
+      "packages/sb-recognize/src/sb/recognize/export/tflite.py"
+    ],
+    "config_path": null,
+    "config_sha256": null,
+    "feature_pipeline": "base_v1",
+    "feature_cache_key": null,
+    "source": {
+      "name": "gislr",
+      "kaggle_ref": "asl-signs",
+      "version": null,
+      "n_videos": 9448,
+      "manifest": "train.csv",
+      "manifest_sha256": "sha256:06cbf68cbdfe4b02413c3d3d6a3e02d5d65e42fd1e83102ef6d65a42f3dfb2a4",
+      "resolved_dir": "C:\\Users\\user2\\.cache\\kagglehub\\competitions\\asl-signs"
+    },
+    "env": {
+      "python": "3.12.3",
+      "platform": "win32-AMD64",
+      "gpu": "NVIDIA GeForce RTX 4080 SUPER",
+      "cuda": "13.0",
+      "torch": "2.13.0+cu130",
+      "numpy": "2.5.1",
+      "pandas": "3.0.3",
+      "pyarrow": "24.0.0",
+      "scikit-learn": "1.9.0",
+      "mediapipe": "0.10.35"
+    },
+    "captured_at": "2026-09-04T21:00:43"
+  }
 }
