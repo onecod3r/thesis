@@ -53,19 +53,27 @@ Top 5 by canonical val accuracy (training-loop best where the canonical eval has
 
 ### Checkpoints off this machine
 
-`best.pt`/`last.pt` are gitignored, so every trained weight exists on one Windows machine — and the 2026-07-18 reset below already destroyed 8 runs' checkpoints. `.venv/Scripts/sb-sync.exe` keeps a copy in Cloudflare R2 (**42 checkpoints, ~707 MB** — inside the free tier):
+`best.pt`/`last.pt` are gitignored, so every trained weight exists on one Windows machine — and the 2026-07-18 reset below already destroyed 8 runs' checkpoints. `sb-sync` keeps a second copy (**42 checkpoints, ~707 MB**), with the backend chosen by `SB_ARTIFACT_BACKEND` in `.env`:
+
+| backend | what it is | setup |
+|---|---|---|
+| **`kaggle`** (default) | a **private Kaggle Dataset**. No new account — this repo already authenticates to Kaggle for the GISLR data — and a Kaggle inference kernel can attach the dataset directly, so the backup doubles as what a submission run loads (§6.3) | nothing; optionally `KAGGLE_ARTIFACT_DATASET=<user>/<slug>` |
+| `local` | any filesystem path: external drive, NAS share, or a OneDrive/Drive/Dropbox-synced folder. Zero dependencies | `SB_ARTIFACT_DIR=D:/backup/signbridge` |
+| `s3` | any S3-compatible endpoint — Backblaze B2, Wasabi, MinIO, Storj (or Cloudflare R2, if it is ever enabled) | `S3_ENDPOINT_URL` + `S3_BUCKET` + keys, and `uv sync --group ops` |
+
+A second folder on the same physical disk is not a backup — point `local` at something that survives this machine.
 
 ```bash
-.venv/Scripts/python.exe .venv/Scripts/sb-sync.exe status          # local vs manifest
-.venv/Scripts/python.exe .venv/Scripts/sb-sync.exe push            # dry run
-.venv/Scripts/python.exe .venv/Scripts/sb-sync.exe push --apply    # upload
-.venv/Scripts/python.exe .venv/Scripts/sb-sync.exe pull 1784447175 # restore one run
-.venv/Scripts/python.exe .venv/Scripts/sb-sync.exe pull --all      # restore everything
+.venv/Scripts/sb-sync.exe status          # local vs manifest
+.venv/Scripts/sb-sync.exe push            # dry run
+.venv/Scripts/sb-sync.exe push --apply    # upload
+.venv/Scripts/sb-sync.exe pull 1784447175 # restore one run
+.venv/Scripts/sb-sync.exe pull --all      # restore everything
 ```
 
-Needs `uv sync --group ops` (boto3, an optional group) and the `R2_*` keys in `.env` — see [Environment setup](#environment-setup). **Weights only**: not the ~30 GB of feature caches (derivable, and their content address makes that checkable) and not POPSIGN's ~870 GB of raw video (an immutable upstream release — a run records the reference, never the bytes).
+Only the `s3` backend needs `uv sync --group ops` (boto3); `kaggle` and `local` work out of the box — see [Environment setup](#environment-setup). **Weights only**: not the ~30 GB of feature caches (derivable, and their content address makes that checkable) and not POPSIGN's ~870 GB of raw video (an immutable upstream release — a run records the reference, never the bytes).
 
-[`registry/runs/checkpoints.manifest.json`](registry/runs/checkpoints.manifest.json) is committed and records each object's size, sha256 and upload time, so "is this run backed up, and is the copy still the file I trained?" is answerable with no credentials. `pull` verifies every download against that hash and refuses a mismatch rather than installing a checkpoint that is not the one that was trained.
+[`registry/checkpoints.manifest.json`](registry/checkpoints.manifest.json) is committed and records each object's size, sha256, backend and upload time, so "is this run backed up, and is the copy still the file I trained?" is answerable with no credentials. `pull` verifies every download against that hash and refuses a mismatch rather than installing a checkpoint that is not the one that was trained.
 
 > **Registry reset (2026-07-18).** The registry was restarted empty when the flat epoch-seconds layout was adopted. The 8 pre-reset runs (GRU full-543 baseline 70.59%, ME-126 73.73%, the xy ablations, …) survive only in git history (`3668dae` and earlier, under the old `src/models/` tree) and in the daily reports — their weights are gone, so their canonical evals cannot be completed; the numbers remain as historical references.
 
@@ -191,7 +199,7 @@ under `experiments/`, and the two data trees — one committed, one never — at
 signbridge/
 ├── pyproject.toml            # workspace root (virtual: owns no code), uv members + the cu130 torch index
 ├── uv.lock
-├── .env                      # machine-specific config (POPSIGN drive, R2 keys) — not committed
+├── .env                      # machine-specific config (POPSIGN drive, artifact backend) — not committed
 ├── packages/                 # ALL library code. PEP 420 namespace: no `sb/__init__.py` anywhere,
 │   │                         # so each distribution ships part of the same `sb` namespace
 │   ├── sb-core/              # THE SEAM — imports no torch/mediapipe/tensorflow, so anything may depend on it
@@ -230,7 +238,7 @@ signbridge/
 │   │       ├── run.py        #   provenance: commit, config hash, feature-cache key, dataset ref, env
 │   │       ├── index.py      #   `sb-index`: every meta.json → registry/index.csv + queries
 │   │       ├── submission.py #   the DuckDB submission queue (untested runs, daily cap)
-│   │       ├── artifacts.py  #   `sb-sync`: off-machine checkpoint copy (R2) + the manifest
+│   │       ├── artifacts.py  #   `sb-sync`: second copy of the weights (kaggle/local/s3) + the manifest
 │   │       ├── promote.py    #   `sb-promote`: aliases — which run is champion
 │   │       └── docs.py       #   `sb-docs`: regenerate schemas/, index.csv, README generated blocks
 │   ├── sb-rescore/           # top-k → sentence (TODO §8 — scoped skeleton, see its __init__)
@@ -245,7 +253,7 @@ signbridge/
 │   ├── runs/<run_id>/        #   meta.json + best.pt/last.pt (gitignored) + assets/
 │   ├── index.csv             #   generated: the queryable table of every run
 │   ├── aliases.json          #   generated: champion/candidate → run id
-│   └── checkpoints.manifest.json  # what is backed up off-machine, with sha256s
+│   └── checkpoints.manifest.json  # what is backed up, with sha256s (written by sb-sync)
 ├── data/                     # GITIGNORED ABSOLUTELY — no negation rules, nothing committed
 │   ├── raw/                  #   extracted-from-source (POPSIGN landmark npz)
 │   ├── cache/<dataset>/      #   derived artifacts; features/<pipeline>/<key>/ is content-addressed
@@ -297,18 +305,17 @@ Create a `.env` file at the project root (not committed) with:
 ```
 POPSIGN_LANDMARKS_DRIVE=D:/    # or wherever the extraction-output drive is mounted
 
-# Checkpoint remote (sb-sync) — Cloudflare R2 speaks the S3 API
-R2_ACCOUNT_ID=...
-R2_BUCKET=signbridge-models
-R2_ACCESS_KEY_ID=...
-R2_SECRET_ACCESS_KEY=...
-R2_PREFIX=models               # optional, defaults to "models"
+# Checkpoint backup (sb-sync): kaggle | local | s3
+SB_ARTIFACT_BACKEND=kaggle
+# KAGGLE_ARTIFACT_DATASET=<user>/signbridge-checkpoints   # kaggle, optional
+# SB_ARTIFACT_DIR=D:/backup/signbridge                    # local
+# S3_ENDPOINT_URL=... S3_BUCKET=... S3_ACCESS_KEY_ID=... S3_SECRET_ACCESS_KEY=...
 ```
 
 `.env` is read by `sb.core.paths::env_value` (process environment first, then the file), so any of these can also come from the shell. Checkpoint sync additionally needs its optional dependency group:
 
 ```bash
-uv sync --group ops            # boto3, for .venv/Scripts/sb-sync.exe
+uv sync --group ops            # boto3 — only needed for the `s3` backend
 ```
 
 The Jupyter kernel must use this project's `uv`-managed virtual environment (`.venv`). **Its working directory no longer matters** — the six packages are installed into that venv, so `import sb...` and every path constant resolve identically wherever the kernel starts.

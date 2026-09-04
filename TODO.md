@@ -1442,7 +1442,7 @@ the shape check cannot catch — produces a different key. `subset_tag` survives
 the *human* handle (registry pointer keys, progress bars) and is documented as no
 longer being the cache identity.
 
-### 9.3 Off-machine artifact store (Cloudflare R2)
+### 9.3 Off-machine artifact store (backend-agnostic; R2 ruled out)
 
 **The fault (confirmed).** `best.pt`/`last.pt` are gitignored and exist on one
 Windows machine. The 2026-07-18 reset (§0.4) already destroyed 8 runs' weights
@@ -1465,11 +1465,31 @@ be completed.
 - [x] Skip DVC. Its one real advantage over this — `dvc.yaml` stage DAGs
   catching stale derived artifacts — is what §9.2 buys directly, and DVC fights
   the notebook-driven workflow for the rest.
-- [ ] **Not yet run: the actual upload.** This machine has no R2 credentials
-  (`.env` holds only `KAGGLE_MCP_TOKEN`) and no bucket exists yet, so `push
-  --apply` has never executed. Create the bucket, put the five `R2_*` keys in
-  `.env`, `uv sync --group ops`, then `push --apply` — 42 objects, 707 MB. Until
-  that runs, the weights are still single-copy.
+- [x] **R2 ruled out (2026-09-04): the account does not have R2 activated.**
+  `sb-sync` now dispatches on `SB_ARTIFACT_BACKEND` instead of assuming one
+  provider — the manifest, hashing and verification are shared, only the byte
+  transport differs:
+  - **`kaggle`** (new default) — a private Kaggle Dataset. The reason to prefer
+    it here is not storage: this repo *already* authenticates to Kaggle
+    (`whoami` → `bracu23101281`) so there is no new account, no card and no new
+    secret, and a Kaggle **inference kernel can attach the dataset directly**,
+    which means the backup and the artifact a submission run loads (§6.3) are
+    the same object. Cost: Kaggle versions whole datasets, so a push re-uploads
+    all ~707 MB. Staging uses NTFS hard links, so it does not duplicate on disk.
+  - **`local`** — any path: external drive, NAS share, or a synced folder. Zero
+    dependencies, works this minute. Refuses to run without `SB_ARTIFACT_DIR`,
+    and the docs say plainly that a folder on the same disk is not a backup.
+  - **`s3`** — any S3-compatible endpoint (Backblaze B2, Wasabi, MinIO, Storj,
+    and R2 if it is ever enabled). The old code path, now generic.
+- [x] Verified end to end on the `local` backend (2026-09-04): 42 objects
+  pushed, one checkpoint deleted locally and restored **byte-identical**, and a
+  deliberately corrupted backup copy was **refused** on sha256 with no
+  half-written `.pt` left behind. The test manifest and staging directory were
+  then removed, so the committed state still honestly says "nothing pushed yet".
+- [ ] **Still not run for real: the first actual backup.** Pick a backend and
+  run it — for `kaggle`, `sb-sync push --apply` creates the dataset on first use
+  (**check it is private**); for `local`, set `SB_ARTIFACT_DIR` to a drive that
+  is not this one. Until that runs, all 42 checkpoints are still single-copy.
 
 **Done 2026-09-04 (tooling).** `sync_models.py status | push | pull`, dry-run by
 default, never deletes remotely. `data/models/checkpoints.manifest.json`
