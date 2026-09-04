@@ -47,8 +47,8 @@ def meta_json_schema() -> dict:
     """JSON Schema for one meta.json, generated from registry.FIELDS."""
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": f"https://github.com/sign2speech/schemas/meta.v{R.SCHEMA_VERSION}.json",
-        "title": f"sign2speech model-registry run record (schema v{R.SCHEMA_VERSION})",
+        "$id": f"https://github.com/signbridge/schemas/meta.v{R.SCHEMA_VERSION}.json",
+        "title": f"signbridge model-registry run record (schema v{R.SCHEMA_VERSION})",
         "description": (
             "One training run's meta.json. GENERATED from "
             "modules/model/registry.py::FIELDS by modules/scripts/gen_docs.py — "

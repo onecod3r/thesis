@@ -1,4 +1,4 @@
-# TODO — sign2speech
+# TODO — signbridge
 
 Living project TODO, organized by workstream so new tasks can be filed under an
 existing section or a new one added without restructuring.
@@ -21,9 +21,9 @@ docs daily/weekly/reports split).
 
 ### 0.1 Stale imports / references broken by the restructure
 
-- [x] **`src/modules/data/` no longer exists on disk** (2026-07-16): `dataset.py`
+- [x] **`packages/data/` no longer exists on disk** (2026-07-16): `dataset.py`
   (`GISLRRawDataset`) and `landmark_worker.py` are gone. `landmark_worker.py` is
-  superseded by `modules/dataset/landmark/extraction.py` (§2). **Resolved
+  superseded by `sb.extract.holistic` (§2). **Resolved
   2026-07-16:** `GISLRRawDataset` no longer needs restoring — the rebuilt
   `gislr.1.model.gru.ipynb` defines its dataset in-notebook (in-RAM arrays,
   `num_workers=0`, the pattern proven by the ME-126 training script).
@@ -31,13 +31,13 @@ docs daily/weekly/reports split).
   **resolved 2026-07-16** by the notebook overhaul (§3.1): it now imports only
   the subset registry (`modules.dataset.landmark.subsets`) and defines the
   dataset class itself.
-- [ ] `src/popsign.1.mediapipe.ipynb` imports `from modules.datasets import DATASETS`
+- [ ] `experiments/extraction/popsign.1.mediapipe.ipynb` imports `from modules.datasets import DATASETS`
   and uses `DATASETS["ISLR"]` — `datasets/` was deleted; it's now
   `modules.paths.DATASETS` with key `"GISLR"`.
-- [x] `src/modules/` has no `__init__.py` files — **resolved 2026-07-18**: every
+- [x] `packages/` has no `__init__.py` files — **resolved 2026-07-18**: every
   package level ships one (`modules/`, `modules/model/`, `modules/scripts/`,
   `modules/dataset/`, `modules/dataset/landmark/`).
-- [ ] `src/popsign.1.mediapipe.ipynb` currently contains early **GISLR** motion-energy
+- [ ] `experiments/extraction/popsign.1.mediapipe.ipynb` currently contains early **GISLR** motion-energy
   exploration code, not POPSIGN extraction — retire that content (superseded by
   `gislr.0.dataset.motion-energy.ipynb`) and rebuild the notebook as the extraction
   driver (§2).
@@ -59,8 +59,8 @@ docs daily/weekly/reports split).
   `.venv/Scripts/ty.exe check` from `src/` (35 pre-existing diagnostics as of
   2026-07-22, mostly in the stale `popsign.2`/`popsign.3` notebooks — not
   triaged, just confirming the tool runs).
-- [ ] `.gitignore`: the bare `data/` pattern also ignores `src/data/external/`
-  (the MediaPipe `holistic_landmarker.task`) and `src/data/cache/dataframes/`
+- [ ] `.gitignore`: the bare `data/` pattern also ignores `data/external/`
+  (the MediaPipe `holistic_landmarker.task`) and `data/cache/dataframes/`
   (POPSIGN manifests) — decide whether to narrow the ignore and commit those, or
   document them as download/generate-on-setup. (Still open after the 2026-07-15
   rewrite — the pattern was kept as-is pending this decision.)
@@ -109,18 +109,18 @@ is a query, not a folder crawl:
 
 Executed 2026-07-18 (full write-up: `docs/logs/daily/2026-07-18.md`):
 
-- [x] **`src/modules/model/`** — unified training stack (`architectures.py`
+- [x] **`packages/model/`** — unified training stack (`architectures.py`
   single model-class definition shared with eval, `data.py`, `registry.py`,
   `train.py`, `report.py`); the four `gislr.1.model.*.ipynb` notebooks
   regenerated as thin drivers (identity block + `modules.model` calls).
-- [x] **Registry v2**: flat `src/data/models/<epoch-seconds>/` folders holding
+- [x] **Registry v2**: flat `registry/runs/<epoch-seconds>/` folders holding
   only `meta.json` + `best.pt`/`last.pt` (gitignored) + `assets/`;
   schema v2 documented in README.md § "meta.json schema" (machine check:
-  `modules/model/registry.py::REQUIRED_KEYS`); `meta.json` rewritten every
+  `sb.mlops.registry::REQUIRED_KEYS`); `meta.json` rewritten every
   epoch by the driver; **registry reset to empty** (header-only `index.csv`).
 - [x] **Single progress bar per training run** (batch progress, metrics, LR,
   plateau counter in one bar) — replaces the nested-bar + per-epoch-print spam.
-- [x] **`modules/paths.py`**: absolute CWD-independent tree constants
+- [x] **`sb.core.paths`**: absolute CWD-independent tree constants
   (`RAW/CACHE/TEMP/EXTERNAL/MODELS`), lazy dataset resolution (import no
   longer downloads), `cleanup_temp()`.
 - [x] **Data placement policy** applied: POPSIGN pilot npz → `data/temp/popsign_pilot/`
@@ -128,7 +128,7 @@ Executed 2026-07-18 (full write-up: `docs/logs/daily/2026-07-18.md`):
   caches → `data/cache/gislr/{motion_analysis,subset_comparison}`;
   manifests → `data/cache/popsign/dataframes/`; `.gitignore` reworked
   (all of `src/data/` ignored except `data/models/` minus weights/exports).
-- [x] **Scripts split**: project CLIs in `src/modules/scripts/` (`evaluate.py`
+- [x] **Scripts split**: project CLIs in `packages/scripts/` (`evaluate.py`
   takes a run folder, `build_model_index.py` flat-layout; both run from any
   CWD); root `scripts/` = housekeeping only.
 - [x] **Docs split**: `docs/logs/daily/` + `docs/logs/weekly/<YYYY>-<WW>.md` +
@@ -179,15 +179,15 @@ docs/
 
 ### 0.6 Stray notebook/module state to clean up (found 2026-07-19)
 
-- [x] `src/popsign.0.dataset.extraction.ipynb` had a bare
+- [x] `experiments/extraction/popsign.0.dataset.extraction.ipynb` had a bare
   `DATASETS = resolve_datasets()` scratch cell in §1 (an unguarded call that
   would hit kagglehub on every top-to-bottom run). **Resolved 2026-07-19**: it
   became the proper manifest-generation cell — guarded by `FORCE_REGENERATE`
   and skipped entirely when both CSVs exist, so a plain re-run never reaches
   `resolve_datasets()` at all. (`force_download=True` is not in the current
-  `modules/paths.py`; the ~870GB re-download hazard the original note described
+  `sb.core.paths`; the ~870GB re-download hazard the original note described
   no longer exists.)
-- [ ] `modules/paths.py::resolve_datasets` (uncommitted working-tree change)
+- [ ] `sb.core.paths::resolve_datasets` (uncommitted working-tree change)
   hardcodes `D:/`/`E:/` `PATH_PARTS` and calls `p.unlink()` on directories
   (raises on a real directory) — reconcile with the `.env`-driven policy.
   **Status 2026-07-22**: this is the actual change that downloaded the
@@ -198,7 +198,7 @@ docs/
   copy of an earlier version of this file, used to manually trigger the
   a-e/f-m downloads by hand — clean up both once the real fix is committed.
 - [ ] `.env` is empty/missing at the repo root, so `POPSIGN_LANDMARKS_DRIVE`
-  is unset and extraction output falls back into `src/data/raw/popsign`.
+  is unset and extraction output falls back into `data/raw/popsign`.
 
 ---
 
@@ -209,7 +209,7 @@ over time, at three scopes: per-video, per-category, global. Builds on existing
 motion-energy pipeline findings (RMS speed, `["type","landmark_index"]` grouping,
 Savitzky-Golay filtering) rather than re-deriving them.
 
-**Location:** `src/gislr.0.dataset.motion-energy.ipynb`
+**Location:** `experiments/recognition/gislr.0.dataset.motion-energy.ipynb`
 
 **Status: ✅ executed end-to-end 2026-07-15 — all three scopes complete, 0 failed
 units. Findings, stats, figures and the landmark keep/discard recommendation are
@@ -307,7 +307,7 @@ written up in `docs/2026-07-15.md`.** Remaining work moved to §1.8.
 rooted at the separate drive configured via `POPSIGN_LANDMARKS_DRIVE` in `.env`
 when set (fallback: `src/data/`, gitignored) — too large to live next to the code.
 
-### 2.1 Extraction module — `modules/dataset/landmark/extraction.py` (2026-07-16)
+### 2.1 Extraction module — `sb.extract.holistic` (2026-07-16)
 
 Replaces the deleted `modules/data/landmark_worker.py` (whose known bugs —
 landmarks never written to the npz, stale hardcoded model path and output dir —
@@ -345,7 +345,7 @@ must not be reproduced):
   above address the known cause, but nothing yet bounds an unknown one: a worker
   that stops returning still hangs the whole run indefinitely.
 
-### 2.2 Extraction driver — `src/popsign.0.dataset.extraction.ipynb` (2026-07-16)
+### 2.2 Extraction driver — `experiments/extraction/popsign.0.dataset.extraction.ipynb` (2026-07-16)
 
 Replaces the deleted `popsign.0.dataset.ipynb` stub as the extraction driver
 (`popsign.1.mediapipe.ipynb` stays stale pending retirement, §0.1):
@@ -397,12 +397,12 @@ Replaces the deleted `popsign.0.dataset.ipynb` stub as the extraction driver
 - [x] Run the pilot (user), review videos/s + resource headroom, then run the
   bulk extraction for train + test:
   ```
-  .venv/Scripts/python.exe src/modules/scripts/extract_popsign.py pilot
-  .venv/Scripts/python.exe src/modules/scripts/extract_popsign.py run train --confidence default
+  .venv/Scripts/python.exe .venv/Scripts/sb-extract.exe pilot
+  .venv/Scripts/python.exe .venv/Scripts/sb-extract.exe run train --confidence default
   ```
   **Test split: done 2026-07-20 02:06** — 33,599/33,600, **1 failed** (unchanged
   from initial report — investigate below), 1.461 videos/s wall, 8 workers,
-  6.4 h total wall time. Output in `src/data/raw/popsign/test/`
+  6.4 h total wall time. Output in `data/raw/popsign/test/`
   (`POPSIGN_LANDMARKS_DRIVE` still unset, §0.6); confirmed the resolution-change
   fix (§2.1) holds at scale across the full 33.6K videos, zero deadlocks.
   **Train: not started** — 0/30,867 done, blocked on the manifest regeneration
@@ -418,19 +418,19 @@ Replaces the deleted `popsign.0.dataset.ipynb` stub as the extraction driver
   mp4. Likely a truncated/corrupt download rather than an extraction bug; the
   manifest retries `failed` on the next run, so confirm the source file first.
 
-### 2.4 Output inspection — `src/popsign.0.dataset.output-inspection.ipynb` (2026-07-19)
+### 2.4 Output inspection — `experiments/extraction/popsign.0.dataset.output-inspection.ipynb` (2026-07-19)
 
 - [x] Standalone read-only diagnostic showing how an extracted sign is stored:
   archive keys/shapes/dtypes, the 543-row holistic group layout, per-group
   detection rates, one frame + a presence timeline, and the reference
   npz→model-input loader (NaN→0, subset gather, uniform subsample to
-  `MAX_SEQ_LEN`) mirroring `modules/model/data.py`.
+  `MAX_SEQ_LEN`) mirroring `sb.recognize.data`.
   **Safe to run against a live extraction by construction**: no writes anywhere in
   the landmarks tree, no worker pool, no MediaPipe import, and `.tmp.npz` staging
   files are excluded from sampling so a half-written video can never be opened.
   Format recorded in `docs/logs/daily/2026-07-19.md` §4c.
 
-### 2.3 Extraction-quality / confidence tuning — `src/popsign.0.dataset.confidence-tuning.ipynb` (2026-07-19)
+### 2.3 Extraction-quality / confidence tuning — `experiments/extraction/popsign.0.dataset.confidence-tuning.ipynb` (2026-07-19)
 
 **Goal:** before committing ~30K videos of CPU time to bulk extraction, find out
 which `HolisticLandmarker` confidence thresholds actually produce good landmarks
@@ -473,7 +473,7 @@ video drives — this notebook deliberately does **not** depend on the missing
 - [x] Supporting module work: `extraction.py` gained `CONFIDENCE_FIELDS` /
   `DEFAULT_CONFIDENCE` and a `confidence=` parameter threaded through
   `extract_dataset` → pool initializer → landmarker (unknown fields assert);
-  new `modules/dataset/landmark/quality.py` (proxies + composite score) and
+  new `sb.extract.quality` (proxies + composite score) and
   `overlay.py` (landmark drawing, frame rendering, contact sheets).
   Smoke-validated end to end 2026-07-19 on 2 configs × 2 videos.
 - [x] **RESOLVED 2026-07-19: "`multiprocessing.Pool` cannot run in a Jupyter
@@ -607,11 +607,11 @@ existing content is known:
 
 ### 3.0 Landmark-subset registry + comparison notebook (2026-07-16)
 
-- [x] `src/modules/dataset/landmark/subsets.py` — canonical registry of every
+- [x] `packages/sb-core/src/sb/core/subsets.py` — canonical registry of every
   landmark subset in play (FULL_543, FP_118 = 1st-place, ME_126, ME_132,
   HANDS_42, HANDS_POSE_50, plus component groups) with holistic row indices —
   `ME_126.array` verified equal to the trained run's `landmarks.npy`.
-- [x] `src/gislr.0.dataset.subset-comparison.ipynb` — **executed end-to-end
+- [x] `experiments/recognition/gislr.0.dataset.subset-comparison.ipynb` — **executed end-to-end
   2026-07-16** (scope A 10 videos / scope B 10 classes / scope C global 189
   chunks, 0 failures; global descriptors ≈50 min, probes ≈7 min). All 6
   registered subsets scored; `probe_acc_global` written back into
@@ -808,21 +808,21 @@ so it isn't chased as three separate untracked efforts:
     the Kaggle LB — not a single model on a held-out split. A single run on our
     canonical 90/10 split should be expected around 0.84-0.88.
 - [x] **Ported 2026-08-23** — code written, CPU-smoke-validated, **not yet run**:
-  - `modules/model/features.py` — NaN-preserving cache, the normalization, the
+  - `sb.recognize.features.firstplace_v1` — NaN-preserving cache, the normalization, the
     lag features, all 6 augmentations, mirror-permutation builder (asserts the
     subset is closed under left/right swap; FP_118, ME_126, ME_132 all are),
     dataset + collate padding to the **batch max** rather than a fixed 384.
-  - `modules/model/architectures.py` — `Conv1DTransformer` + `ECA`,
+  - `sb.recognize.architectures` — `Conv1DTransformer` + `ECA`,
     `CausalDWConv1D`, `Conv1DBlock`, `TransformerBlock`, `LateDropout`,
     `MaskedBatchNorm1d`; registered in `ARCHS` as `conv1d_transformer`
     (`streaming=False`). `build_model` now forwards arch-specific HYP keys that
     a model class declares (existing four architectures verified unchanged).
   - `modules/model/optim.py` — Lookahead, AWP, cosine one-cycle.
-  - `modules/model/train_fp.py` + `src/config/gislr.firstplace.json` — the
+  - `sb.recognize.train_firstplace` + `experiments/recognition/configs/gislr.firstplace.json` — the
     driver and its config; same canonical split, registry and meta.json schema.
-  - `modules/scripts/evaluate.py` — dispatches on the checkpoint's `features`
+  - `sb.recognize.evaluate` — dispatches on the checkpoint's `features`
     key so these runs are scored through the 1st-place preprocessing.
-  - **`src/gislr.1.models.firstplace.ipynb`** — the driver notebook.
+  - **`experiments/recognition/gislr.1.models.firstplace.ipynb`** — the driver notebook.
 - [x] **Run it (user)** — done 2026-08-23, run `1787483814`, 300 epochs in
   2.0 h. **It diverged**; see the next item. Canonical eval of the surviving
   checkpoint: **0.7459** overall / 0.7433 macro / 0.7632 median / 13 classes
@@ -879,7 +879,7 @@ so it isn't chased as three separate untracked efforts:
     a second full 2 h §5 run is a coin flip. The GRU feature ablation (below) is
     independent of all of it and is the item that can still move the deployable
     models.
-- [ ] **Registry housekeeping**: `src/data/models/1787473998/` contains only
+- [ ] **Registry housekeeping**: `registry/runs/1787473998/` contains only
   `assets/landmarks.npy` (an aborted start, no `meta.json`) and makes
   `build_model_index.py` warn on every rebuild. Delete it or give it a meta.
 - [x] ~~Port the architecture as a new `gislr.1.models.training.ipynb` section,
@@ -906,7 +906,7 @@ so it isn't chased as three separate untracked efforts:
   an offline reference into a deployment candidate and prices the causality gap
   for a modern architecture.
 - [ ] **TFLite export does not cover this architecture.**
-  `modules/model/keras_export.py` rebuilds GRU/LSTM/BiLSTM/CausalConv1D in
+  `sb.recognize.export.keras` rebuilds GRU/LSTM/BiLSTM/CausalConv1D in
   native Keras; exporting the port needs Keras equivalents of Conv1DBlock /
   ECA / TransformerBlock. Not needed to measure accuracy, required before any
   Kaggle submission of this model (§6.3).
@@ -928,20 +928,20 @@ Four `gislr.1.model.<arch>.ipynb` notebooks each carried their own `HYP` dict, s
 "all else identical" — the premise of both the architecture comparison (§4) and
 the subset ablations (§3.1) — was a manual chore across four files.
 
-- [x] **`src/gislr.1.models.training.ipynb`** replaces all four: shared setup /
+- [x] **`experiments/recognition/gislr.1.models.training.ipynb`** replaces all four: shared setup /
   config / split / feature-cache sections, then one markdown+code section per
   architecture, then cross-architecture comparison and the eval handoff. Each
   architecture section re-reads the config from disk, so it is independently
   re-runnable. The four old notebooks are removed (git history ≤ `2d7f668`).
-- [x] **`src/config/gislr.training.json`** is the source of truth for every
-  hyperparameter, read at run time by **`modules/model/config.py`**.
+- [x] **`experiments/recognition/configs/gislr.training.json`** is the source of truth for every
+  hyperparameter, read at run time by **`sb.recognize.config`**.
   Architectures inherit `shared`; a deviation must be an explicit `overrides`
   entry, surfaced by §2 of the notebook and by `TrainingConfig.overrides_for`.
   Validation rejects: unknown architectures, unknown per-arch keys, an override
   naming a key absent from `shared` (a typo can't become a silent no-op),
   missing required HYP keys, bad `coords`, wrong `schema_version`. All six
   failure modes tested.
-- [x] `modules/model/train.py::train_from_config(arch)` — what each section
+- [x] `sb.recognize.train::train_from_config(arch)` — what each section
   calls; trains every subset for that architecture and prints the resolved
   hyperparameters plus any overrides.
 - [x] Feature caches are built **once** for every (subset, coords) pair the
@@ -976,7 +976,7 @@ the subset ablations (§3.1) — was a manual chore across four files.
 
 ## 6. Evaluation, Export & Kaggle Submission (GISLR)
 
-**Location:** `src/gislr.2.models.evaluation.ipynb` — the single place where
+**Location:** `experiments/recognition/gislr.2.models.evaluation.ipynb` — the single place where
 **all** GISLR model evaluation and submission happens. The `gislr.1.model.*`
 notebooks are training drivers only; they no longer carry export code.
 
@@ -1003,7 +1003,7 @@ notebooks are training drivers only; they no longer carry export code.
 
 ### 6.2 Supporting module work (2026-07-19)
 
-- [x] `modules/model/architectures.py`: every arch gains `forward_full(x)` —
+- [x] `sb.recognize.architectures`: every arch gains `forward_full(x)` —
   a batch-1, unpacked, ONNX-friendly forward used only by export. Parity against
   the packed training forward is asserted at export time.
 - [x] `modules/model/export.py`: arch-generic ONNX → TF SavedModel → TFLite chain
@@ -1011,7 +1011,7 @@ notebooks are training drivers only; they no longer carry export code.
   calling convention (raw `(T, 543, 3)` with NaNs in, `(250,)` out). NaN→0 and
   the landmark-subset gather stay **inside** the exported graph.
 - [x] **The ONNX route was abandoned; export now goes through a native Keras
-  rebuild** (`modules/model/keras_export.py`, 2026-07-19). **All 4
+  rebuild** (`sb.recognize.export.keras`, 2026-07-19). **All 4
   architectures export**, all under the 40 MB cap:
 
   | arch | tflite | keras parity | tflite parity |
@@ -1054,11 +1054,11 @@ notebooks are training drivers only; they no longer carry export code.
     `from_concrete_functions` loses the output *name* the grader indexes by
     (`output["outputs"]`), the frozen function is re-wrapped in a module that
     re-declares the exact signature.
-- [x] `modules/scripts/evaluate.py` refactored so `evaluate_run(run_dir)` is
+- [x] `sb.recognize.evaluate` refactored so `evaluate_run(run_dir)` is
   importable (the CLI is a thin wrapper), and it now also writes
   `assets/val_predictions.npz` (labels + preds) — that file is what makes the
   confusion matrices cheap and reproducible.
-- [x] `modules/model/train.py` writes `assets/history.json` every epoch.
+- [x] `sb.recognize.train` writes `assets/history.json` every epoch.
 
 ### 6.3 Submission tracking — meta.json schema v3 (2026-07-19)
 
@@ -1111,7 +1111,7 @@ record rather than something remembered by hand.
   that variable in the environment, never inline.
   - [ ] Authorize the server from an **interactive** session (OAuth cannot run
     in a non-interactive one), then submit one model by hand end to end.
-  - [ ] Once proven, decide whether `modules/model/submission.py::submit_run`
+  - [ ] Once proven, decide whether `sb.mlops.submission::submit_run`
     keeps shelling out to the CLI or the notebook drives the MCP tools instead;
     the queue query and `mark_tested` bookkeeping are unaffected either way.
 - [ ] **Security**: an API token was pasted in plaintext into a chat transcript
@@ -1308,7 +1308,7 @@ already identified as semantic, not geometric).
   there is currently no stage that assembles a sequence of predicted signs
   into a sentence for an LLM to have "context of a sentence" over. This
   remark presupposes that downstream stage exists or is in scope. Before
-  doing anything else: is `sign2speech`'s roadmap meant to extend to
+  doing anything else: is this repo's roadmap meant to extend to
   continuous/sentence-level signing (which would need a whole new
   segmentation + sequence-assembly pipeline, well beyond the current
   per-video classifier), or is this meant as a smaller-scope idea (e.g.
@@ -1369,10 +1369,10 @@ rebuilt from its record. 43 run folders are in this state.
   `env` (`{python, torch, numpy, mediapipe, platform, gpu}`).
 - [x] **Don't gate on `git_dirty` alone.** Every training run in this repo starts
   from a dirty tree — the driver notebook is edited and re-run as part of
-  starting the run (the working tree had `M src/gislr.1.models.firstplace.ipynb`
+  starting the run (the working tree had `M experiments/recognition/gislr.1.models.firstplace.ipynb`
   when this section was filed). A blanket dirty warning would fire on 100% of
   runs and be ignored within a day. Hash **the code that actually executes** —
-  `src/modules/` + the resolved config file — and warn only when *that* is
+  `packages/` + the resolved config file — and warn only when *that* is
   dirty; record notebook dirtiness separately as information, not as an alarm.
 - [x] `REQUIRED_KEYS` + `SCHEMA_VERSION = 4` in `modules/model/registry.py`;
   `migrate_all` backfills `provenance: null` for the 43 existing runs — unknown
@@ -1383,7 +1383,7 @@ rebuilt from its record. 43 run folders are in this state.
 - [x] `build_model_index.py`: new `prov_*` columns; README schema table updated
   (or generated — §9.6).
 
-**Done 2026-09-04.** `modules/model/provenance.py` (12 fields: git commit/branch +
+**Done 2026-09-04.** `sb.mlops.run` (12 fields: git commit/branch +
 the two dirtiness flags, config path + hash of the values that ran, feature
 pipeline, feature-cache key, dataset ref with a `train.csv` fingerprint,
 environment incl. scikit-learn because it defines the split, captured_at). Wired
@@ -1399,10 +1399,10 @@ indexed.
 
 **The fault (confirmed, but narrower than the review claimed).** The cache key
 is `subset_tag(subset.name, coords)` — subset *name* plus `"xy"`/`"xyz"`, and
-nothing else (`modules/model/data.py::subset_tag`, and the same tag with a
-`_nan_` infix in `modules/model/features.py::build_nan_cache`). Both builders
+nothing else (`sb.recognize.data::subset_tag`, and the same tag with a
+`_nan_` infix in `sb.recognize.features.firstplace_v1::build_nan_cache`). Both builders
 are skip-if-exists. So editing the `ME_126` index list in
-`modules/dataset/landmark/subsets.py` leaves the tag unchanged and every
+`sb.core.subsets` leaves the tag unchanged and every
 subsequent run silently trains on the **old** 3.2 GB array, with no record that
 the definition moved.
 
@@ -1452,7 +1452,7 @@ be completed.
 - [x] `ops/sync_models.ps1` (or `.py`) — `rclone` / `aws s3 sync` of
   `data/models/*/best.pt` to R2. Current total: **707 MB across 42 runs**
   (~17 MB/run), so this is inside R2's free tier and takes minutes.
-  **Built as `src/modules/scripts/sync_models.py`, not `ops/`** — a project
+  **Built as `.venv/Scripts/sb-sync.exe`, not `ops/`** — a project
   Python CLI belongs in `modules/scripts/` under the existing convention, and
   creating `ops/` would pre-empt the layout change §9.8 defers. Uses boto3
   (R2 speaks S3) from a new optional `ops` dependency group, so the default
@@ -1493,7 +1493,7 @@ pose 489–521, right hand 522–542). That row order is what makes the
 `subsets.py` indices valid for POPSIGN, i.e. it is load-bearing for a
 cross-dataset claim, and nothing checks it.
 
-- [x] `modules/dataset/landmark/spec.py`: versioned `LANDMARK_TENSOR_V1`
+- [x] `sb.core.schema`: versioned `LANDMARK_TENSOR_V1`
   (row count, group offsets, dtype, NaN policy, required npz keys) +
   `validate_tensor(arr)` / `validate_npz(path)`.
 - [x] Call it in `extraction.py` before the atomic write, and in every loader
@@ -1531,7 +1531,7 @@ key is byte-identical, so no migrated cache was orphaned.
 `dataset` appearing in filenames (`gislr.1.models.training.ipynb`,
 `data/cache/gislr/`). Those are deliberate, documented conventions and the cache
 subtree-per-dataset *is* the data-placement policy. The actual coupling is in
-code: `modules/model/data.py` hardcodes `FEATURES_DIR = CACHE_DIR/"gislr"/"features"`,
+code: `sb.recognize.data` hardcodes `FEATURES_DIR = CACHE_DIR/"gislr"/"features"`,
 `load_label_map` reads GISLR's `sign_to_prediction_index_map.json`,
 `get_canonical_split` reads GISLR's `train.csv`, and both drivers default
 `data_dir` to `gislr_dir()`. That is what doubles when POPSIGN arrives.
@@ -1543,11 +1543,11 @@ code: `modules/model/data.py` hardcodes `FEATURES_DIR = CACHE_DIR/"gislr"/"featu
   renaming notebooks is churn that fixes nothing.
 - [ ] POPSIGN's canonical split needs the same treatment GISLR's got (fixed
   seed, asserted val size) before any POPSIGN number is comparable to anything.
-  This is now a `DatasetSource` entry in `modules/model/sources.py`, not a
+  This is now a `DatasetSource` entry in `sb.recognize.sources`, not a
   second training driver — `get_source("popsign")` already fails with the list
   of what that entry must provide.
 
-**Done 2026-09-04.** `modules/model/sources.py`: `DatasetSource` bundles dir
+**Done 2026-09-04.** `sb.recognize.sources`: `DatasetSource` bundles dir
 resolver, label map, canonical split, per-sample reader, sample-path builder,
 plus the identity used for cache addressing and provenance (name, kaggle ref,
 manifest). `grep gislr_dir` over `train.py`, `train_fp.py` and `evaluate.py`
@@ -1589,7 +1589,7 @@ the README daily-log table listed 07-19 before 07-18.
 
 **Done 2026-09-04.** `registry.FIELDS` (key → JSON type + one-line description)
 is now THE schema; `REQUIRED_KEYS = tuple(FIELDS)` so the machine check cannot
-fall out of step with the documentation. `modules/scripts/gen_docs.py` renders
+fall out of step with the documentation. `sb.mlops.docs` renders
 `schemas/meta.v4.json` (JSON Schema draft 2020-12), the README's
 `<!-- generated:meta-schema -->` and `<!-- generated:registry-summary -->`
 blocks, and `index.csv` — with `--check` failing on drift (verified: a hand-edit
@@ -1625,12 +1625,12 @@ The daily logs are the one place the old name legitimately survives.
   taste: the justification is bidirectionality (speech → sign), and there is no
   synthesis direction anywhere in the repo, the README, or this TODO. §8 has not
   even settled whether *sentence-level* recognition is in scope. Blocked on §8.
-- [?] **The `packages/sb-*` uv workspace split.** All of `src/modules/` is
+- [?] **The `packages/sb-*` uv workspace split.** All of `packages/` is
   **5,532 lines** across 20 files, single developer, no test suite, no CI. Six
   workspace members rooted at `packages/*/src/sb/<pkg>/` would add six
   `pyproject.toml`s, editable installs, and an import-root change to every
   notebook and CLI — and would break the `CWD = src/` kernel convention that
-  `modules/paths.py` and the `sys.path` bootstrap in `modules/scripts/` are both
+  `sb.core.paths` and the `sys.path` bootstrap in `modules/scripts/` are both
   built around. The seam the split is meant to create (shared landmark schema +
   subset indices) already exists as `modules/dataset/landmark/`, and §9.4 makes
   it enforceable without moving a single file. Revisit when POPSIGN training
@@ -1638,9 +1638,9 @@ The daily logs are the one place the old name legitimately survives.
 - [ ] **Move the registry out of `src/data/` to a top-level `registry/`.** The
   review's stated reason — that `.gitignore` negation is fragile and can be
   "silently defeated" — does not apply as written: `src/data/*` globs the
-  *contents* (not the directory), so `!src/data/models/` works, and verifiably
+  *contents* (not the directory), so `!registry/runs/` works, and verifiably
   does today (264 files tracked; `git check-ignore` does not match
-  `src/data/models/<id>/meta.json`). What remains is a naming/legibility
+  `registry/runs/<id>/meta.json`). What remains is a naming/legibility
   argument, worth ~1 line in `paths.py` plus a `git mv` of 264 files and every
   path reference in docs and notebooks. Low value alone — bundle it with the
   layout change if that ever happens.
@@ -1715,7 +1715,7 @@ feature pipeline. Full write-up: `docs/logs/daily/2026-08-23.md`.)*
 
 *Previously: August 23, 2026 (1st-place solution recreated in code — reference
 notebook recovered from git history and read in full, ported as
-`src/gislr.1.models.firstplace.ipynb` + `modules/model/{features,optim,train_fp}.py`
+`experiments/recognition/gislr.1.models.firstplace.ipynb` + `modules/model/{features,optim,train_fp}.py`
 + `Conv1DTransformer` in `architectures.py`; awaiting the user's run. Correction
 filed to §7.2: the reference point is lip landmark 17, not shoulder-centre.)*
 

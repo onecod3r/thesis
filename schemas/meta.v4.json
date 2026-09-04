@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/sign2speech/schemas/meta.v4.json",
-  "title": "sign2speech model-registry run record (schema v4)",
+  "$id": "https://github.com/signbridge/schemas/meta.v4.json",
+  "title": "signbridge model-registry run record (schema v4)",
   "description": "One training run's meta.json. GENERATED from modules/model/registry.py::FIELDS by modules/scripts/gen_docs.py \u2014 edit the code, not this file.",
   "type": "object",
   "required": [
@@ -48,7 +48,7 @@
     },
     "architecture": {
       "type": "string",
-      "description": "key into modules.model.ARCHS: gru / lstm / bilstm / cnn1d / conv1d_transformer"
+      "description": "key into sb.recognize.ARCHS: gru / lstm / bilstm / cnn1d / conv1d_transformer"
     },
     "model_name": {
       "type": "string",
