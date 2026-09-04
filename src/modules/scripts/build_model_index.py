@@ -3,7 +3,7 @@
 Every registry run folder (src/data/models/<run_id>/, run_id = epoch seconds)
 carries a meta.json — written every epoch by the training driver
 (modules/model/train.py) and promoted to eval_status="canonical" by
-modules/scripts/eval_gru.py. This script flattens them into one table so
+modules/scripts/evaluate.py. This script flattens them into one table so
 "best 3 gru runs on gislr" or "all ME_126 runs" is a one-liner instead of a
 folder crawl.
 

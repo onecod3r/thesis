@@ -17,7 +17,7 @@ One call = one registry run:
   epoch-seconds folder per training start).
 - **meta.json always current.** The run record is (re)written every epoch, so
   even an interrupted run is indexed correctly; canonical-eval fields written
-  by modules/scripts/eval_gru.py survive rewrites (registry.write_meta).
+  by modules/scripts/evaluate.py survive rewrites (registry.write_meta).
 - Early stopping on val-accuracy plateau + ReduceLROnPlateau watching the same
   signal (regime v2-plateau-300, TODO §3.2).
 """

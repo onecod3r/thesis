@@ -88,7 +88,7 @@ is a query, not a folder crawl:
   (`--dataset/--architecture/--subset/--top`); warns on runs missing metadata.
 - [x] `gislr.1.model.gru.ipynb` §7 (run-docs cell) now also writes
   `metadata.json` (preserving canonical-eval fields on re-runs);
-  `scripts/eval_gru.py` promotes `eval_status` to `canonical` after the
+  `scripts/evaluate.py` promotes `eval_status` to `canonical` after the
   per-class eval.
 - [x] Run folders are always fresh (2026-07-17): `gislr.1.model.gru.ipynb`'s
   `resolve_run_dir` no longer reuses/skips a **completed** run — every new
@@ -128,7 +128,7 @@ Executed 2026-07-18 (full write-up: `docs/logs/daily/2026-07-18.md`):
   caches → `data/cache/gislr/{motion_analysis,subset_comparison}`;
   manifests → `data/cache/popsign/dataframes/`; `.gitignore` reworked
   (all of `src/data/` ignored except `data/models/` minus weights/exports).
-- [x] **Scripts split**: project CLIs in `src/modules/scripts/` (`eval_gru.py`
+- [x] **Scripts split**: project CLIs in `src/modules/scripts/` (`evaluate.py`
   takes a run folder, `build_model_index.py` flat-layout; both run from any
   CWD); root `scripts/` = housekeeping only.
 - [x] **Docs split**: `docs/logs/daily/` + `docs/logs/weekly/<YYYY>-<WW>.md` +
@@ -659,7 +659,7 @@ is now a one-line config change. Awaiting user run.
   2026-07-17 for all three subsets (v1 regime, `COORDS="xy"`): train-loop val
   acc **ME_126-xy 74.92 / ME_132-xy 74.95 / FP_118-xy 74.54 — each beats its
   xyz counterpart** (73.73 / 72.47–74.95 / 74.60), consistent with the z-noise
-  finding. Canonical evals pending. `scripts/eval_gru.py` xy mode added
+  finding. Canonical evals pending. `scripts/evaluate.py` xy mode added
   2026-07-17 (reads the checkpoint's `coords` key). **Caveat**: ME_132's two
   same-config xyz runs differ by ~2.5 pts (72.47 vs 74.95) — run-to-run
   variance is on the order of the subset deltas, so ablation conclusions need
@@ -753,7 +753,7 @@ Train on the best-known subset for comparability with the GRU runs.
 
 All three verified 2026-07-17 by CPU smoke test: forward shapes correct,
 future-frame corruption provably doesn't change logits for the two causal
-models, and notebook state_dicts load into `scripts/eval_gru.py`'s classes
+models, and notebook state_dicts load into `scripts/evaluate.py`'s classes
 with identical logits (the script now dispatches on the checkpoint's `arch`
 key and handles xy/xyz via its `coords` key).
 - [ ] ST-GCN, TCN, Transformer, Conformer — evaluate against the recurrent baselines
@@ -820,7 +820,7 @@ so it isn't chased as three separate untracked efforts:
   - `modules/model/optim.py` — Lookahead, AWP, cosine one-cycle.
   - `modules/model/train_fp.py` + `src/config/gislr.firstplace.json` — the
     driver and its config; same canonical split, registry and meta.json schema.
-  - `modules/scripts/eval_gru.py` — dispatches on the checkpoint's `features`
+  - `modules/scripts/evaluate.py` — dispatches on the checkpoint's `features`
     key so these runs are scored through the 1st-place preprocessing.
   - **`src/gislr.1.models.firstplace.ipynb`** — the driver notebook.
 - [x] **Run it (user)** — done 2026-08-23, run `1787483814`, 300 epochs in
@@ -1054,7 +1054,7 @@ notebooks are training drivers only; they no longer carry export code.
     `from_concrete_functions` loses the output *name* the grader indexes by
     (`output["outputs"]`), the frozen function is re-wrapped in a module that
     re-declares the exact signature.
-- [x] `modules/scripts/eval_gru.py` refactored so `evaluate_run(run_dir)` is
+- [x] `modules/scripts/evaluate.py` refactored so `evaluate_run(run_dir)` is
   importable (the CLI is a thin wrapper), and it now also writes
   `assets/val_predictions.npz` (labels + preds) — that file is what makes the
   confusion matrices cheap and reproducible.
@@ -1378,7 +1378,7 @@ rebuilt from its record. 43 run folders are in this state.
   `migrate_all` backfills `provenance: null` for the 43 existing runs — unknown
   provenance must read as unknown, never be reconstructed after the fact.
 - [x] Both drivers write it (`train.py` and `train_fp.py`), and
-  `eval_gru.py`/`evaluate.py` (§9.7) records its own eval-time env, since the
+  `evaluate.py` (§9.7) records its own eval-time env, since the
   canonical metric is produced there, not in training.
 - [x] `build_model_index.py`: new `prov_*` columns; README schema table updated
   (or generated — §9.6).
@@ -1387,7 +1387,7 @@ rebuilt from its record. 43 run folders are in this state.
 the two dirtiness flags, config path + hash of the values that ran, feature
 pipeline, feature-cache key, dataset ref with a `train.csv` fingerprint,
 environment incl. scikit-learn because it defines the split, captured_at). Wired
-into both drivers, into `eval_gru.py`'s `eval_summary.json` (the canonical number
+into both drivers, into `evaluate.py`'s `eval_summary.json` (the canonical number
 is produced there, not in training), and into `index.csv` as 16 `prov_*` columns.
 `migrate_all` backfilled **42 runs to v4 with `provenance: null`**, and
 `index.csv` was rebuilt — 42 rows, up from the 38 it had drifted to. One run
@@ -1408,7 +1408,7 @@ the definition moved.
 
 **Correction to the review's framing:** the two feature pipelines do *not*
 collide (distinct `_nan_` suffix, deliberate per §4.2), and the leaderboard
-metric is *not* at risk — `eval_gru.py` reproduces the split and preprocessing
+metric is *not* at risk — `evaluate.py` reproduces the split and preprocessing
 straight from raw parquet and never touches a feature cache. The hazard is to
 **training inputs**, which is bad enough on its own.
 
@@ -1550,7 +1550,7 @@ code: `modules/model/data.py` hardcodes `FEATURES_DIR = CACHE_DIR/"gislr"/"featu
 **Done 2026-09-04.** `modules/model/sources.py`: `DatasetSource` bundles dir
 resolver, label map, canonical split, per-sample reader, sample-path builder,
 plus the identity used for cache addressing and provenance (name, kaggle ref,
-manifest). `grep gislr_dir` over `train.py`, `train_fp.py` and `eval_gru.py`
+manifest). `grep gislr_dir` over `train.py`, `train_fp.py` and `evaluate.py`
 now returns **nothing** — all three go through the source, and the eval script
 takes its dataset from the run's own `meta.json` instead of assuming GISLR.
 `data.FEATURES_DIR` became `data.features_root(dataset)` (the const stays as
@@ -1603,11 +1603,21 @@ gone: `index.csv` is regenerated by the same command that renders the docs, the
 
 ### 9.7 Rename `eval_gru.py` → `evaluate.py`
 
-- [ ] The name predates everything it now does: it dispatches all five
+- [x] The name predates everything it now does: it dispatches all five
   architectures in `ARCHS` and both feature pipelines (it branches on
   `ckpt["features"] == "firstplace"`). Rename the file and its `--help` text;
   update README, `CLAUDE.md`, `docs/`, and the notebook import
-  (`from modules.scripts.eval_gru import evaluate_run`).
+  (`from modules.scripts.evaluate import evaluate_run`).
+
+**Done 2026-09-04.** `git mv` + **42 references** updated across 15 files
+(modules, all three GISLR notebooks, README, CLAUDE.md, this file).
+`registry.eval_command()` and the notebooks' handoff cells now print the new
+path.
+
+**`docs/logs/**` was deliberately left alone.** Those are time-ordered records
+of what existed on the day they were written; rewriting a 2026-07-17 log to name
+a file that would not exist for another seven weeks would falsify the record.
+The daily logs are the one place the old name legitimately survives.
 
 ### 9.8 Deferred / rejected — with the reason, so they aren't re-proposed
 

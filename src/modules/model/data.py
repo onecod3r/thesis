@@ -20,7 +20,7 @@ block).
 
 The canonical split (stratified 90/10, ``random_state=42`` → 9,448-video val
 set) is THE leaderboard comparability requirement — identical here and in
-``modules/scripts/eval_gru.py``.
+``modules/scripts/evaluate.py``.
 """
 
 import hashlib
@@ -160,7 +160,7 @@ def get_canonical_split(
     data_dir: Path, sign2idx: dict[str, int]
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Stratified 90/10 split, random_state=42 — identical to every leaderboard
-    run and to modules/scripts/eval_gru.py (the canonical evaluation).
+    run and to modules/scripts/evaluate.py (the canonical evaluation).
     Deterministic and cheap, so consumers call it instead of sharing live state."""
     df = pd.read_csv(data_dir / "train.csv")
     missing = set(df["sign"].unique()) - set(sign2idx)

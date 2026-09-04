@@ -152,7 +152,7 @@ def write_meta(run_dir: Path, meta: dict) -> Path:
     """Validate against the schema key set and write meta.json atomically.
 
     Facts recorded by something *other* than the training loop survive its
-    per-epoch rewrites: canonical-eval metrics (eval_gru.py) and the submission
+    per-epoch rewrites: canonical-eval metrics (evaluate.py) and the submission
     block (the evaluation notebook / mark_tested). The training loop must never
     erase either.
     """
@@ -261,4 +261,4 @@ def eval_command(run_dir: Path) -> str:
     """The canonical per-class eval invocation for a run (works from any CWD;
     shown here relative to the repo root)."""
     rel = run_dir.resolve().relative_to(SRC_DIR.parent).as_posix()
-    return f".venv/Scripts/python.exe src/modules/scripts/eval_gru.py {rel}"
+    return f".venv/Scripts/python.exe src/modules/scripts/evaluate.py {rel}"

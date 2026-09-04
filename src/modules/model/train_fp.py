@@ -495,7 +495,7 @@ def train_firstplace_run(cfg: dict, subset_name: str, hyp: dict,
             "coords": coords,
             "arch": arch,
             "training_regime": cfg["regime"],
-            # tells modules/scripts/eval_gru.py to score this run through the
+            # tells modules/scripts/evaluate.py to score this run through the
             # 1st-place preprocessing rather than the default one
             "features": "firstplace",
             "diff_mode": fcfg["diff_mode"],

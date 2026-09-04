@@ -58,7 +58,7 @@ def save_learning_curves(run_dir: Path, title: str | None = None):
 def confusion_matrix(run_dir: Path, n_classes: int = 250, normalize: bool = True):
     """Confusion matrix from a run's cached canonical-eval predictions.
 
-    Built from ``assets/val_predictions.npz`` (written by eval_gru.py), never by
+    Built from ``assets/val_predictions.npz`` (written by evaluate.py), never by
     re-running inference — one inference pass per run, ever.
 
     Row *i* = true class *i*: normalized rows sum to 1, so the diagonal is the
@@ -72,7 +72,7 @@ def confusion_matrix(run_dir: Path, n_classes: int = 250, normalize: bool = True
     if not npz_path.is_file():
         raise FileNotFoundError(
             f"{run_dir.name}: no val_predictions.npz — run the canonical eval "
-            f"(modules/scripts/eval_gru.py) for this run first"
+            f"(modules/scripts/evaluate.py) for this run first"
         )
     d = np.load(npz_path)
     cm = np.zeros((n_classes, n_classes), dtype=np.float64)

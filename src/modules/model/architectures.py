@@ -1,6 +1,6 @@
 """The GISLR benchmark architectures — the single definition of every model
 class, loaded both by the training notebooks and by the canonical eval script
-(modules/scripts/eval_gru.py), so state_dicts can never drift between the two.
+(modules/scripts/evaluate.py), so state_dicts can never drift between the two.
 
 All models share the same contract: ``forward(x, lengths)`` with
 ``x (B, T, F)`` zero-padded and ``lengths`` sorted descending (the collate in

@@ -498,7 +498,7 @@ def collate_fn(batch):
 
     Returns ``(padded, lengths, labels)`` — the same contract as
     ``data.collate_fn``, so the model, the training driver and
-    ``modules/scripts/eval_gru.py`` all keep one calling convention. Unlike
+    ``modules/scripts/evaluate.py`` all keep one calling convention. Unlike
     ``data.collate_fn`` there is no descending-length sort, because nothing here
     uses packed sequences.
     """

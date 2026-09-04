@@ -12,7 +12,7 @@ straight from the raw parquet files — no feature cache needed.
 
 Usage (any CWD — the script bootstraps its own imports):
 
-    .venv/Scripts/python.exe src/modules/scripts/eval_gru.py <run_dir> [--checkpoint best.pt]
+    .venv/Scripts/python.exe src/modules/scripts/evaluate.py <run_dir> [--checkpoint best.pt]
 
 <run_dir> is a registry folder (src/data/models/<run_id>/). Writes
 assets/per_class_accuracy.{csv,png} + assets/eval_summary.json +
@@ -26,7 +26,7 @@ builds every matrix from these files instead of re-running inference.
 
 Importable as well as runnable — the evaluation notebook calls
 
-    from modules.scripts.eval_gru import evaluate_run
+    from modules.scripts.evaluate import evaluate_run
     summary = evaluate_run(run_dir)
 """
 import argparse
