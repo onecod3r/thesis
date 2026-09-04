@@ -30,6 +30,18 @@ import pandas as pd
 from modules.model import registry as R
 from modules.paths import MODEL_INDEX, MODELS_DIR
 
+# provenance (schema v4, TODO §9.1) flattened for querying: "which runs share a
+# feature cache", "which runs came off an uncommitted tree", "which runs read a
+# different copy of the dataset" are all one filter each. Pre-v4 runs carry
+# nulls here — provenance that was never recorded stays unknown.
+PROV_ENV_KEYS = ("python", "torch", "numpy", "scikit-learn", "gpu")
+PROV_COLUMNS = [
+    "prov_git_commit", "prov_git_dirty", "prov_code_dirty", "prov_config_path",
+    "prov_config_sha256", "prov_feature_pipeline", "prov_feature_cache_key",
+    "prov_source_n_videos", "prov_source_manifest_sha256",
+    *[f"prov_env_{k.replace('-', '_')}" for k in PROV_ENV_KEYS],
+]
+
 # column order of index.csv: identity, then results, then config; the flattened
 # hyp_* columns follow in whatever order the meta files introduce them
 LEAD_COLUMNS = [
@@ -44,13 +56,30 @@ LEAD_COLUMNS = [
     "training_finished", "training_wall_time_min",
     "submission_tested", "submission_platform", "submission_public_score",
     "submission_private_score", "submission_submitted_at", "submission_reference",
+    *PROV_COLUMNS,
 ]
+
+
+def _flatten_provenance(prov: dict | None) -> dict:
+    """One column per queryable provenance fact; all null for a pre-v4 run."""
+    if not prov:
+        return dict.fromkeys(PROV_COLUMNS)
+    src, env = prov.get("source") or {}, prov.get("env") or {}
+    row = {f"prov_{k}": prov.get(k) for k in
+           ("git_commit", "git_dirty", "code_dirty", "config_path",
+            "config_sha256", "feature_pipeline", "feature_cache_key")}
+    row["prov_source_n_videos"] = src.get("n_videos")
+    row["prov_source_manifest_sha256"] = src.get("manifest_sha256")
+    row.update({f"prov_env_{k.replace('-', '_')}": env.get(k)
+                for k in PROV_ENV_KEYS})
+    return row
 
 
 def _flatten(meta: dict) -> dict:
     row = {k: v for k, v in meta.items()
            if k not in ("schema_version", "split", "training", "hyperparameters",
-                        "metrics", "checkpoints", "assets", "submission")}
+                        "provenance", "metrics", "checkpoints", "assets",
+                        "submission")}
     row.update({f"split_{k}": v for k, v in meta.get("split", {}).items()})
     row.update({f"training_{k}": v for k, v in meta.get("training", {}).items()})
     row.update({f"hyp_{k}": v for k, v in meta.get("hyperparameters", {}).items()})
@@ -61,6 +90,7 @@ def _flatten(meta: dict) -> dict:
               "private_score": None, "submitted_at": None, "reference": None},
            **meta.get("submission", {})}
     row.update({f"submission_{k}": v for k, v in sub.items() if k != "notes"})
+    row.update(_flatten_provenance(meta.get("provenance")))
     return row
 
 

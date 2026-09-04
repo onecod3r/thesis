@@ -29,7 +29,7 @@ from pathlib import Path
 
 from modules.paths import CACHE_DIR, MODELS_DIR, SRC_DIR
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 CKPT_BEST = "best.pt"
 CKPT_LAST = "last.pt"
 RUN_PTR_DIR = CACHE_DIR / "runs"  # <dataset>_<arch>_<tag>.txt -> active run dir
@@ -58,6 +58,7 @@ REQUIRED_KEYS = (
     "split",
     "training",
     "hyperparameters",
+    "provenance",
     "metrics",
     "checkpoints",
     "assets",
@@ -65,6 +66,12 @@ REQUIRED_KEYS = (
     "notes",
 )
 
+# Schema v4 adds `provenance` (modules/model/provenance.py, TODO §9.1): the
+# commit / config hash / feature-cache key / dataset ref / environment that
+# produced a run. Runs written before it exists carry `provenance: null` —
+# unknown provenance reads as unknown and is never reconstructed after the
+# fact (migrate_meta).
+#
 # Schema v3. Deliberately dataset-agnostic: `tested` means "scored on the
 # official/held-out test set", whatever that means for the dataset — Kaggle for
 # GISLR, a local held-out split for datasets with no leaderboard. Nothing in the
@@ -117,17 +124,21 @@ def pointer_run_dir(pointer_key: str) -> Path | None:
 def load_meta(run_dir: Path) -> dict:
     """Read a run record, normalized to the current schema.
 
-    A pre-v3 record (no `submission` block) is filled in with the default on
-    read. The gap is unambiguous — a run written before submission tracking
-    existed has, by definition, never been submitted — and healing it here keeps
-    every consumer working against records written by an older version of the
-    training driver, including a Jupyter kernel still holding a stale import.
+    Two known gaps are healed on read. A pre-v3 record (no `submission` block)
+    gets the default — a run written before submission tracking existed has, by
+    definition, never been submitted. A pre-v4 record (no `provenance`) gets
+    None, which is the honest value: nothing about that run's commit or
+    environment was recorded and none of it can be recovered now. Healing both
+    here keeps every consumer working against records written by an older
+    version of the training driver, including a Jupyter kernel still holding a
+    stale import.
 
     Only this known gap is filled; anything else missing still trips
     `write_meta`'s schema assertion rather than being papered over.
     """
     meta = json.loads((run_dir / "meta.json").read_text())
     meta.setdefault("submission", dict(SUBMISSION_DEFAULT))
+    meta.setdefault("provenance", None)
     return meta
 
 
@@ -155,6 +166,8 @@ def write_meta(run_dir: Path, meta: dict) -> Path:
                 meta["metrics"][k] = prev["metrics"][k]
         if prev.get("submission", {}).get("tested"):
             meta["submission"] = prev["submission"]
+        if meta.get("provenance") is None and prev.get("provenance") is not None:
+            meta["provenance"] = prev["provenance"]
         meta["assets"] = {**prev.get("assets", {}), **meta["assets"]}
         if prev.get("notes") and meta["notes"] == "":
             meta["notes"] = prev["notes"]
@@ -165,20 +178,28 @@ def write_meta(run_dir: Path, meta: dict) -> Path:
 
 
 def migrate_meta(run_dir: Path) -> bool:
-    """Bring one pre-v3 meta.json up to the current schema. Idempotent; returns
+    """Bring one older meta.json up to the current schema. Idempotent; returns
     True when the file was actually rewritten.
 
     v2 -> v3 adds the `submission` block. Runs written before it existed have
     simply never been submitted, so the default (tested=False) is the correct
     backfill — no information is invented.
+
+    v3 -> v4 adds `provenance`, backfilled as null. That is deliberate and not a
+    placeholder to fill in later: the commit, environment and feature-cache
+    identity behind a pre-v4 run were never recorded, so the only truthful value
+    is "unknown". Reconstructing a plausible-looking block would make those runs
+    look reproducible when they are not.
     """
     path = run_dir / "meta.json"
     if not path.is_file():
         return False
     meta = json.loads(path.read_text())
-    if meta.get("schema_version") == SCHEMA_VERSION and "submission" in meta:
+    if (meta.get("schema_version") == SCHEMA_VERSION
+            and "submission" in meta and "provenance" in meta):
         return False
     meta.setdefault("submission", dict(SUBMISSION_DEFAULT))
+    meta.setdefault("provenance", None)
     meta["schema_version"] = SCHEMA_VERSION
     write_meta(run_dir, meta)
     return True

@@ -1362,26 +1362,38 @@ the feature cache that produced the inputs. `hyperparameters` + `training.source
 + the committed `src/config/*.json` cover part of it, but a run cannot be
 rebuilt from its record. 43 run folders are in this state.
 
-- [ ] Add a `provenance` block to `meta.json` (`schema_version: 4`):
+- [x] Add a `provenance` block to `meta.json` (`schema_version: 4`):
   `git_commit`, `git_dirty`, `dirty_code_paths`, `config_path`,
   `config_sha256`, `feature_pipeline` (`base_v1` | `firstplace_v1`),
   `feature_cache_key` (§9.2), `source` (`{name, kaggle_ref, version, n_videos}`),
   `env` (`{python, torch, numpy, mediapipe, platform, gpu}`).
-- [ ] **Don't gate on `git_dirty` alone.** Every training run in this repo starts
+- [x] **Don't gate on `git_dirty` alone.** Every training run in this repo starts
   from a dirty tree — the driver notebook is edited and re-run as part of
   starting the run (the working tree had `M src/gislr.1.models.firstplace.ipynb`
   when this section was filed). A blanket dirty warning would fire on 100% of
   runs and be ignored within a day. Hash **the code that actually executes** —
   `src/modules/` + the resolved config file — and warn only when *that* is
   dirty; record notebook dirtiness separately as information, not as an alarm.
-- [ ] `REQUIRED_KEYS` + `SCHEMA_VERSION = 4` in `modules/model/registry.py`;
+- [x] `REQUIRED_KEYS` + `SCHEMA_VERSION = 4` in `modules/model/registry.py`;
   `migrate_all` backfills `provenance: null` for the 43 existing runs — unknown
   provenance must read as unknown, never be reconstructed after the fact.
-- [ ] Both drivers write it (`train.py` and `train_fp.py`), and
+- [x] Both drivers write it (`train.py` and `train_fp.py`), and
   `eval_gru.py`/`evaluate.py` (§9.7) records its own eval-time env, since the
   canonical metric is produced there, not in training.
-- [ ] `build_model_index.py`: new `prov_*` columns; README schema table updated
+- [x] `build_model_index.py`: new `prov_*` columns; README schema table updated
   (or generated — §9.6).
+
+**Done 2026-09-04.** `modules/model/provenance.py` (12 fields: git commit/branch +
+the two dirtiness flags, config path + hash of the values that ran, feature
+pipeline, feature-cache key, dataset ref with a `train.csv` fingerprint,
+environment incl. scikit-learn because it defines the split, captured_at). Wired
+into both drivers, into `eval_gru.py`'s `eval_summary.json` (the canonical number
+is produced there, not in training), and into `index.csv` as 16 `prov_*` columns.
+`migrate_all` backfilled **42 runs to v4 with `provenance: null`**, and
+`index.csv` was rebuilt — 42 rows, up from the 38 it had drifted to. One run
+folder (`1787473998`) has no `meta.json` at all — an aborted 1st-place start that
+only ever wrote `assets/landmarks.npy`; it is skipped with a warning, not
+indexed.
 
 ### 9.2 Content-addressed feature caches
 

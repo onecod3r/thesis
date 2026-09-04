@@ -35,6 +35,7 @@ from tqdm.auto import tqdm
 
 from modules.dataset.landmark.subsets import get_subset
 from modules.model import data as D
+from modules.model import provenance as P
 from modules.model import registry as R
 from modules.model.architectures import ARCHS, build_model
 
@@ -112,6 +113,7 @@ def _build_meta(
     n_params,
     n_classes,
     hyp,
+    provenance,
     regime,
     source,
     history,
@@ -163,6 +165,8 @@ def _build_meta(
             "loss": "CE + label smoothing 0.1",
             "precision": "AMP",
         },
+        # what state of the world produced this run (schema v4, TODO §9.1)
+        "provenance": provenance,
         "metrics": {
             "train_val_acc": round(float(best_val_acc), 4),
             "eval_status": "pending",
@@ -220,6 +224,7 @@ def train_from_config(
         run_dirs[name] = train_run(
             arch=arch, subset_name=name, coords=coords, hyp=hyp,
             regime=cfg.regime, source=cfg.source, dataset=cfg.dataset,
+            config_path=cfg.path, config_obj=cfg.raw,
             notes=notes if notes is not None else cfg.notes_for(arch)
             or f"{name} · {arch} · regime {cfg.regime}.")
     return run_dirs
@@ -235,6 +240,8 @@ def train_run(
     coords: str = "xyz",
     dataset: str = "gislr",
     data_dir: Path | None = None,
+    config_path: Path | None = None,
+    config_obj: dict | None = None,
     notes: str = "",
 ) -> Path:
     """Train one registry run; returns its run folder. Builds missing feature
@@ -259,6 +266,18 @@ def train_run(
         train_split, "train", subset, coords, data_dir
     )
     va_data, va_off = D.build_subset_cache(val_split, "val", subset, coords, data_dir)
+
+    # Captured per driver invocation, so a resumed run records the state of its
+    # most recent invocation — the one that produced its latest epochs.
+    prov = P.build(
+        dataset=dataset,
+        data_dir=data_dir,
+        config_path=config_path,
+        config_obj=config_obj,
+        feature_pipeline=P.PIPELINE_BASE,
+        n_videos=len(train_split) + len(val_split),
+    )
+    P.warn_if_dirty(prov, label=f"{dataset}/{arch}/{tag}")
 
     torch.manual_seed(D.SEED)
     np.random.seed(D.SEED)
@@ -331,6 +350,7 @@ def train_run(
         n_params=n_params,
         n_classes=len(sign2idx),
         hyp=hyp,
+        provenance=prov,
         regime=regime,
         source=source,
         notes=notes,

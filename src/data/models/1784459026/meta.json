@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "run_id": 1784459026,
   "created": "2026-07-19T17:03:46",
   "dataset": "gislr",
@@ -75,5 +75,6 @@
     "reference": null,
     "notes": ""
   },
-  "notes": "ME_132 \u00b7 bilstm \u00b7 regime v2-plateau-300."
+  "notes": "ME_132 \u00b7 bilstm \u00b7 regime v2-plateau-300.",
+  "provenance": null
 }

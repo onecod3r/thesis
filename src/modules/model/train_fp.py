@@ -73,6 +73,7 @@ from tqdm.auto import tqdm
 from modules.dataset.landmark.subsets import get_subset
 from modules.model import data as D
 from modules.model import features as F
+from modules.model import provenance as P
 from modules.model import registry as R
 from modules.model.architectures import ARCHS, build_model
 from modules.model.optim import AWP, Lookahead, cosine_one_cycle, frozen_bn_stats
@@ -117,12 +118,16 @@ def load_fp_config(path: Path | str = DEFAULT_CONFIG) -> dict:
     assert not missing, f"{path}: hyp block missing {missing}"
     assert raw["features"]["diff_mode"] in ("forward", "backward"), (
         f"{path}: features.diff_mode must be 'forward' or 'backward'")
+    # where this config came from; provenance records it and hashes the public
+    # values, so a cfg edited in a notebook cell (the §5b ablation arms) hashes
+    # differently from the file it started as
+    raw["_config_path"] = str(path)
     return raw
 
 
 def _build_meta(*, run_dir, cfg, subset, feature_dim, n_params, n_classes, hyp,
-                history, best_val_acc, epochs_done, finished, wall_time_min, notes,
-                early_stopped=False, stop_reason=None):
+                provenance, history, best_val_acc, epochs_done, finished,
+                wall_time_min, notes, early_stopped=False, stop_reason=None):
     arch = cfg["architecture"]
     spec = ARCHS[arch]
     best_epoch = (int(np.argmax(history["val_acc"])) + 1) if history["val_acc"] else None
@@ -168,6 +173,8 @@ def _build_meta(*, run_dir, cfg, subset, feature_dim, n_params, n_classes, hyp,
             "diff_mode": cfg["features"]["diff_mode"],
             "augment": cfg["features"]["augment"],
         },
+        # what state of the world produced this run (schema v4, TODO §9.1)
+        "provenance": provenance,
         "metrics": {
             "train_val_acc": round(float(best_val_acc), 4),
             "eval_status": "pending",
@@ -265,6 +272,18 @@ def train_firstplace_run(cfg: dict, subset_name: str, hyp: dict,
     tr_data, tr_off = F.build_nan_cache(train_split, "train", subset, coords, data_dir)
     va_data, va_off = F.build_nan_cache(val_split, "val", subset, coords, data_dir)
 
+    # Captured per driver invocation, so a resumed run records the state of its
+    # most recent invocation — the one that produced its latest epochs.
+    prov = P.build(
+        dataset=cfg["dataset"],
+        data_dir=data_dir,
+        config_path=cfg.get("_config_path"),
+        config_obj=cfg,
+        feature_pipeline=P.PIPELINE_FIRSTPLACE,
+        n_videos=len(train_split) + len(val_split),
+    )
+    P.warn_if_dirty(prov, label=f"{cfg['dataset']}/{arch}/{tag}")
+
     torch.manual_seed(D.SEED)
     np.random.seed(D.SEED)
     n_workers = int(hyp["num_workers"])
@@ -355,6 +374,7 @@ def train_firstplace_run(cfg: dict, subset_name: str, hyp: dict,
 
     meta_kw = dict(run_dir=run_dir, cfg=cfg, subset=subset, feature_dim=feature_dim,
                    n_params=n_params, n_classes=len(sign2idx), hyp=hyp,
+                   provenance=prov,
                    notes=(f"{subset_name} · 1st-place port (TODO §4.2) · "
                           f"regime {cfg['regime']}."
                           + (f" {cfg['notes_suffix']}" if cfg.get("notes_suffix") else "")))

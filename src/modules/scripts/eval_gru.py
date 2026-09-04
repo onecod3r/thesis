@@ -43,6 +43,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 import torch
 
+from modules.model import provenance as P
 from modules.model import registry as R
 from modules.model.architectures import build_model
 from modules.model.data import MAX_SEQ_LEN, ROWS_PER_FRAME, get_canonical_split, load_label_map
@@ -194,6 +195,18 @@ def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True) -
         "best5": per_class.tail(5)[["sign", "accuracy"]].values.tolist(),
         "n_classes_below_50pct": int((per_class["accuracy"] < 0.5).sum()),
         "median_class_accuracy": float(per_class["accuracy"].median()),
+        # The canonical number is produced HERE, not in training, so the eval
+        # gets its own provenance (TODO §9.1). It lives in the summary asset
+        # rather than in meta.json["provenance"], which belongs to the run that
+        # trained the weights.
+        "provenance": P.build(
+            dataset="gislr",
+            data_dir=data_dir,
+            feature_pipeline=(P.PIPELINE_FIRSTPLACE
+                              if ckpt.get("features") == "firstplace"
+                              else P.PIPELINE_BASE),
+            n_videos=int(len(val_split)),
+        ),
     }
     (assets / "eval_summary.json").write_text(json.dumps(summary, indent=2))
     plt.close(fig)

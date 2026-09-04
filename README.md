@@ -37,11 +37,11 @@ All `meta.json` files are flattened into the queryable **[src/data/models/index.
 
 ### meta.json schema
 
-**This section is the source of truth for the schema** (`schema_version: 3`; the machine-side key check lives in `modules/model/registry.py::REQUIRED_KEYS`). All keys are required; unknown extra keys are not written.
+**This section is the source of truth for the schema** (`schema_version: 4`; the machine-side key check lives in `modules/model/registry.py::REQUIRED_KEYS`). All keys are required; unknown extra keys are not written.
 
 | key | type | content |
 |---|---|---|
-| `schema_version` | int | `3` |
+| `schema_version` | int | `4` |
 | `run_id` | int | seconds since Unix epoch at training start = run folder name |
 | `created` | str | ISO-8601 local timestamp derived from `run_id` |
 | `dataset` | str | e.g. `"gislr"` |
@@ -54,6 +54,7 @@ All `meta.json` files are flattened into the queryable **[src/data/models/index.
 | `split` | object | `{strategy, random_state, n_val}` — the canonical split (`stratified 90/10`, seed 42, 9,448 val) |
 | `training` | object | `{regime, source, epoch_cap, epochs_trained, best_epoch, early_stopped, finished, wall_time_min}`, plus `stop_reason` (`"completed"`/`"plateau"`/`"collapse"`/`"nan"`) on `fp-onecycle-300` runs |
 | `hyperparameters` | object | full `HYP` dict + `seed`, `max_seq_len`, `num_workers`, `loss`, `precision` |
+| `provenance` | object \| null | what state of the world produced the run — see below. `null` for pre-v4 runs, and that is permanent |
 | `metrics` | object | `{train_val_acc, eval_status ("pending"\|"canonical"), overall_accuracy, macro_accuracy, median_class_accuracy, n_classes_below_50pct}` — canonical fields are `null` until `eval_gru.py` runs and then survive training-loop rewrites |
 | `checkpoints` | object | `{best: "best.pt", last: "last.pt"}` — run-dir-relative |
 | `assets` | object | `{name: run-dir-relative path}` for every asset file, e.g. `{"landmarks": "assets/landmarks.npy", "history": "assets/history.json", "learning_curves": "assets/learning_curves.png"}` |
@@ -81,6 +82,36 @@ flips the flag after a successful submission, and `registry.write_meta` protects
 the training loop's per-epoch rewrites (the same protection canonical eval metrics get).
 Pre-v3 records are backfilled with the default (never submitted) by `registry.migrate_all`,
 which `build_model_index.py` runs automatically.
+
+#### The `provenance` block (schema v4)
+
+Hyperparameters say what a run was *configured* with; `provenance` says what actually
+**ran** — so a number in the registry can be defended and, if need be, rebuilt. Written by
+both training drivers via `modules/model/provenance.py`, flattened into `prov_*` columns of
+`index.csv`.
+
+| field | content |
+|---|---|
+| `git_commit` / `git_branch` | HEAD at the time the driver was invoked |
+| `git_dirty` | anything in the working tree modified — **information, not an alarm** |
+| `code_dirty` / `dirty_code_paths` | whether `src/modules/` + `src/config/` were dirty — *this* is the alarm |
+| `config_path` / `config_sha256` | the config file, and a hash of the values that actually ran (a config edited in a cell hashes differently from the file on disk) |
+| `feature_pipeline` | `base_v1` (`modules/model/data.py`, NaN→0 at cache build) or `firstplace_v1` (`modules/model/features.py`, NaN-preserving) |
+| `feature_cache_key` | content hash of the feature cache the run read (TODO §9.2) |
+| `source` | `{name, kaggle_ref, version, n_videos, manifest, manifest_sha256, resolved_dir}` — the dataset *reference*, never its bytes |
+| `env` | `python`, `platform`, `torch`, `numpy`, `pandas`, `pyarrow`, `scikit-learn`, `mediapipe`, `gpu`, `cuda` |
+
+Two deliberate choices:
+
+- **`git_dirty` is not what warns you.** Training here starts by editing and re-running a
+  notebook, so the tree is dirty for essentially every run; a blanket warning would be
+  ignored within a day. Only `code_dirty` — the code and config that execute — prints the
+  loud "this run will not be reproducible" banner.
+- **`scikit-learn` is in `env` on purpose**: `train_test_split` defines the canonical split,
+  so a version change there moves the val set itself.
+- **The 42 pre-v4 runs carry `provenance: null` forever.** Their commit and environment were
+  never recorded and cannot be recovered; a reconstructed block would make them look
+  reproducible when they are not.
 
 ## Reports & docs
 
