@@ -1339,6 +1339,208 @@ already identified as semantic, not geometric).
 
 ---
 
+## 9. Reproducibility, Artifact Storage & Repo Layout (2026-09-04, new)
+
+Filed from an external architecture review of the repo (three-tier
+Git/DVC/MLflow advice, plus a proposed `signbridge/` uv-workspace layout).
+The review's *diagnosis* is largely correct and its *tooling prescription* is
+mostly not — see the verdicts below. This section holds only the changes that
+survived being checked against the repo; the rejected/deferred ones are kept in
+§9.8 with the reason, so they don't get re-proposed from scratch.
+
+Ordering is by (value ÷ cost), cheapest first. §9.1–§9.3 are independently
+useful and none of them requires the layout change.
+
+Related: §0.4 (the 2026-07-18 restructure this builds on), §6.3 (schema v3),
+§8 (the scope question that blocks the rename and the rescore/synthesis packages).
+
+### 9.1 Provenance block — meta.json schema v4
+
+**The fault (confirmed).** `meta.json` records what was configured but not what
+*ran*: no commit SHA, no environment versions, no dataset version, no link to
+the feature cache that produced the inputs. `hyperparameters` + `training.source`
++ the committed `src/config/*.json` cover part of it, but a run cannot be
+rebuilt from its record. 43 run folders are in this state.
+
+- [ ] Add a `provenance` block to `meta.json` (`schema_version: 4`):
+  `git_commit`, `git_dirty`, `dirty_code_paths`, `config_path`,
+  `config_sha256`, `feature_pipeline` (`base_v1` | `firstplace_v1`),
+  `feature_cache_key` (§9.2), `source` (`{name, kaggle_ref, version, n_videos}`),
+  `env` (`{python, torch, numpy, mediapipe, platform, gpu}`).
+- [ ] **Don't gate on `git_dirty` alone.** Every training run in this repo starts
+  from a dirty tree — the driver notebook is edited and re-run as part of
+  starting the run (the working tree had `M src/gislr.1.models.firstplace.ipynb`
+  when this section was filed). A blanket dirty warning would fire on 100% of
+  runs and be ignored within a day. Hash **the code that actually executes** —
+  `src/modules/` + the resolved config file — and warn only when *that* is
+  dirty; record notebook dirtiness separately as information, not as an alarm.
+- [ ] `REQUIRED_KEYS` + `SCHEMA_VERSION = 4` in `modules/model/registry.py`;
+  `migrate_all` backfills `provenance: null` for the 43 existing runs — unknown
+  provenance must read as unknown, never be reconstructed after the fact.
+- [ ] Both drivers write it (`train.py` and `train_fp.py`), and
+  `eval_gru.py`/`evaluate.py` (§9.7) records its own eval-time env, since the
+  canonical metric is produced there, not in training.
+- [ ] `build_model_index.py`: new `prov_*` columns; README schema table updated
+  (or generated — §9.6).
+
+### 9.2 Content-addressed feature caches
+
+**The fault (confirmed, but narrower than the review claimed).** The cache key
+is `subset_tag(subset.name, coords)` — subset *name* plus `"xy"`/`"xyz"`, and
+nothing else (`modules/model/data.py::subset_tag`, and the same tag with a
+`_nan_` infix in `modules/model/features.py::build_nan_cache`). Both builders
+are skip-if-exists. So editing the `ME_126` index list in
+`modules/dataset/landmark/subsets.py` leaves the tag unchanged and every
+subsequent run silently trains on the **old** 3.2 GB array, with no record that
+the definition moved.
+
+**Correction to the review's framing:** the two feature pipelines do *not*
+collide (distinct `_nan_` suffix, deliberate per §4.2), and the leaderboard
+metric is *not* at risk — `eval_gru.py` reproduces the split and preprocessing
+straight from raw parquet and never touches a feature cache. The hazard is to
+**training inputs**, which is bad enough on its own.
+
+- [ ] Key caches by a hash of everything that determines their bytes: pipeline
+  name + pipeline version, `sha256(subset.array.tobytes())`, coords, NaN policy,
+  and the dataset ref — not the subset's human name.
+- [ ] **Migrate by rename + sidecar, not rebuild.** `data/cache/gislr/features/`
+  is **29 GB**; recomputing it means re-decoding 94,477 parquets per subset.
+  Compute the key for each existing file from the current subset definitions,
+  rename in place, and drop a `<key>.json` sidecar recording the inputs. If a
+  definition has already drifted, the rename produces a key that no config asks
+  for — which is exactly the detection this task is for.
+- [ ] Record `feature_cache_key` in the §9.1 provenance block, so "are these two
+  runs comparable on inputs?" becomes a field equality check instead of a
+  promise.
+
+### 9.3 Off-machine artifact store (Cloudflare R2)
+
+**The fault (confirmed).** `best.pt`/`last.pt` are gitignored and exist on one
+Windows machine. The 2026-07-18 reset (§0.4) already destroyed 8 runs' weights
+including the ME-126 result still cited in the README, and those evals can never
+be completed.
+
+- [ ] `ops/sync_models.ps1` (or `.py`) — `rclone` / `aws s3 sync` of
+  `data/models/*/best.pt` to R2. Current total: **675 MB across 42 runs**
+  (~16 MB/run), so this is inside R2's free tier and takes minutes.
+- [ ] Run it at the end of every training session; document the restore path in
+  the README registry section.
+- [ ] **Scope it to weights only.** Not the 29 GB feature caches (derivable —
+  §9.2 makes that checkable) and emphatically not POPSIGN's ~870 GB of raw
+  video (immutable upstream Kaggle releases; record the ref, never the bytes).
+- [ ] Skip DVC. Its one real advantage over this — `dvc.yaml` stage DAGs
+  catching stale derived artifacts — is what §9.2 buys directly, and DVC fights
+  the notebook-driven workflow for the rest.
+
+### 9.4 Landmark tensor spec + validator
+
+**The fault (confirmed).** The npz contract between extraction and training is a
+paragraph of README prose: `landmarks (T, 543, 3)` float16 NaN-where-undetected,
+`fps`, `num_frames`, GISLR holistic row order (face 0–467, left hand 468–488,
+pose 489–521, right hand 522–542). That row order is what makes the
+`subsets.py` indices valid for POPSIGN, i.e. it is load-bearing for a
+cross-dataset claim, and nothing checks it.
+
+- [ ] `modules/dataset/landmark/spec.py`: versioned `LANDMARK_TENSOR_V1`
+  (row count, group offsets, dtype, NaN policy, required npz keys) +
+  `validate_tensor(arr)` / `validate_npz(path)`.
+- [ ] Call it in `extraction.py` before the atomic write, and in every loader
+  that reads an npz.
+- [ ] README's prose format block becomes a pointer to the spec (§9.6's rule:
+  one source of truth, and it is the code).
+
+### 9.5 Dataset seam in the training stack (do before POPSIGN training)
+
+**The fault (real, but not where the review put it).** The review blamed
+`dataset` appearing in filenames (`gislr.1.models.training.ipynb`,
+`data/cache/gislr/`). Those are deliberate, documented conventions and the cache
+subtree-per-dataset *is* the data-placement policy. The actual coupling is in
+code: `modules/model/data.py` hardcodes `FEATURES_DIR = CACHE_DIR/"gislr"/"features"`,
+`load_label_map` reads GISLR's `sign_to_prediction_index_map.json`,
+`get_canonical_split` reads GISLR's `train.csv`, and both drivers default
+`data_dir` to `gislr_dir()`. That is what doubles when POPSIGN arrives.
+
+- [ ] Introduce a dataset adapter (split builder, label map, per-sample loader,
+  feature-cache root) and make `train.py` / `train_fp.py` / the eval script take
+  one, with GISLR as the first implementation.
+- [ ] Keep the `<dataset>.<stage>.<topic>.ipynb` notebook convention as-is —
+  renaming notebooks is churn that fixes nothing.
+- [ ] POPSIGN's canonical split needs the same treatment GISLR's got (fixed
+  seed, asserted val size) before any POPSIGN number is comparable to anything.
+
+### 9.6 Kill the doc/schema drift
+
+**The fault (confirmed, with live examples).** README says its meta.json table
+"is the source of truth" while `registry.py::REQUIRED_KEYS` is what actually
+enforces it. Observed drift as of 2026-09-04: `data/models/index.csv` holds
+**38 runs against 43 run folders**; `CLAUDE.md` says "36 runs as of 2026-07-22";
+the README daily-log table listed 07-19 before 07-18.
+
+- [x] Fix the README daily-log table ordering (2026-09-04).
+- [ ] `schemas/meta.v4.json` **generated from** `registry.py`, and the README
+  schema table generated from the JSON Schema — so the code stays the single
+  definition and the doc is a rendering of it.
+- [ ] `build_model_index.py --markdown`: emit the leaderboard / run-count table
+  the README embeds, and regenerate the index as part of it (the index lagging
+  the run folders is the recurring failure).
+- [ ] Leave the narrative tables (weekly, daily, reports) hand-written —
+  generating prose summaries is not a drift fix, it's a worse changelog.
+- [ ] Refresh the stale run count in `CLAUDE.md`.
+
+### 9.7 Rename `eval_gru.py` → `evaluate.py`
+
+- [ ] The name predates everything it now does: it dispatches all five
+  architectures in `ARCHS` and both feature pipelines (it branches on
+  `ckpt["features"] == "firstplace"`). Rename the file and its `--help` text;
+  update README, `CLAUDE.md`, `docs/`, and the notebook import
+  (`from modules.scripts.eval_gru import evaluate_run`).
+
+### 9.8 Deferred / rejected — with the reason, so they aren't re-proposed
+
+- [?] **Repo rename `sign2speech` → `signbridge`.** Rejected *for now*, not on
+  taste: the justification is bidirectionality (speech → sign), and there is no
+  synthesis direction anywhere in the repo, the README, or this TODO. §8 has not
+  even settled whether *sentence-level* recognition is in scope. Blocked on §8.
+- [?] **The `packages/sb-*` uv workspace split.** All of `src/modules/` is
+  **5,532 lines** across 20 files, single developer, no test suite, no CI. Six
+  workspace members rooted at `packages/*/src/sb/<pkg>/` would add six
+  `pyproject.toml`s, editable installs, and an import-root change to every
+  notebook and CLI — and would break the `CWD = src/` kernel convention that
+  `modules/paths.py` and the `sys.path` bootstrap in `modules/scripts/` are both
+  built around. The seam the split is meant to create (shared landmark schema +
+  subset indices) already exists as `modules/dataset/landmark/`, and §9.4 makes
+  it enforceable without moving a single file. Revisit when POPSIGN training
+  starts (§9.5 is the real preparation for it).
+- [ ] **Move the registry out of `src/data/` to a top-level `registry/`.** The
+  review's stated reason — that `.gitignore` negation is fragile and can be
+  "silently defeated" — does not apply as written: `src/data/*` globs the
+  *contents* (not the directory), so `!src/data/models/` works, and verifiably
+  does today (264 files tracked; `git check-ignore` does not match
+  `src/data/models/<id>/meta.json`). What remains is a naming/legibility
+  argument, worth ~1 line in `paths.py` plus a `git mv` of 264 files and every
+  path reference in docs and notebooks. Low value alone — bundle it with the
+  layout change if that ever happens.
+- [ ] **`aliases.json` + a `promote` command.** The right idea, but a promotion
+  pointer needs something to promote *to*. There is no app, no deployment
+  target, and TFLite export already exists in
+  `gislr.2.models.evaluation.ipynb`. File it properly when a deployment target
+  is real; `submission.tested` (§6.3) already covers the query that exists today.
+- [ ] **MLflow as a mirror.** Recommend against. It is a second write path for
+  data `meta.json` already holds, needs a server process, and its stated payoff
+  (parallel-coordinates / run-comparison views for the ablation write-up) is a
+  plotting cell over `index.csv`, which is already a flat, DuckDB-queryable
+  table with one row per run. If the ablation chapter needs those views, add
+  the plot to `gislr.2.models.evaluation.ipynb` — hours cheaper, and it cannot
+  drift from the registry.
+- [ ] **`apps/` (web/edge/shared-ts), `sb-synthesize/`, `sb-rescore/`
+  skeletons.** No code, and in §8's case no scope decision. The review's own
+  step 6 says "empty scaffolding rots" while its structure diagram creates four
+  such directories; the advice is right and the diagram is wrong. Prompt
+  versioning + a frozen eval set is a genuinely good idea and belongs under §8
+  the moment §8's scope question is answered — not before.
+
+---
+
 ## Backlog / Someday
 
 - [ ] (add unscoped ideas here as they come up, promote to a numbered section once
@@ -1346,7 +1548,19 @@ already identified as semantic, not geometric).
 
 ---
 
-*Last updated: August 23, 2026, later still (§4.2: the fixed re-run
+*Last updated: September 4, 2026 (**§9 filed**: an external architecture review
+of the repo was checked against the code and split into what survives and what
+does not. Confirmed and actionable: runs record no commit/env/dataset version
+(§9.1), feature caches are keyed by subset *name* so a subset-definition edit is
+silently reused (§9.2), 675 MB of weights exist on one machine after already
+losing 8 runs (§9.3), the npz contract is prose (§9.4), the training stack
+hardcodes GISLR (§9.5), README/index/CLAUDE.md have drifted (§9.6). Rejected or
+deferred with reasons in §9.8: the `signbridge` rename (blocked on §8), the
+six-package uv workspace (5,532 LOC total), the `registry/` move (the gitignore
+negation demonstrably works), MLflow, DVC, and empty `apps/`/synthesis/rescore
+scaffolding.)*
+
+*Previously: August 23, 2026, later still (§4.2: the fixed re-run
 `1787492560` **collapsed at epoch 15 as well** — the collapse guard caught it in
 9.1 min instead of 2 h, so the guards work but the cause is still open. Neither
 of the two switches that fire at epoch 15 has been run alone; notebook **§5b**
