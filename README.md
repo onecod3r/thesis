@@ -61,7 +61,7 @@ The backend is chosen by `SB_ARTIFACT_BACKEND` in `.env`:
 
 | backend | what it is | setup |
 |---|---|---|
-| **`kaggle`** (default, in use) | a **Kaggle Model**: `bracu23101281/signbridge-gislr/pyTorch/<arch>-<subset><-coords>/<version>`. No new account — this repo already authenticates to Kaggle for the GISLR data | nothing; `KAGGLE_ARTIFACT_{OWNER,MODEL,FRAMEWORK}` override the defaults |
+| **`kaggle`** (default, in use) | a **Kaggle Model**: `bracu23101281/signbridge-gislr/pyTorch/<architecture>/<version>`, with subset/coords/score in the version note. No new account — this repo already authenticates to Kaggle for the GISLR data | nothing; `KAGGLE_ARTIFACT_{OWNER,MODEL,FRAMEWORK}` override the defaults |
 | `local` | any filesystem path: external drive, NAS share, or a OneDrive/Drive/Dropbox-synced folder. Zero dependencies | `SB_ARTIFACT_DIR=D:/backup/signbridge` |
 | `s3` | any S3-compatible endpoint — Backblaze B2, Wasabi, MinIO, Storj (or Cloudflare R2, if it is ever enabled) | `S3_ENDPOINT_URL` + `S3_BUCKET` + keys, and `uv sync --group ops` |
 
@@ -80,10 +80,14 @@ Derived from each run's `meta.json`, never typed by hand:
 |---|---|
 | **model** | the family. GISLR recognizers are `signbridge-gislr`; a POPSIGN model becomes `signbridge-popsign` rather than a variation, because a different label space is a different model |
 | **framework** | `pyTorch` — these are `.pt` state dicts. A TFLite export (§6.2) goes under the *same* model as `tfLite`, which is what the segment is for |
-| **variation** | `<architecture>-<subset><-coords>` — precisely the things that make two runs incomparable |
-| **version** | the same configuration retrained, in chronological run-id order, so the version history reads as the training history |
+| **variation** | the **architecture** alone — `gru`, `bilstm`, `conv1d-transformer` |
+| **version** | any run of that architecture, in chronological run-id order |
 
-**Versions are chronological, not ranked.** The newest version is the most recent run, not necessarily the best one — "which run should be deployed" is a separate question answered by `sb-promote` aliases. Every version carries its run's `meta.json` beside the weights, so an uploaded checkpoint is self-describing.
+Everything the slug does not say — subset, coords, score and whether it is canonical, params, landmark count, feature_dim, regime, epochs, an UNFINISHED marker — goes in the **version note**, with the full record in the `meta.json` uploaded beside the weights.
+
+**Versions are chronological, not ranked**, and since a variation now spans subsets they are **not all-else-equal** either: a version list cannot be read as a learning curve. Restores are unaffected — the manifest pins an exact `<variation>/<version>` handle per run — but a human comparing two versions has to read the notes. "Which run should be deployed" remains `sb-promote`'s question.
+
+`sb-sync rescheme` migrates existing uploads after a naming change, since Kaggle has no rename: it pulls each affected run back, re-uploads under the new handle, and re-prunes. It never deletes remotely, so superseded variations must be removed from the model page by hand.
 
 **Why Models and not Datasets.** A Kaggle *Dataset* versions as one directory, so every push would re-upload all 707 MB and every restore would download the lot. A *Model*'s variations version independently, so a push sends **only the runs that are new** and a restore fetches **one file** (`model_download(handle, path="best.pt")`). And a Kaggle inference kernel can attach a model directly, so the backup and the artifact a submission run loads (§6.3) are the same object.
 
@@ -244,13 +248,17 @@ signbridge/
 │   │       ├── vocab.py      #   sign name ↔ class index
 │   │       ├── io.py         #   atomic landmark-npz read/write, schema-checked both ways
 │   │       └── paths.py      #   the repo tree (found by walking up) + lazy dataset resolution
-│   ├── sb-extract/           # STAGE 1 — video → landmarks
+│   ├── sb-extract-ts/        # STAGE 1 in Deno/TypeScript — MediaPipe WASM, no `canvas` native module.
+│   │                         # NOT yet verified against the Python path: run `sb.extract.parity` first
+│   ├── sb-extract/           # STAGE 1 — video → landmarks (Python; produced the 33,599 test clips)
 │   │   └── src/sb/extract/
 │   │       ├── holistic.py   #   MediaPipe worker pool, manifest-resumable, resource-capped
 │   │       ├── sources/      #   per-dataset adapters (popsign.py) — adapters, not branches
 │   │       ├── quality.py    #   extraction-quality proxies + composite score
 │   │       ├── overlay.py    #   landmark-on-video rendering (the visual quality test)
 │   │       ├── cli.py        #   `sb-extract`: pilot benchmark + resumable bulk run
+│   │       ├── popsign_cycle.py # download one part → extract → VERIFY → delete (~870 GB won't fit)
+│   │       ├── parity.py     #   do the Python and TypeScript extractors agree? gate the switch on this
 │   │       └── tune.py       #   detector-threshold sweep
 │   ├── sb-recognize/         # STAGE 2 — landmarks → gloss
 │   │   └── src/sb/recognize/
@@ -299,6 +307,7 @@ signbridge/
 ├── schemas/                  # GENERATED machine contracts — never hand-edit
 │   └── meta.v4.json          #   JSON Schema for a run record, rendered from sb.mlops.registry::FIELDS
 ├── ops/                      # housekeeping (PowerShell etc.), no project Python
+│   ├── envs.ps1              #   per-stage venvs: uv sync --package <member> into .venvs/<stage>
 │   └── sys_disk_usage.ps1    #   disk-usage helper (POPSIGN raw video is ~870GB)
 └── docs/
     ├── logs/{daily,weekly}/  # time-ordered: what happened when
@@ -323,6 +332,15 @@ signbridge/
 # as an editable member, so `import sb...` works from any directory.
 uv sync
 ```
+
+**Per-stage environments (optional).** The default `.venv` holds every workspace member — torch *and* tensorflow *and* mediapipe *and* opencv — which is convenient and is also where dependency conflicts come from. `./ops/envs.ps1 -Stage train|mlops|extract` builds `.venvs/<stage>` from a single member's dependency closure:
+
+```powershell
+./ops/envs.ps1 -Stage mlops
+.venvs/mlops/Scripts/python.exe -c "import sb.mlops.registry; import torch"  # must fail on torch
+```
+
+Measured: an `sb-mlops`-only environment drops torch, tensorflow, mediapipe and opencv — so the "`sb-mlops` must not import `sb-recognize`" invariant is executable rather than merely documented. Notebooks keep using the default `.venv`.
 
 The six console scripts it puts on `.venv/Scripts/`:
 

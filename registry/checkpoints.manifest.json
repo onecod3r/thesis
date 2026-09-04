@@ -4,7 +4,7 @@
     "backend": "kaggle",
     "location": "kaggle://models/bracu23101281/signbridge-gislr/pyTorch"
   },
-  "updated": "2026-09-05T03:21:07",
+  "updated": "2026-09-05T03:22:42",
   "objects": {
     "1784385530/best.pt": {
       "run_id": 1784385530,
@@ -165,8 +165,8 @@
       "bytes": 13192912,
       "sha256": "d734433fec71ce3316759c3b667df41e809e53a870cbcf2857102952a36e52f3",
       "backend": "kaggle",
-      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/lstm-fp118-xy/1/best.pt",
-      "uploaded_at": "2026-09-04T20:15:44"
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/lstm/3/best.pt",
+      "uploaded_at": "2026-09-05T03:21:29"
     },
     "1784447175/best.pt": {
       "run_id": 1784447175,
@@ -174,8 +174,8 @@
       "bytes": 33047048,
       "sha256": "977cebaeb5a16c2c75c0de34fbdb6ddcbd0d95aaf543f1dd16f83f7aeaa8395f",
       "backend": "kaggle",
-      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/bilstm-me126-xy/2/best.pt",
-      "uploaded_at": "2026-09-04T20:16:08"
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/bilstm/4/best.pt",
+      "uploaded_at": "2026-09-05T03:22:03"
     },
     "1784447182/best.pt": {
       "run_id": 1784447182,
@@ -183,8 +183,8 @@
       "bytes": 8632635,
       "sha256": "6f68e070096145290803ee4a6c0db9d8cf468b614b22144f01447942f69bf1e2",
       "backend": "kaggle",
-      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/cnn1d-me126-xy/2/best.pt",
-      "uploaded_at": "2026-09-04T20:16:22"
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/cnn1d/4/best.pt",
+      "uploaded_at": "2026-09-05T03:22:27"
     },
     "1784447187/best.pt": {
       "run_id": 1784447187,
@@ -192,8 +192,8 @@
       "bytes": 10244496,
       "sha256": "07751eef0aa948c8cd6bda5272c87842dd87083edda6e36e48156c2d2f4c83ae",
       "backend": "kaggle",
-      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru-me126-xy/2/best.pt",
-      "uploaded_at": "2026-09-04T20:16:38"
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru/10/best.pt",
+      "uploaded_at": "2026-09-05T03:22:42"
     },
     "1784447190/best.pt": {
       "run_id": 1784447190,

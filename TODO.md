@@ -22,7 +22,8 @@ stale, trust the sections.
 | 1 | **Restart the Jupyter kernels, then run one short training** to prove the restructure end to end | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
 | 2 | ~~Run the first checkpoint backup~~ — **done 2026-09-04**: 42 on Kaggle, local copies pruned after hash verification. Remaining: confirm the model is **private** | §9.3 | was the last single-copy risk |
 | 3 | **Notebook §5b: the three-arm AWP/LateDropout ablation** (~30 min) | §4.2 | the 1st-place port has collapsed at epoch 15 twice and neither switch has been run alone, so the recipe is still unmeasured |
-| 4 | **Regenerate the POPSIGN train manifest** (30,867 rows covers 1 of 4 parts) then start bulk train extraction | §2.2 | all four train parts are downloaded; the stale manifest is the only thing blocking the primary dataset |
+| 4 | **Install deno + ffmpeg, then run the TS extractor once** and `sb.extract.parity` against the existing test clips | §10.1 | the extractor is written but has never executed; parity gates whether it may touch anything trainable |
+| 4b | **Regenerate the POPSIGN train manifest** (30,867 rows covers 1 of 4 parts), then `popsign_cycle run --part test` to exercise verify against a known-good tree | §2.2, §10.3 | all four train parts are downloaded; the stale manifest blocks the primary dataset, and verify should be trusted before it deletes 220 GB |
 | 5 | **§7.2 normalization or §7.4 augmentation**, under §7.6's ablation protocol | §7.1 → §7.2/§7.4 | the diagnosis is complete: the plateau is a generalization gap (train confusion 0.012 vs val 0.273), and these are the two levers that attack one |
 | 6 | Re-run the evaluation notebook on the 42-run registry | §6.1 | it last ran against 18 runs; only 1 of 42 run folders has a confusion matrix |
 
@@ -1904,6 +1905,104 @@ the thing worth losing.
   such directories; the advice is right and the diagram is wrong. Prompt
   versioning + a frozen eval set is a genuinely good idea and belongs under §8
   the moment §8's scope question is answered — not before.
+
+## 10. Extraction in TypeScript, staged environments, artifact naming (2026-09-05)
+
+Three changes requested together. §10.1 is the large one and is **not finished** —
+the code exists and has never run.
+
+### 10.1 Deno/TypeScript extractor — `packages/sb-extract-ts`
+
+Deno rather than Node for one concrete reason: it implements `ImageData` and Web
+Workers natively, so MediaPipe's WASM build needs no `canvas` native module in a
+long-running frame loop.
+
+- [x] Built as a package, not a script: `schema.ts` (LANDMARK_TENSOR v1, ported
+  from `sb.core.schema`, which stays authoritative), `npz.ts` (float16 + NPY 1.0
+  + stored-ZIP, atomic write), `frames.ts` (ffmpeg rawvideo), `worker.ts` (one
+  landmarker, many videos), `cli.ts` (pool + resumable manifest).
+- [x] Three defects in the original sketch fixed rather than carried forward,
+  each a *silent data bug*:
+  - **chunk-boundary frame shear** — a pipe chunk routinely ends mid-frame;
+    taking whole frames per chunk and discarding the remainder desyncs every
+    later frame into a shear of two, and MediaPipe returns plausible landmarks
+    for them. `frames.ts` carries a buffer.
+  - **wrong output contract** — JSON of four arrays instead of `(T,543,3)`
+    float16 npz in GISLR holistic row order. That row order is what makes the
+    `subsets.py` index lists valid for POPSIGN.
+  - **NaN policy and channel count** — undetected must be NaN, not 0, and the
+    spec is xyz, not xyz+visibility.
+- [x] Worker reuse (a worker per video re-downloads and re-compiles the WASM
+  graph) and manifest-driven resumability, matching the Python extractor.
+- [ ] **Never executed.** `deno` and `ffmpeg` are both absent from this machine.
+  Install both, then `deno task check` and a single-video run.
+- [ ] **`npz.ts` has no round-trip test against numpy.** The format is
+  well-specified but "numpy actually reads this" is worth one test on the first
+  machine that has both.
+- [ ] **BLOCKER before it extracts anything trainable: parity.**
+  `python -m sb.extract.parity --python-dir … --ts-dir … ` compares the two
+  extractors on the same clips — structure (frame counts, detected/undetected
+  masks) before geometry. 33,599 POPSIGN test clips already exist from the
+  Python path; if the train split came from the TS path and the two disagree
+  systematically, that difference sits **between the splits**, a model learns
+  it, and no accuracy metric reveals it. Do not mix extractors across a split.
+- [ ] Model asset is pinned to the bucket's `latest`, the only published path.
+  Mirror the `.task` file if extraction reproducibility matters.
+
+### 10.2 Livestream mode — the end goal, not yet started
+
+- [ ] `runningMode: "LIVE_STREAM"` is a genuinely different contract from
+  `VIDEO`: a result callback rather than a return value, and frames dropped
+  under load. That is right for a camera and wrong for a corpus, so it is a
+  second entry point rather than a flag on the batch one.
+- [ ] It belongs with the app surface (`apps/`), against the same `schema.ts`,
+  and it is what makes the streaming architecture choice (`StreamingGRU`) pay
+  off. Needs the deployment target decision that §9.8 left open.
+
+### 10.3 POPSIGN one part at a time — `sb.extract.popsign_cycle`
+
+- [x] download → extract → **verify** → delete, resumable at part and clip level.
+  ~870 GB does not fit; the landmarks are ~14 GB, so the video is a transient
+  input.
+- [x] Deletion is gated on verification, not on the extractor exiting 0: every
+  clip must have a `done` unit, the npz must exist, and a seeded sample must
+  pass the spec. A part deleted while partly extracted costs a ~220 GB
+  re-download to notice.
+- [ ] **Not yet run.** Start with `--part test`, which is already extracted, so
+  the verify path can be checked against a known-good tree before it is trusted
+  to delete 220 GB.
+- [ ] `train.csv` still describes 1 of 4 parts (30,867 rows) — §2.2. The cycle
+  regenerates nothing; the manifest still needs rebuilding from the raw tree.
+
+### 10.4 Per-stage environments — `ops/envs.ps1`
+
+- [x] `uv sync --package <member>` with `UV_PROJECT_ENVIRONMENT` gives one env
+  per stage. **Measured**: an `sb-mlops`-only environment drops torch,
+  tensorflow, mediapipe and opencv — so the "`sb-mlops` must not import
+  `sb-recognize`" invariant is now executable rather than merely documented.
+- [x] Fixed a break this introduced: `packages/*` matched the new Deno package,
+  which has no `pyproject.toml`, and that fails **every** `uv sync`. Excluded.
+- [ ] The default `.venv` is still the fat one and is what notebooks use. Decide
+  whether the notebook kernels should move to `.venvs/train`, which would make
+  the isolation real for the surface that actually trains.
+
+### 10.5 Kaggle variation = architecture
+
+- [x] Variation is now just the architecture (`gru`, `bilstm`,
+  `conv1d-transformer`); subset, coords, score, params, regime and an
+  UNFINISHED marker moved into the **version note**, with the full record in the
+  `meta.json` uploaded beside the weights.
+- [x] `sb-sync rescheme` added for the migration, since Kaggle has no rename: it
+  pulls each affected run back (sha256-verified, because checkpoints are pruned
+  locally), re-uploads under the new handle, and re-prunes. Dry run by default.
+- [ ] **The old 16 variations are still on the model page.** `rescheme` never
+  deletes remotely. Remove them by hand once the new ones look right.
+- [ ] Consequence to live with: versions of one variation are no longer
+  all-else-equal, so a version list mixes subsets and cannot be read as a
+  learning curve. Restores are unaffected — the manifest pins an exact
+  `<variation>/<version>` handle per run.
+
+---
 
 ---
 
