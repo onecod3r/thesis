@@ -38,6 +38,7 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pyarrow.parquet as pq
@@ -123,7 +124,7 @@ def load_video_raw(path: Path, rows: np.ndarray, coords: str = "xy") -> np.ndarr
 
 
 def build_nan_cache(df, prefix: str, subset, coords: str, data_dir: Path,
-                    progress=None) -> tuple[Path, Path]:
+                    progress=None, dataset: str = "gislr") -> tuple[Path, Path]:
     """Flat float32 array + frame offsets, NaNs preserved. Skip-if-exists,
     atomic writes — same contract as ``data.build_subset_cache``.
 
@@ -131,12 +132,10 @@ def build_nan_cache(df, prefix: str, subset, coords: str, data_dir: Path,
     filename convention: this one addresses ``features/firstplace_v1/<key>/``
     and its key carries ``nan_policy="preserve"`` (TODO §9.2).
     """
-    inputs = D.cache_inputs(subset, coords, data_dir,
-                            pipeline=PIPELINE, pipeline_version=PIPELINE_VERSION,
-                            nan_policy=NAN_POLICY)
-    root = FEATURES_DIR / PIPELINE / D.feature_cache_key(
-        subset, coords, data_dir, pipeline=PIPELINE,
-        pipeline_version=PIPELINE_VERSION, nan_policy=NAN_POLICY)
+    kw: dict[str, Any] = dict(pipeline=PIPELINE, pipeline_version=PIPELINE_VERSION,
+                              nan_policy=NAN_POLICY, dataset=dataset)
+    inputs = D.cache_inputs(subset, coords, data_dir, **kw)
+    root = D.cache_dir(subset, coords, data_dir, **kw)
     root.mkdir(parents=True, exist_ok=True)
     data_path = root / f"{prefix}_data.npy"
     off_path = root / f"{prefix}_offsets.npy"

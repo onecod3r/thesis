@@ -45,7 +45,15 @@ ROWS_PER_FRAME = 543  # holistic rows per frame (GISLR parquet layout)
 MAX_SEQ_LEN = 128  # uniform-subsample cap, identical across every run
 N_VAL = 9448  # canonical val-set size — asserted, never assumed
 
-FEATURES_DIR = CACHE_DIR / "gislr" / "features"
+
+def features_root(dataset: str = "gislr") -> Path:
+    """``data/cache/<dataset>/features`` — one cache subtree per dataset, which
+    is the data-placement policy (TODO §9.5 keeps the policy, drops the
+    hardcoding)."""
+    return CACHE_DIR / dataset / "features"
+
+
+FEATURES_DIR = features_root("gislr")  # the default consumers still import
 
 # ---- feature-cache identity (TODO §9.2) ------------------------------------
 # Bump PIPELINE_VERSION whenever this module's cache-build path changes the
@@ -128,7 +136,7 @@ def feature_cache_key(subset, coords: str, data_dir: Path | str, **kw) -> str:
 def cache_dir(subset, coords: str, data_dir: Path | str, **kw) -> Path:
     """``data/cache/<dataset>/features/<pipeline>/<key>/`` for these inputs."""
     return (
-        FEATURES_DIR
+        features_root(kw.get("dataset", "gislr"))
         / kw.get("pipeline", PIPELINE)
         / feature_cache_key(subset, coords, data_dir, **kw)
     )
@@ -187,7 +195,8 @@ def load_video_subset(path, rows: np.ndarray, coords: str = "xyz") -> np.ndarray
 
 
 def build_subset_cache(
-    df: pd.DataFrame, prefix: str, subset, coords: str, data_dir: Path, progress=None
+    df: pd.DataFrame, prefix: str, subset, coords: str, data_dir: Path,
+    progress=None, dataset: str = "gislr"
 ) -> tuple[Path, Path]:
     """Decode every parquet of one split once into one flat float32 array +
     frame offsets under ``features/<pipeline>/<key>/``. Skip-if-exists; atomic.
@@ -198,8 +207,8 @@ def build_subset_cache(
 
     ``progress``: optional callable(done, total) for single-bar reporting.
     """
-    inputs = cache_inputs(subset, coords, data_dir)
-    root = FEATURES_DIR / PIPELINE / feature_cache_key(subset, coords, data_dir)
+    inputs = cache_inputs(subset, coords, data_dir, dataset=dataset)
+    root = cache_dir(subset, coords, data_dir, dataset=dataset)
     root.mkdir(parents=True, exist_ok=True)
     data_path = root / f"{prefix}_data.npy"
     off_path = root / f"{prefix}_offsets.npy"

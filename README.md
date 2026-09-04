@@ -196,6 +196,7 @@ sign2speech/
     │   │   ├── architectures.py      # StreamingGRU / StreamingLSTM / BiLSTM / CausalConv1D / Conv1DTransformer + ARCHS registry (single definition, shared with eval)
     │   │   ├── data.py               # canonical split, content-addressed feature caches, in-RAM dataset
 │   │   ├── provenance.py         # what actually ran: commit, config hash, feature-cache key, dataset ref, env
+│   │   ├── sources.py            # dataset seam: dir resolver + label map + canonical split + sample reader per dataset
     │   │   ├── features.py           # 1st-place input pipeline: NaN-preserving cache, normalization, lag features, augmentation
     │   │   ├── optim.py              # Lookahead, AWP, cosine one-cycle (what the 1st-place recipe needs and torch lacks)
     │   │   ├── train_fp.py           # 1st-place training driver (cosine, AWP, collapse/plateau stops) — same registry/split as train.py

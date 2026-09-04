@@ -158,6 +158,7 @@ def source_ref(
     dataset: str,
     data_dir: Path | str | None,
     *,
+    kaggle_ref: str | None = None,
     manifest: str = "train.csv",
     n_videos: int | None = None,
 ) -> dict:
@@ -167,9 +168,10 @@ def source_ref(
     records is which release it read and a fingerprint of the manifest its split
     came from.
     """
-    from modules.paths import DATASET_IDS
+    if kaggle_ref is None:  # caller didn't pass a DatasetSource's ref
+        from modules.paths import DATASET_IDS
 
-    kaggle_ref = DATASET_IDS.get("GISLR") if dataset == "gislr" else None
+        kaggle_ref = DATASET_IDS.get("GISLR") if dataset == "gislr" else None
     ref = {
         "name": dataset,
         "kaggle_ref": kaggle_ref,
@@ -194,6 +196,8 @@ def build(
     config_obj=None,
     feature_pipeline: str | None = None,
     feature_cache_key: str | None = None,
+    kaggle_ref: str | None = None,
+    manifest: str = "train.csv",
     n_videos: int | None = None,
 ) -> dict:
     """The `provenance` block for one run's meta.json (schema v4).
@@ -217,7 +221,8 @@ def build(
         ),
         "feature_pipeline": feature_pipeline,
         "feature_cache_key": feature_cache_key,
-        "source": source_ref(dataset, data_dir, n_videos=n_videos),
+        "source": source_ref(dataset, data_dir, kaggle_ref=kaggle_ref,
+                             manifest=manifest, n_videos=n_videos),
         "env": env_state(),
         "captured_at": datetime.now().isoformat(timespec="seconds"),
     }

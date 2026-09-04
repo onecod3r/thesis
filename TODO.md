@@ -1536,13 +1536,35 @@ code: `modules/model/data.py` hardcodes `FEATURES_DIR = CACHE_DIR/"gislr"/"featu
 `get_canonical_split` reads GISLR's `train.csv`, and both drivers default
 `data_dir` to `gislr_dir()`. That is what doubles when POPSIGN arrives.
 
-- [ ] Introduce a dataset adapter (split builder, label map, per-sample loader,
+- [x] Introduce a dataset adapter (split builder, label map, per-sample loader,
   feature-cache root) and make `train.py` / `train_fp.py` / the eval script take
   one, with GISLR as the first implementation.
-- [ ] Keep the `<dataset>.<stage>.<topic>.ipynb` notebook convention as-is —
+- [x] Keep the `<dataset>.<stage>.<topic>.ipynb` notebook convention as-is —
   renaming notebooks is churn that fixes nothing.
 - [ ] POPSIGN's canonical split needs the same treatment GISLR's got (fixed
   seed, asserted val size) before any POPSIGN number is comparable to anything.
+  This is now a `DatasetSource` entry in `modules/model/sources.py`, not a
+  second training driver — `get_source("popsign")` already fails with the list
+  of what that entry must provide.
+
+**Done 2026-09-04.** `modules/model/sources.py`: `DatasetSource` bundles dir
+resolver, label map, canonical split, per-sample reader, sample-path builder,
+plus the identity used for cache addressing and provenance (name, kaggle ref,
+manifest). `grep gislr_dir` over `train.py`, `train_fp.py` and `eval_gru.py`
+now returns **nothing** — all three go through the source, and the eval script
+takes its dataset from the run's own `meta.json` instead of assuming GISLR.
+`data.FEATURES_DIR` became `data.features_root(dataset)` (the const stays as
+the GISLR default that notebooks import), and both cache builders take a
+`dataset` argument. `provenance.build` takes the source's `kaggle_ref` /
+`manifest` rather than looking GISLR up itself.
+
+Caught in review: the first wiring named the local `source`, which **shadowed
+`train_run`'s existing `source` parameter** — the driver-notebook name recorded
+as `training.source`. Renamed to `ds`; a regression check now asserts
+`training.source` still comes out as `gislr.1.models.training.ipynb`. Verified
+too: all §9.2 cache keys unchanged, both NaN policies reachable through
+`read_sample`, and an unregistered dataset raises with instructions rather than
+a bare `KeyError`.
 
 ### 9.6 Kill the doc/schema drift
 

@@ -46,8 +46,8 @@ import torch
 from modules.model import provenance as P
 from modules.model import registry as R
 from modules.model.architectures import build_model
-from modules.model.data import MAX_SEQ_LEN, ROWS_PER_FRAME, get_canonical_split, load_label_map
-from modules.paths import gislr_dir
+from modules.model.data import MAX_SEQ_LEN, ROWS_PER_FRAME
+from modules.model.sources import get_source
 
 BATCH = 256
 
@@ -104,11 +104,15 @@ def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True) -
         if verbose:
             print(*a, flush=True)
 
-    data_dir = gislr_dir()
-    sign2idx = load_label_map(data_dir)
+    # the run record says which dataset it was trained on; the split and the
+    # sample reader come from that source, not from a hardcoded GISLR (TODO §9.5)
+    meta = R.load_meta(run_dir)
+    source = get_source(meta.get("dataset", "gislr"))
+    data_dir = source.resolve_dir()
+    sign2idx = source.label_map(data_dir)
     idx2sign = {v: k for k, v in sign2idx.items()}
-    _, val_split = get_canonical_split(data_dir, sign2idx)
-    log(f"val split: {len(val_split)} videos")
+    _, val_split = source.canonical_split(data_dir, sign2idx)
+    log(f"dataset: {source.name} · val split: {len(val_split)} videos")
 
     ckpt = torch.load(run_dir / checkpoint, map_location=device, weights_only=False)
     arch = ckpt.get("arch", "gru")
@@ -133,7 +137,7 @@ def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True) -
         def load_one(p):
             return load_video(p, landmarks, coords)
 
-    paths = [data_dir / p for p in val_split["path"]]
+    paths = [source.sample_path(data_dir, row) for _, row in val_split.iterrows()]
     labels_all = val_split["label"].to_numpy()
     preds_all = np.zeros(len(val_split), dtype=np.int64)
 
@@ -200,7 +204,9 @@ def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True) -
         # rather than in meta.json["provenance"], which belongs to the run that
         # trained the weights.
         "provenance": P.build(
-            dataset="gislr",
+            dataset=source.name,
+            kaggle_ref=source.kaggle_ref,
+            manifest=source.manifest,
             data_dir=data_dir,
             feature_pipeline=(P.PIPELINE_FIRSTPLACE
                               if ckpt.get("features") == "firstplace"
@@ -213,7 +219,9 @@ def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True) -
     log(json.dumps(summary, indent=2))
 
     # promote the canonical numbers into meta.json (the record
-    # build_model_index.py aggregates into data/models/index.csv)
+    # build_model_index.py aggregates into data/models/index.csv). Re-read
+    # rather than reusing the copy from the top: this evaluation can take
+    # minutes and the training driver may have rewritten meta.json since.
     meta = R.load_meta(run_dir)
     meta["metrics"].update({
         "eval_status": "canonical",

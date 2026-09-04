@@ -77,6 +77,7 @@ from modules.model import provenance as P
 from modules.model import registry as R
 from modules.model.architectures import ARCHS, build_model
 from modules.model.optim import AWP, Lookahead, cosine_one_cycle, frozen_bn_stats
+from modules.model.sources import get_source
 from modules.model.train import _atomic_write_json, atomic_torch_save
 from modules.paths import SRC_DIR
 
@@ -257,35 +258,41 @@ def train_firstplace_run(cfg: dict, subset_name: str, hyp: dict,
     device = torch.device("cuda")
     torch.backends.cudnn.benchmark = True
 
-    from modules.paths import gislr_dir
-
+    # the dataset seam (TODO §9.5): nothing below names GISLR
     arch = cfg["architecture"]
     coords = cfg["coords"]
     fcfg = cfg["features"]
-    data_dir = data_dir or gislr_dir()
-    sign2idx = D.load_label_map(data_dir)
+    dataset = cfg["dataset"]
+    ds = get_source(dataset)
+    data_dir = data_dir or ds.resolve_dir()
+    sign2idx = ds.label_map(data_dir)
     subset = get_subset(subset_name)
     tag = D.subset_tag(subset_name, coords)
     feature_dim = len(subset) * F.CHANNELS_PER_LANDMARK
 
-    train_split, val_split = D.get_canonical_split(data_dir, sign2idx)
-    tr_data, tr_off = F.build_nan_cache(train_split, "train", subset, coords, data_dir)
-    va_data, va_off = F.build_nan_cache(val_split, "val", subset, coords, data_dir)
+    train_split, val_split = ds.canonical_split(data_dir, sign2idx)
+    tr_data, tr_off = F.build_nan_cache(train_split, "train", subset, coords,
+                                        data_dir, dataset=dataset)
+    va_data, va_off = F.build_nan_cache(val_split, "val", subset, coords,
+                                        data_dir, dataset=dataset)
 
     # Captured per driver invocation, so a resumed run records the state of its
     # most recent invocation — the one that produced its latest epochs.
     prov = P.build(
-        dataset=cfg["dataset"],
+        dataset=dataset,
         data_dir=data_dir,
         config_path=cfg.get("_config_path"),
         config_obj=cfg,
         feature_pipeline=P.PIPELINE_FIRSTPLACE,
         feature_cache_key=D.feature_cache_key(
             subset, coords, data_dir, pipeline=F.PIPELINE,
-            pipeline_version=F.PIPELINE_VERSION, nan_policy=F.NAN_POLICY),
+            pipeline_version=F.PIPELINE_VERSION, nan_policy=F.NAN_POLICY,
+            dataset=dataset),
+        kaggle_ref=ds.kaggle_ref,
+        manifest=ds.manifest,
         n_videos=len(train_split) + len(val_split),
     )
-    P.warn_if_dirty(prov, label=f"{cfg['dataset']}/{arch}/{tag}")
+    P.warn_if_dirty(prov, label=f"{dataset}/{arch}/{tag}")
 
     torch.manual_seed(D.SEED)
     np.random.seed(D.SEED)

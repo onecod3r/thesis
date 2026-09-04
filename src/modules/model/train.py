@@ -38,6 +38,7 @@ from modules.model import data as D
 from modules.model import provenance as P
 from modules.model import registry as R
 from modules.model.architectures import ARCHS, build_model
+from modules.model.sources import get_source
 
 
 def atomic_torch_save(state: dict, path: Path) -> None:
@@ -253,19 +254,20 @@ def train_run(
     device = torch.device("cuda")
     torch.backends.cudnn.benchmark = True
 
-    from modules.paths import gislr_dir
-
-    data_dir = data_dir or gislr_dir()
-    sign2idx = D.load_label_map(data_dir)
+    # the dataset seam (TODO §9.5): nothing below names GISLR
+    ds = get_source(dataset)
+    data_dir = data_dir or ds.resolve_dir()
+    sign2idx = ds.label_map(data_dir)
     subset = get_subset(subset_name)
     tag = D.subset_tag(subset_name, coords)
     feature_dim = len(subset) * len(coords)
 
-    train_split, val_split = D.get_canonical_split(data_dir, sign2idx)
+    train_split, val_split = ds.canonical_split(data_dir, sign2idx)
     tr_data, tr_off = D.build_subset_cache(
-        train_split, "train", subset, coords, data_dir
+        train_split, "train", subset, coords, data_dir, dataset=dataset
     )
-    va_data, va_off = D.build_subset_cache(val_split, "val", subset, coords, data_dir)
+    va_data, va_off = D.build_subset_cache(
+        val_split, "val", subset, coords, data_dir, dataset=dataset)
 
     # Captured per driver invocation, so a resumed run records the state of its
     # most recent invocation — the one that produced its latest epochs.
@@ -275,7 +277,10 @@ def train_run(
         config_path=config_path,
         config_obj=config_obj,
         feature_pipeline=P.PIPELINE_BASE,
-        feature_cache_key=D.feature_cache_key(subset, coords, data_dir),
+        feature_cache_key=D.feature_cache_key(subset, coords, data_dir,
+                                              dataset=dataset),
+        kaggle_ref=ds.kaggle_ref,
+        manifest=ds.manifest,
         n_videos=len(train_split) + len(val_split),
     )
     P.warn_if_dirty(prov, label=f"{dataset}/{arch}/{tag}")
