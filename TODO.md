@@ -1619,7 +1619,97 @@ of what existed on the day they were written; rewriting a 2026-07-17 log to name
 a file that would not exist for another seven weeks would falsify the record.
 The daily logs are the one place the old name legitimately survives.
 
-### 9.8 Deferred / rejected — with the reason, so they aren't re-proposed
+### 9.8 The workspace restructure — done 2026-09-04
+
+This section was filed as "deferred / rejected, with the reason". The user
+overrode the deferral: the layout is judged necessary for where the repo is
+going, so it was executed in full. **The original reasoning is kept verbatim in
+§9.9** rather than deleted — it was the honest read of the evidence at the time,
+and a decision record that quietly erases what it overruled teaches nothing.
+
+What actually landed:
+
+- [x] **uv workspace, six members** under `packages/`, PEP 420 namespace (no
+  `sb/__init__.py` anywhere): `sb-core`, `sb-extract`, `sb-recognize`,
+  `sb-mlops`, `sb-rescore`, `sb-synthesize`. Root `pyproject.toml` is a virtual
+  project (`[tool.uv] package = false`) that owns no code.
+- [x] **The dependency direction is enforced by the manifests**: `sb-mlops`
+  depends on `sb-core` only and *not* on `sb-recognize`, so the registry, the
+  index and the artifact sync all work without importing torch. `sb-core`
+  imports no torch/mediapipe/tensorflow, which is what lets everything depend
+  on it.
+- [x] **`features/` became real** rather than a rename: `cache.py` (content
+  addressing), `base_v1.py` (NaN→0, subsample) and `firstplace_v1.py`
+  (NaN-preserving, crop) now expose the *same*
+  `cache_inputs`/`cache_key`/`cache_dir`/`build_cache` surface, so the two
+  pipelines are substitutable instead of merely adjacent. The awkward
+  `pipeline=`/`nan_policy=` kwargs threading through every call site is gone.
+- [x] **`experiments/{extraction,recognition,synthesis}/`** with configs beside
+  the notebooks. The `CWD = src/` convention is retired: packages are installed
+  editable, and `sb.core.paths` finds the repo root by walking up for the
+  workspace marker (`SIGNBRIDGE_ROOT` overrides).
+- [x] **`registry/` at the top level**, `data/` gitignored absolutely. Committed
+  artifacts no longer live inside a tree whose whole policy is "never commit
+  this", and there is no negation rule left to get wrong.
+- [x] **`apps/{web,edge,shared-ts}`, `ops/`, `schemas/`** scaffolded; six console
+  scripts (`sb-extract`, `sb-evaluate`, `sb-index`, `sb-sync`, `sb-promote`,
+  `sb-docs`) replace the `sys.path`-bootstrapping scripts.
+- [x] **Rename to `signbridge`** (project, README, schema `$id`). The working
+  directory and git remote were left alone on purpose — renaming the folder
+  would break `.venv`'s absolute paths, the kernel spec and the VSCode
+  workspace for no gain.
+- [x] **`aliases.json` + `sb-promote`** (was deferred for lack of a deployment
+  target; `apps/` now scaffolds one). Promotion refuses a run that is
+  offline-only, not canonically evaluated, or not backed up off-machine —
+  the three ways it has gone wrong here before — unless `--force`, which
+  records the waiver.
+- [x] **Nothing was rebuilt.** 29 GB of feature caches and 6.4 GB of extracted
+  POPSIGN landmarks moved by rename; all three §9.2 cache keys are
+  byte-identical, so every migrated cache still resolves. 42 run records intact
+  at schema v4, auto-resume pointers re-aimed.
+
+Verified end to end: `uv lock` + `uv sync` clean (torch 2.13.0+cu130, CUDA
+available; `dask` dropped because nothing imports it), every package imports,
+all six console scripts run, every notebook parses, and `ty` is back at its
+56-diagnostic baseline.
+
+Still open, and deliberately so:
+
+- [ ] **MLflow.** Still not recommended, and still not installed: it is a second
+  write path for data `meta.json` already holds, needs a server process, and its
+  payoff (parallel-coordinates / run comparison for the ablation write-up) is a
+  plotting cell over `index.csv`, which is one row per run and DuckDB-queryable.
+  If the write-up needs those views, add the plot to
+  `experiments/recognition/gislr.2.models.evaluation.ipynb`.
+- [ ] **DVC.** Rejected in §9.3 and unchanged: its one advantage over the current
+  setup — stage DAGs catching stale derived artifacts — is what §9.2's content
+  addressing buys directly.
+- [ ] **`sb-rescore` and `sb-synthesize` are skeletons with no implementation**,
+  and `apps/*` is empty. That is the known cost of building the full tree before
+  the code exists (§9.9's "empty scaffolding rots" argument). Each carries a
+  docstring saying what is fixed regardless of the open scope question, so the
+  directories are at least load-bearing as contracts: prompts are versioned and
+  hashed, the eval set is frozen, and synthesis emits the same tensor
+  `sb.core.schema` defines. **If §8 resolves toward "not in scope", delete
+  `sb-rescore`/`sb-synthesize` rather than leaving them to rot.**
+- [ ] **Notebooks have not been re-executed** under the new layout — only parsed.
+  Their imports resolve and the CLIs run, but the first real training run is the
+  proof. Restart the Jupyter kernels: `import modules...` is gone.
+- [ ] `experiments/extraction/popsign.1.mediapipe.ipynb` still imports
+  `DATASETS`, and `popsign.2.model.ipynb` still imports `tensorflow.keras` —
+  both pre-existing breakage (§0.1), both now the only unresolved imports in the
+  tree.
+
+
+### 9.9 The reasoning §9.8 overruled (kept 2026-09-04)
+
+Filed on 2026-09-04 as the case for deferring the restructure, and
+overruled the same day. Kept verbatim, because the numbers in it are the
+measurements the decision was actually made against, and because a
+decision record that erases what it overruled teaches nothing. Where it
+was wrong is now checkable: it argued the split would break the
+`CWD = src/` convention — it did, and that convention turned out to be
+the thing worth losing.
 
 - [?] **Repo rename `sign2speech` → `signbridge`.** Rejected *for now*, not on
   taste: the justification is bidirectionality (speech → sign), and there is no
@@ -1672,7 +1762,21 @@ The daily logs are the one place the old name legitimately survives.
 
 ---
 
-*Last updated: September 4, 2026, later (**§9.1-§9.7 executed**, one commit per
+*Last updated: September 4, 2026, later still (**the workspace restructure
+landed** — §9.8, which had been filed as deferred and was overruled). The repo
+is now a **uv workspace**: six packages under `packages/` (`sb-core` as the
+seam, `sb-extract`, `sb-recognize`, `sb-mlops`, plus `sb-rescore` and
+`sb-synthesize` as scoped skeletons), notebooks as thin drivers in
+`experiments/<domain>/`, `registry/` committed at the top level and `data/`
+gitignored absolutely, six console scripts in place of the `sys.path`-bootstrapping
+scripts, and the project renamed **signbridge** (folder and git remote
+unchanged). `features/` became a real split — `cache.py` + `base_v1` +
+`firstplace_v1` sharing one substitutable surface. Nothing was rebuilt: 36 GB of
+caches and landmarks moved by rename and every cache key is byte-identical.
+§9.9 keeps the reasoning this overruled. Open: the notebooks have been parsed
+but not re-executed, and the R2 upload still has not run.)*
+
+*Previously: September 4, 2026 (**§9.1-§9.7 executed**, one commit per
 stage). meta.json is schema **v4** with a `provenance` block and 42 runs
 backfilled to `null`; feature caches are **content-addressed** (14 groups /
 30.3 GB moved by rename, not rebuild); checkpoint sync to R2 is built and
