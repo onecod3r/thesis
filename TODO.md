@@ -20,7 +20,7 @@ stale, trust the sections.
 | # | next action | where | why now |
 |---|---|---|---|
 | 1 | **Restart the Jupyter kernels, then run one short training** to prove the restructure end to end | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
-| 2 | **Run the first real checkpoint backup** — pick `kaggle` or `local` and `sb-sync push --apply` | §9.3 | 42 checkpoints, 707 MB, still single-copy on one machine. The tooling is verified; only the button-press is missing |
+| 2 | ~~Run the first checkpoint backup~~ — **done 2026-09-04**: 42 on Kaggle, local copies pruned after hash verification. Remaining: confirm the model is **private** | §9.3 | was the last single-copy risk |
 | 3 | **Notebook §5b: the three-arm AWP/LateDropout ablation** (~30 min) | §4.2 | the 1st-place port has collapsed at epoch 15 twice and neither switch has been run alone, so the recipe is still unmeasured |
 | 4 | **Regenerate the POPSIGN train manifest** (30,867 rows covers 1 of 4 parts) then start bulk train extraction | §2.2 | all four train parts are downloaded; the stale manifest is the only thing blocking the primary dataset |
 | 5 | **§7.4 augmentation** — the Phase-1 verdict was overfitting (gap 0.16–0.24), so this outranks §7.3 motion features | §7.1 → §7.4 | the diagnosis is done and points here; §7.3 was written before the verdict |
@@ -1547,10 +1547,27 @@ be completed.
   deliberately corrupted backup copy was **refused** on sha256 with no
   half-written `.pt` left behind. The test manifest and staging directory were
   then removed, so the committed state still honestly says "nothing pushed yet".
-- [ ] **Still not run for real: the first actual backup.** Pick a backend and
-  run it — for `kaggle`, `sb-sync push --apply` creates the dataset on first use
-  (**check it is private**); for `local`, set `SB_ARTIFACT_DIR` to a drive that
-  is not this one. Until that runs, all 42 checkpoints are still single-copy.
+- [x] **Done 2026-09-04: all 42 checkpoints are on Kaggle.**
+  `bracu23101281/signbridge-gislr`, 16 variations, versions in chronological
+  run-id order (`conv1d-transformer-fp118-xy` has 6, the gru/lstm configs 3
+  each, bilstm/cnn1d 2 each). Naming is derived from each run's `meta.json`, so
+  it cannot drift from what was trained.
+- [x] **Local copies deleted after verification, 2026-09-04.** `sb-sync prune`
+  downloaded all 42 remote copies and required three hashes to agree (manifest,
+  remote, local) before unlinking: **42 verified, 0 refused, 707 MB freed**.
+  `drop-resume` then removed `last.pt` for the 41 *finished* runs (675 MB); run
+  `1784459817` keeps its resume state because it stopped at epoch 50 of 300.
+  **The registry now holds 0 checkpoints locally.**
+- [x] Round trip proven from a cold cache: pulled `1784447175` back from Kaggle,
+  sha256 verified, and `torch.load` returned the expected bilstm/ME_126/xy at
+  0.7569 with 22 state-dict tensors — then re-pruned.
+- [ ] **Check the model's visibility on Kaggle.** `kagglehub.model_upload` does
+  not expose a visibility argument and the API does not report one back, so
+  whether `signbridge-gislr` was created public or private is unverified from
+  here. These are unpublished thesis weights — confirm on the model page.
+- [ ] Consequence to keep in mind: **a run folder no longer contains weights.**
+  `sb-evaluate` and the TFLite export now start with `sb-sync pull <run_id>`;
+  the eval script says so instead of raising `FileNotFoundError`.
 
 **Done 2026-09-04 (tooling).** `sync_models.py status | push | pull`, dry-run by
 default, never deletes remotely. `data/models/checkpoints.manifest.json`
