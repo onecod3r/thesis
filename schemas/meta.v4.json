@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sign2speech/schemas/meta.v4.json",
+  "title": "sign2speech model-registry run record (schema v4)",
+  "description": "One training run's meta.json. GENERATED from modules/model/registry.py::FIELDS by modules/scripts/gen_docs.py \u2014 edit the code, not this file.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "created",
+    "dataset",
+    "architecture",
+    "model_name",
+    "streaming",
+    "subset",
+    "coords",
+    "n_landmarks",
+    "feature_dim",
+    "n_classes",
+    "n_params",
+    "split",
+    "training",
+    "hyperparameters",
+    "provenance",
+    "metrics",
+    "checkpoints",
+    "assets",
+    "submission",
+    "notes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "description": "4"
+    },
+    "run_id": {
+      "type": "integer",
+      "description": "seconds since Unix epoch at training start = run folder name"
+    },
+    "created": {
+      "type": "string",
+      "description": "ISO-8601 local timestamp derived from run_id"
+    },
+    "dataset": {
+      "type": "string",
+      "description": "e.g. \"gislr\" \u2014 resolved through modules/model/sources.py"
+    },
+    "architecture": {
+      "type": "string",
+      "description": "key into modules.model.ARCHS: gru / lstm / bilstm / cnn1d / conv1d_transformer"
+    },
+    "model_name": {
+      "type": "string",
+      "description": "class name, e.g. \"StreamingGRU\""
+    },
+    "streaming": {
+      "type": "boolean",
+      "description": "streaming-viable? (false = offline-only reference, never deployable)"
+    },
+    "subset": {
+      "type": "string",
+      "description": "landmark-subset name from modules/dataset/landmark/subsets.py"
+    },
+    "coords": {
+      "type": "string",
+      "description": "\"xyz\" or \"xy\" (z-drop ablation)"
+    },
+    "n_landmarks": {
+      "type": "integer",
+      "description": "landmarks fed to the model"
+    },
+    "feature_dim": {
+      "type": "integer",
+      "description": "input width per frame"
+    },
+    "n_classes": {
+      "type": "integer",
+      "description": "label-space size"
+    },
+    "n_params": {
+      "type": "integer",
+      "description": "trainable parameters"
+    },
+    "split": {
+      "type": "object",
+      "description": "{strategy, random_state, n_val} \u2014 the canonical split (stratified 90/10, seed 42, 9,448 val)"
+    },
+    "training": {
+      "type": "object",
+      "description": "{regime, source, epoch_cap, epochs_trained, best_epoch, early_stopped, finished, wall_time_min}, plus stop_reason (\"completed\"/\"plateau\"/\"collapse\"/\"nan\") on fp-onecycle-300 runs. source is the DRIVER NOTEBOOK, not the dataset"
+    },
+    "hyperparameters": {
+      "type": "object",
+      "description": "full HYP dict + seed, max_seq_len, num_workers, loss, precision"
+    },
+    "provenance": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "what state of the world produced the run \u2014 see below. null for pre-v4 runs, and that is permanent"
+    },
+    "metrics": {
+      "type": "object",
+      "description": "{train_val_acc, eval_status (\"pending\"|\"canonical\"), overall_accuracy, macro_accuracy, median_class_accuracy, n_classes_below_50pct} \u2014 canonical fields are null until the eval script runs, and then survive training-loop rewrites"
+    },
+    "checkpoints": {
+      "type": "object",
+      "description": "{best: \"best.pt\", last: \"last.pt\"} \u2014 run-dir-relative"
+    },
+    "assets": {
+      "type": "object",
+      "description": "{name: run-dir-relative path} for every asset file, e.g. {\"landmarks\": \"assets/landmarks.npy\", \"history\": \"assets/history.json\"}"
+    },
+    "submission": {
+      "type": "object",
+      "description": "{tested, platform, submitted_at, public_score, private_score, reference, notes} \u2014 see below"
+    },
+    "notes": {
+      "type": "string",
+      "description": "free-text run notes"
+    }
+  }
+}

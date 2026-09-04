@@ -39,32 +39,38 @@ RUN_PTR_DIR = CACHE_DIR / "runs"  # <dataset>_<arch>_<tag>.txt -> active run dir
 # committed snapshot of that query, never the query path.
 META_GLOB = str(MODELS_DIR / "*" / "meta.json")
 
-# top-level keys every meta.json must carry (README.md § "meta.json schema" is
-# the human-readable source of truth; this tuple is the machine check)
-REQUIRED_KEYS = (
-    "schema_version",
-    "run_id",
-    "created",
-    "dataset",
-    "architecture",
-    "model_name",
-    "streaming",
-    "subset",
-    "coords",
-    "n_landmarks",
-    "feature_dim",
-    "n_classes",
-    "n_params",
-    "split",
-    "training",
-    "hyperparameters",
-    "provenance",
-    "metrics",
-    "checkpoints",
-    "assets",
-    "submission",
-    "notes",
-)
+# THE schema definition: key -> (JSON type, one-line description). This is what
+# `write_meta` enforces, what `schemas/meta.v4.json` is generated from, and what
+# the README's schema table is rendered from (modules/scripts/gen_docs.py) — so
+# the code and the documentation cannot drift apart, because there is only one
+# of them (TODO §9.6).
+FIELDS: dict[str, tuple[str, str]] = {
+    "schema_version": ("integer", f"`{SCHEMA_VERSION}`"),
+    "run_id": ("integer", "seconds since Unix epoch at training start = run folder name"),
+    "created": ("string", "ISO-8601 local timestamp derived from `run_id`"),
+    "dataset": ("string", 'e.g. `"gislr"` — resolved through `modules/model/sources.py`'),
+    "architecture": ("string", "key into `modules.model.ARCHS`: `gru` / `lstm` / `bilstm` / `cnn1d` / `conv1d_transformer`"),
+    "model_name": ("string", 'class name, e.g. `"StreamingGRU"`'),
+    "streaming": ("boolean", "streaming-viable? (`false` = offline-only reference, never deployable)"),
+    "subset": ("string", "landmark-subset name from `modules/dataset/landmark/subsets.py`"),
+    "coords": ("string", '`"xyz"` or `"xy"` (z-drop ablation)'),
+    "n_landmarks": ("integer", "landmarks fed to the model"),
+    "feature_dim": ("integer", "input width per frame"),
+    "n_classes": ("integer", "label-space size"),
+    "n_params": ("integer", "trainable parameters"),
+    "split": ("object", "`{strategy, random_state, n_val}` — the canonical split (`stratified 90/10`, seed 42, 9,448 val)"),
+    "training": ("object", '`{regime, source, epoch_cap, epochs_trained, best_epoch, early_stopped, finished, wall_time_min}`, plus `stop_reason` (`"completed"`/`"plateau"`/`"collapse"`/`"nan"`) on `fp-onecycle-300` runs. `source` is the DRIVER NOTEBOOK, not the dataset'),
+    "hyperparameters": ("object", "full `HYP` dict + `seed`, `max_seq_len`, `num_workers`, `loss`, `precision`"),
+    "provenance": ("object|null", "what state of the world produced the run — see below. `null` for pre-v4 runs, and that is permanent"),
+    "metrics": ("object", r'`{train_val_acc, eval_status ("pending"\|"canonical"), overall_accuracy, macro_accuracy, median_class_accuracy, n_classes_below_50pct}` — canonical fields are `null` until the eval script runs, and then survive training-loop rewrites'),
+    "checkpoints": ("object", '`{best: "best.pt", last: "last.pt"}` — run-dir-relative'),
+    "assets": ("object", '`{name: run-dir-relative path}` for every asset file, e.g. `{"landmarks": "assets/landmarks.npy", "history": "assets/history.json"}`'),
+    "submission": ("object", "`{tested, platform, submitted_at, public_score, private_score, reference, notes}` — see below"),
+    "notes": ("string", "free-text run notes"),
+}
+
+# the machine check write_meta runs; derived so it can never fall out of step
+REQUIRED_KEYS = tuple(FIELDS)
 
 # Schema v4 adds `provenance` (modules/model/provenance.py, TODO §9.1): the
 # commit / config hash / feature-cache key / dataset ref / environment that

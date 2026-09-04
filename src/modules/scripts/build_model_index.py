@@ -115,6 +115,37 @@ def load_runs() -> pd.DataFrame:
                           ascending=[True, True, False]).reset_index(drop=True)
 
 
+def markdown_summary(df: pd.DataFrame, top: int = 5) -> str:
+    """Registry counts + leaderboard as markdown — what the README embeds.
+
+    Rendered from the run records rather than maintained by hand, because the
+    hand-maintained version is what drifted (TODO §9.6).
+    """
+    if df.empty:
+        return "_No runs recorded yet._"
+    canonical = int((df["eval_status"] == "canonical").sum())
+    tested = int(df["submission_tested"].fillna(False).astype(bool).sum())
+    prov = int(df["prov_git_commit"].notna().sum()) if "prov_git_commit" in df else 0
+    lines = [
+        f"**{len(df)} runs** · {canonical} canonically evaluated · {tested} scored "
+        f"on a held-out test set · {prov} carrying provenance "
+        f"(schema v{R.SCHEMA_VERSION}).",
+        "",
+        f"Top {top} by canonical val accuracy "
+        "(training-loop best where the canonical eval has not run):",
+        "",
+        "| run | dataset | architecture | subset | coords | val acc | eval | params |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    best = df.sort_values("val_acc", ascending=False).head(top)
+    for _, r in best.iterrows():
+        lines.append(
+            f"| `{r['run_id']}` | {r['dataset']} | {r['architecture']} | "
+            f"{r['subset']} | {r['coords']} | {r['val_acc']:.4f} | "
+            f"{r['eval_status']} | {int(r['n_params']):,} |")
+    return "\n".join(lines)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--dataset", help="filter printed view by dataset (e.g. gislr)")
@@ -126,7 +157,10 @@ def main():
                     help="show only runs not yet scored on the official test set "
                          "(submission.tested = false) — the submission queue")
     ap.add_argument("--no-migrate", action="store_true",
-                    help="skip the pre-v3 meta.json schema backfill")
+                    help="skip the older-meta.json schema backfill")
+    ap.add_argument("--markdown", action="store_true",
+                    help="print the registry summary as markdown (what the "
+                         "README embeds via gen_docs.py) instead of the table")
     args = ap.parse_args()
 
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
@@ -140,6 +174,10 @@ def main():
     print(f"wrote {MODEL_INDEX} ({len(df)} runs)\n")
     if df.empty:
         print("registry is empty — no runs recorded yet")
+        return
+
+    if args.markdown:
+        print(markdown_summary(df, top=args.top or 5))
         return
 
     view = df
