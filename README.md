@@ -214,6 +214,7 @@ See [docs/README.md](docs/README.md): day-by-day logs in `docs/logs/daily/<YYYY-
 | [docs/reports/motion-energy.md](docs/reports/motion-energy.md) | GISLR per-landmark motion analysis (three scopes, 94,477 videos): **~92% of pose "motion" is z-axis noise** · seeded 50-video samples reproduce the global ranking (rho 0.95+) · ME-126 keep/discard recommendation, cross-checked against the Kaggle 1st-place subset |
 | [docs/reports/subset-comparison.md](docs/reports/subset-comparison.md) | Landmark-subset discriminability (F-ratio / MI / probe classifier, 3 scopes): **ME-126 wins** the 6-subset leaderboard (49.9% global probe) · discriminability ≈ uncorrelated with motion energy (rho −0.12) · probe difficulty profile tracks the trained GRU's (rho 0.640) |
 | [docs/reports/plateau-diagnosis.md](docs/reports/plateau-diagnosis.md) | **Why accuracy stops at ~75%** (31 canonical runs): semantically similar signs are **not** the cause — the top-20 confusable pairs absorb only **10.5% of errors**, and solving them perfectly gives **0.7433 → 0.7704** against +0.007 for a random-pair control · the plateau is a **generalization gap**: symmetric confusion is **0.012 on train vs 0.273 on val**, 19 of 20 pairs at exactly zero on training data · pooled probes sit near chance on the worst pairs (`awake`/`wake` 0.463) and velocity does not rescue them · levers are **§7.2 normalization / §7.4 augmentation**; a rescoring layer is bounded at ~2.7 points |
+| [docs/reports/extractor-parity.md](docs/reports/extractor-parity.md) | **The Deno/TypeScript extractor cannot run** (12-clip test run, 0/12): `@mediapipe/tasks-vision` creates a **WebGL** context during graph construction regardless of `delegate: "CPU"`, and Deno has `ImageData`/`OffscreenCanvas`/WebGPU but **no WebGL** · Node is no better placed — the requirement is the *web* MediaPipe build, not the runtime · found two defects on the way that would have made any parity number meaningless (fixed `scale=640:480 -r 30` vs POPSIGN's 1944×2592 portrait at 30/120 fps; two different model assets) · POPSIGN extraction is **not** blocked — `sb-extract` is native C++ with no GL requirement |
 | [docs/reports/confidence-tuning.md](docs/reports/confidence-tuning.md) | POPSIGN extraction-quality threshold sweep (**partial — 2 of 7 arms**): `min_hand_landmarks_confidence` is inert and the *pose* thresholds gate the hands · thresholds move hand detection by only ~0.02 · **the quality proxies are dominated by clip padding** — ~half of every clip is non-signing lead-in/lead-out, and detection is 0.85–0.94 within the signing span |
 
 **Daily logs**
@@ -248,8 +249,9 @@ signbridge/
 │   │       ├── vocab.py      #   sign name ↔ class index
 │   │       ├── io.py         #   atomic landmark-npz read/write, schema-checked both ways
 │   │       └── paths.py      #   the repo tree (found by walking up) + lazy dataset resolution
-│   ├── sb-extract-ts/        # STAGE 1 in Deno/TypeScript — MediaPipe WASM, no `canvas` native module.
-│   │                         # NOT yet verified against the Python path: run `sb.extract.parity` first
+│   ├── sb-extract-ts/        # STAGE 1 in Deno/TypeScript — MediaPipe WASM. DOES NOT RUN: the web
+│   │                         # build needs WebGL (any delegate) and Deno has none. See
+│   │                         # docs/reports/extractor-parity.md. Use sb-extract for extraction.
 │   ├── sb-extract/           # STAGE 1 — video → landmarks (Python; produced the 33,599 test clips)
 │   │   └── src/sb/extract/
 │   │       ├── holistic.py   #   MediaPipe worker pool, manifest-resumable, resource-capped
@@ -259,6 +261,8 @@ signbridge/
 │   │       ├── cli.py        #   `sb-extract`: pilot benchmark + resumable bulk run
 │   │       ├── popsign_cycle.py # download one part → extract → VERIFY → delete (~870 GB won't fit)
 │   │       ├── parity.py     #   do the Python and TypeScript extractors agree? gate the switch on this
+│   │       ├── parity_run.py #   `python -m sb.extract.parity_run` — runs both extractors over the
+│   │       │                 #   same seeded clips and hands the two trees to parity.py
 │   │       └── tune.py       #   detector-threshold sweep
 │   ├── sb-recognize/         # STAGE 2 — landmarks → gloss
 │   │   └── src/sb/recognize/

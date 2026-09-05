@@ -1934,21 +1934,73 @@ long-running frame loop.
     spec is xyz, not xyz+visibility.
 - [x] Worker reuse (a worker per video re-downloads and re-compiles the WASM
   graph) and manifest-driven resumability, matching the Python extractor.
-- [ ] **Never executed.** `deno` and `ffmpeg` are both absent from this machine.
-  Install both, then `deno task check` and a single-video run.
+- [x] **Executed 2026-09-05, and it does not work.** `deno` (2.9.6) and `ffmpeg`
+  (9.0.1) are both installed now. 12 clips through
+  `python -m sb.extract.parity_run`: **0/12 extracted**, every one failing with
+  `ReferenceError: WebGLRenderingContext is not defined` inside
+  `_emscripten_webgl_do_create_context`, during `Module._changeBinaryGraph` —
+  i.e. graph *construction*, before a frame is submitted.
+- [ ] **BLOCKER, and it is not ours to fix in this package.**
+  `@mediapipe/tasks-vision` is the *web* build: its graph creates a WebGL
+  context whatever `delegate` is asked for (`"CPU"` selects the inference
+  backend, not the image pipeline), and Deno has `ImageData`, `OffscreenCanvas`,
+  `createImageBitmap` and WebGPU but **no WebGL** — `getContext("webgl2")`
+  returns null. Node is no better placed; it would need `headless-gl`, the
+  native module the Deno choice existed to avoid. Three options, in
+  `docs/reports/extractor-parity.md` §5: drive the web build from headless
+  Chrome (also the §10.2 livestream target, so the work carries over), keep
+  extraction on `packages/sb-extract` (native C++, no GL — it has already done
+  33,599 clips), or native GL in Deno (not recommended).
+- [x] `deno check` now passes. It did **not** before: under Deno 2.9.6 / TS 6,
+  `Uint8ClampedArray<ArrayBufferLike>` is not assignable to `ImageData`'s
+  `ArrayBuffer`.
+- [x] Two defects found by trying to run it, either of which would have produced
+  a confident and meaningless parity number:
+  - **geometry could never have matched** — the TS side hardcoded
+    `scale=640:480 -r 30` while the Python side feeds cv2's native frames at the
+    video's own rate. POPSIGN is 1944x2592 *portrait* at 30 / ~29.92 / 120 fps,
+    so that inverted the aspect ratio *and* resampled time (frame counts off by
+    up to 4x). Geometry now defaults to per-clip native via `probe()`, which
+    existed for exactly this and had never been called; the flags are overrides.
+  - **different models** — the TS side defaulted to the bucket's unpinned
+    `latest` while Python loads the local `.task`. `--model` now points both at
+    `data/external/mediapipe/tasks/holistic_landmarker.task`.
+- [x] Ported the Python extractor's resolution-change lesson: the landmarker is
+  rebuilt when frame size changes, or the reused graph fails INTERNAL
+  `RET_CHECK ... current_mat->rows == previous_mat->rows` on POPSIGN's mixed
+  1944x2592 / 1080x1920 video.
+- [x] `src/dom_shim.ts` — the browser globals MediaPipe reaches for
+  (`document`, a `window`, a `<script>` loader that fetches and evals, `process`
+  hidden so Emscripten does not take its node branch). **Not a fix and labelled
+  as such**: it exists so the failure names the real constraint instead of
+  stopping at `document is not defined`, which reads like a missing polyfill.
 - [x] **`npz.ts` format logic validated** — `tools/verify_npz_format.py`
   transcribes `encodeNpy`/`encodeNpz`/`toFloat16` into Python and numpy reads the
   result: header padding, ZIP offsets, float16 with NaN preserved and exact
   binary fractions intact. Passes.
-- [ ] Still unproven: that the **TypeScript itself** runs correctly. The same
-  tool takes `--file <clip>.npz` for that, once one exists.
-- [ ] **BLOCKER before it extracts anything trainable: parity.**
-  `python -m sb.extract.parity --python-dir … --ts-dir … ` compares the two
-  extractors on the same clips — structure (frame counts, detected/undetected
-  masks) before geometry. 33,599 POPSIGN test clips already exist from the
-  Python path; if the train split came from the TS path and the two disagree
+- [ ] Still unproven: that the **TypeScript itself** runs correctly. Everything
+  up to the MediaPipe call now is — ffmpeg spawns and decodes, the pool
+  dispatches, the manifest records all 12 units — but no npz has ever been
+  written by it, so `--file <clip>.npz` still has nothing to check.
+- [ ] **BLOCKER before it extracts anything trainable: parity — still not
+  measured.** `python -m sb.extract.parity_run --limit 12` now does the whole
+  thing (seeded selection → hardlink staging → both extractors → npz format
+  check → `sb.extract.parity`), and reports `BLOCKED` because the TS half
+  produces nothing. 33,599 POPSIGN test clips already exist from the Python
+  path; if the train split came from the TS path and the two disagree
   systematically, that difference sits **between the splits**, a model learns
   it, and no accuracy metric reveals it. Do not mix extractors across a split.
+- [x] The Python **reference tree** for that comparison is reproducible on
+  demand: 12 clips (one per label, seeded 42), 47.7 s, face and pose detected on
+  1.00 of frames, hands 0.00–0.73. The tree itself lives in `data/temp/parity/`
+  and is deleted per the temp policy, but the selection is cached to
+  `data/cache/popsign/parity/selection.json`, so a re-run rebuilds exactly those
+  clips. Parity needs only the TS side to appear.
+- [ ] Note for whoever picks this up: the parity sample comes from POPSIGN
+  **train a–e**, not test. The test split's videos are gone — `popsign_cycle`
+  deletes video once landmarks verify, which is its whole point — and parity is
+  a comparison on identical inputs, so the split does not matter but the video
+  existing does.
 - [ ] Model asset is pinned to the bucket's `latest`, the only published path.
   Mirror the `.task` file if extraction reproducibility matters.
 
