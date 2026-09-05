@@ -14,6 +14,11 @@
  *   deno task extract --input ./videos --out ./landmarks
  *   deno task extract --input ./videos --out ./landmarks --workers 4 --limit 100
  *   deno task extract --input ./videos --out ./landmarks --retry-failed
+ *   deno task extract --input ./videos --out ./landmarks --model ./holistic.task
+ *
+ * Geometry defaults to each video's own size and frame rate; --width/--height
+ * and --fps are overrides, and using them makes the output incomparable with
+ * the Python extractor's.
  *
  * Permissions: --allow-read --allow-write (files), --allow-run (ffmpeg),
  * --allow-net (the MediaPipe WASM + model assets, fetched once and cached by
@@ -27,8 +32,11 @@ import { spec } from "./schema.ts";
 
 const VIDEO_EXT = new Set([".mp4", ".avi", ".mov", ".mkv", ".webm"]);
 
-// Pinned, not "latest": the extractor's output is a dataset, and a silently
-// upgraded model would make clips extracted on different days incomparable.
+// The WASM runtime is pinned. The model URL is NOT — `latest` is the only
+// published path in the bucket — so `--model <file.task>` is the reproducible
+// route, and it is what parity against the Python extractor requires: both
+// sides must run the same weights or the comparison measures the model, not
+// the code.
 const WASM_BASE =
   "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm";
 const MODEL_ASSET =
@@ -38,6 +46,9 @@ interface Unit {
   status: "done" | "failed";
   frames?: number;
   seconds?: number;
+  width?: number;
+  height?: number;
+  fps?: number;
   error?: string;
   detection?: Record<string, number>;
 }
@@ -100,9 +111,12 @@ async function main(): Promise<void> {
   const args = parseArgs(Deno.args);
   const input = String(args.input ?? "./videos");
   const outRoot = String(args.out ?? "./landmarks");
-  const width = Number(args.width ?? 640);
-  const height = Number(args.height ?? 480);
-  const fps = Number(args.fps ?? 30);
+  // null = the video's own. A fixed size would silently letterbox or, on
+  // POPSIGN's 1944x2592 portrait video, invert the aspect ratio outright.
+  const width = args.width ? Number(args.width) : null;
+  const height = args.height ? Number(args.height) : null;
+  const fps = args.fps ? Number(args.fps) : null;
+  const modelAssetPath = args.model ? String(args.model) : undefined;
   const limit = args.limit ? Number(args.limit) : Infinity;
   const retryFailed = Boolean(args["retry-failed"]);
   // leave a core for the OS; MediaPipe here is CPU-only, so this saturates
@@ -134,15 +148,18 @@ async function main(): Promise<void> {
       fps,
       wasmBase: WASM_BASE,
       modelAsset: MODEL_ASSET,
+      modelAssetPath,
     });
   }
 
   const alreadyDone = Object.values(manifest.units).filter(
     (u) => u.status === "done",
   ).length;
+  const geometry = width && height ? `${width}x${height}` : "native size";
   console.log(
     `${queue.length} to extract · ${alreadyDone} already done · ` +
-      `${workerCount} workers · ${width}x${height} @ ${fps}fps`,
+      `${workerCount} workers · ${geometry} @ ${fps ?? "native"} fps · ` +
+      `model ${modelAssetPath ?? MODEL_ASSET}`,
   );
   if (queue.length === 0) return;
 
@@ -190,6 +207,9 @@ async function main(): Promise<void> {
             status: "done",
             frames: msg.frames,
             seconds: msg.seconds,
+            width: msg.width,
+            height: msg.height,
+            fps: msg.fps,
             detection: msg.detection,
           };
           completed++;

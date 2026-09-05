@@ -13,18 +13,37 @@
  * plausible-looking landmarks for them, and nothing downstream can tell. This
  * accumulates a carry buffer instead and only ever emits whole frames.
  *
+ * **Geometry defaults to the video's own.** The Python extractor feeds cv2's
+ * native frames at the video's own frame rate; anything else here would make the
+ * two extractors incomparable *by construction* — POPSIGN is 1944x2592 portrait
+ * at 30/120 fps, so a fixed `scale=640:480 -r 30` both inverts the aspect ratio
+ * and resamples the time axis. `rescale: false` omits the scale filter and
+ * `fps: null` omits `-r`, which is what parity requires; both are still
+ * overridable for a deliberately cheaper run.
+ *
  * ffmpeg is spawned directly with `Deno.Command` rather than through
  * fluent-ffmpeg: one fewer npm dependency, and a real `ReadableStream` instead of
  * Node stream-event semantics.
  */
 
 export interface FrameSourceOptions {
+  /** Decoded frame width — must be what ffmpeg actually emits. */
   width: number;
+  /** Decoded frame height — must be what ffmpeg actually emits. */
   height: number;
-  /** Frames are resampled to this rate, so timestamps are exact. */
-  fps: number;
+  /** Resample to this rate; `null` keeps the video's own frame sequence. */
+  fps: number | null;
+  /** Rescale to width x height; `false` means the video is already that size. */
+  rescale: boolean;
   /** ffmpeg binary; override if it is not on PATH. */
   ffmpeg?: string;
+}
+
+export interface VideoGeometry {
+  width: number;
+  height: number;
+  fps: number;
+  duration: number;
 }
 
 export class FfmpegError extends Error {}
@@ -38,21 +57,17 @@ export class FfmpegError extends Error {}
 export async function* readFrames(
   videoPath: string,
   opts: FrameSourceOptions,
-): AsyncGenerator<Uint8ClampedArray, void, unknown> {
-  const { width, height, fps, ffmpeg = "ffmpeg" } = opts;
+): AsyncGenerator<Uint8ClampedArray<ArrayBuffer>, void, unknown> {
+  const { width, height, fps, rescale, ffmpeg = "ffmpeg" } = opts;
   const rgbFrameSize = width * height * 3;
 
+  const args = ["-hide_banner", "-loglevel", "error", "-i", videoPath];
+  if (rescale) args.push("-vf", `scale=${width}:${height}`);
+  if (fps !== null) args.push("-r", String(fps));
+  args.push("-f", "rawvideo", "-pix_fmt", "rgb24", "-");
+
   const command = new Deno.Command(ffmpeg, {
-    args: [
-      "-hide_banner",
-      "-loglevel", "error",
-      "-i", videoPath,
-      "-vf", `scale=${width}:${height}`,
-      "-r", String(fps),
-      "-f", "rawvideo",
-      "-pix_fmt", "rgb24",
-      "-", // stdout
-    ],
+    args,
     stdout: "piped",
     stderr: "piped",
   });
@@ -124,16 +139,22 @@ export async function* readFrames(
   }
 }
 
-/** Probe a video's native frame rate and duration, for the manifest. */
+/**
+ * Probe a video's native geometry — the default the extractor runs at.
+ *
+ * `r_frame_rate` rather than `avg_frame_rate` because it is the rate of the
+ * frame sequence ffmpeg will emit, which is what has to line up with cv2's
+ * `CAP_PROP_FPS` on the Python side.
+ */
 export async function probe(
   videoPath: string,
   ffprobe = "ffprobe",
-): Promise<{ fps: number; duration: number }> {
+): Promise<VideoGeometry> {
   const out = await new Deno.Command(ffprobe, {
     args: [
       "-v", "error",
       "-select_streams", "v:0",
-      "-show_entries", "stream=r_frame_rate:format=duration",
+      "-show_entries", "stream=width,height,r_frame_rate:format=duration",
       "-of", "json",
       videoPath,
     ],
@@ -146,9 +167,14 @@ export async function probe(
     );
   }
   const parsed = JSON.parse(new TextDecoder().decode(out.stdout));
-  const rate = parsed.streams?.[0]?.r_frame_rate ?? "0/1";
-  const [num, den] = String(rate).split("/").map(Number);
+  const stream = parsed.streams?.[0];
+  if (!stream?.width || !stream?.height) {
+    throw new FfmpegError(`${videoPath}: ffprobe reported no video stream`);
+  }
+  const [num, den] = String(stream.r_frame_rate ?? "0/1").split("/").map(Number);
   return {
+    width: Number(stream.width),
+    height: Number(stream.height),
     fps: den ? num / den : 0,
     duration: Number(parsed.format?.duration ?? 0),
   };
