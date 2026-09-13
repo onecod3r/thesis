@@ -450,21 +450,48 @@ Replaces the deleted `popsign.0.dataset.ipynb` stub as the extraction driver
   `gtsignstudy4a.8035-into-2023_01_30_12_00_12.563-0`, `cv2` cannot open the source
   mp4. Likely a truncated/corrupt download rather than an extraction bug; the
   manifest retries `failed` on the next run, so confirm the source file first.
-- [x] **Single-video pilot + skeleton-overlay replay added (2026-09-13)**, as a
-  new §2 ahead of the worker-count sweep (renumbering it and everything after to
-  §3-§6): samples one random `test`-split video, extracts it in-process
-  (`ex.extract_dataset(..., n_workers=1)` — no pool, safe to run directly in the
-  kernel), then plays it back with `sb.extract.overlay.render_video` (new
-  function, same module as the confidence-tuning QC's `draw_frame`/
-  `render_frames`) drawing the `(543, 3)` landmarks on every frame. Purpose: a
-  numeric detection-rate proxy can't tell "no hands detected" apart from
-  "confidently tracking the wrong region" — only watching the skeleton on the
-  actual video can. Output is throwaway (`data/temp/popsign_single_pilot/`,
-  same policy as the §3 pilot). `render_video` itself was smoke-tested directly
-  (synthetic 5-frame video + random landmarks, `sb-extract` env) since this
-  machine has neither the POPSIGN manifests nor the holistic task model
-  downloaded to run the notebook's own cells end to end — not yet
-  kernel-verified against a real POPSIGN video.
+- [x] **Pilot split into its own notebook + main extraction rewritten as a
+  staged, one-dataset-at-a-time pipeline (2026-09-13).** Two changes, same day:
+  - `popsign.0.dataset.pilot.ipynb` (new file) replaces the single-video pilot
+    section briefly added to the extraction notebook earlier the same day.
+    Instead of extracting an already-downloaded video, it lists a few candidate
+    files straight from Kaggle (`KaggleApi.dataset_list_files` — metadata only,
+    no download) and pulls just `N_PILOT_VIDEOS` of them individually via
+    `kagglehub.dataset_download(handle, path=<file>)` — confirmed 2026-09-13
+    that this fetches only that one file (3.4MB cache footprint after one
+    call, not the 174GB `train-a-e` archive; a directory-prefix `path` 404s,
+    so it really is one-file-at-a-time). Extracts in-process (`n_workers=1`),
+    replays with `sb.extract.overlay.render_video` (added same day — draws the
+    `(543,3)` skeleton over every frame of a full video, vs. `render_frames`'s
+    seek-and-grab PNG sampling), then deletes only the files it downloaded.
+    File-listing + per-file download + manifest construction were smoke-tested
+    live against `train-a-e` (real Kaggle calls); the extraction step itself
+    could not be — this machine has neither the POPSIGN manifests nor the
+    MediaPipe holistic model downloaded.
+  - `popsign.0.dataset.extraction.ipynb` rewritten: no more
+    `resolve_datasets()` call pulling every enabled dataset onto disk at
+    once. Now one stage per train part (download the whole part — still a
+    bulk archive fetch, the efficient path — walk its tree into a manifest
+    slice, extract via the existing CLI handoff, verify, **delete its
+    kagglehub cache**, next part) followed by one test stage (downloaded
+    **once**, then extracted in 4 `--limit`-based checkpoint "quarters" —
+    per-file quartering was measured at ~5s/file, i.e. ~12h just in download
+    overhead for one quarter, so quartering is an extraction cadence, not 4
+    separate downloads; cache is deleted only after all 4 quarters finish).
+    `sb.core.paths` gained `train_dir(index)` (download one part instead of
+    all of `train_dirs()`), `dataset_cache_dir(handle)` / `clear_dataset_cache(handle)`
+    (kagglehub's own cache layout, resolved without triggering a download —
+    never touches GISLR, which lives under a separate `competitions/` cache
+    subtree). `train.csv` is now the concat of per-part manifest slices
+    (`dataframes/train_parts/*.csv`), rebuilt every time a part is added, so
+    `sb-extract run train`/`test` needed **no CLI changes** — already-`done`
+    rows for a part whose cache was since cleared are just skipped (`pending_jobs`
+    only checks the npz artifact, not the source video). The manifest-walk,
+    cumulative-CSV-rebuild, and per-part/per-split progress-tracking helpers
+    were unit-tested against a synthetic 2-part fixture (not real Kaggle data)
+    and pass; the actual multi-hundred-GB download+extract+delete stages are
+    unverified end-to-end (would take hours-to-days per part and this machine
+    lacks the holistic model, same limitation as above).
 
 ### 2.4 Output inspection — `experiments/extraction/popsign.0.dataset.output-inspection.ipynb` (2026-07-19)
 

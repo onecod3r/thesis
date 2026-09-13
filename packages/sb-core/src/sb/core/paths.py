@@ -137,6 +137,11 @@ DATASET_IDS: DatasetIds = {
 }
 
 
+# indices into DATASET_IDS["TRAIN"] that are downloaded/extracted so far
+# (TODO §2.2); index 3 (t-z) stays disabled until enabled here.
+ENABLED_TRAIN_INDICES: tuple[int, ...] = (0, 1, 2)
+
+
 def gislr_dir() -> Path:
     """Download/resolve only the GISLR competition data (requires a Kaggle
     account that has accepted the asl-signs rules)."""
@@ -145,24 +150,29 @@ def gislr_dir() -> Path:
     return Path(kagglehub.competition_download(DATASET_IDS["GISLR"]))
 
 
-def train_dirs() -> list[Path]:
-    """Download/resolve only the enabled POPSIGN train datasets (~220GB for the
-    one enabled part alone). Only 1 of 4 train parts is enabled so far
-    (TODO §2.2); uncomment the rest in ``DATASET_IDS["TRAIN"]`` to download them.
+def train_dir(index: int) -> Path:
+    """Download/resolve exactly one POPSIGN train part (~170-200GB each) — the
+    staged-extraction unit. Prefer this over ``train_dirs()`` for anything that
+    processes one part at a time (the main extraction notebook): it downloads
+    only that part, so only one part's raw video ever sits on disk at once.
 
-    All parts go through kagglehub's own default cache
-    (``~/.cache/kagglehub/datasets/``) — no external-drive ``output_dir``
-    (dropped 2026-09-13; kagglehub's re-download check only covers its default
-    cache dir, so a pinned external ``output_dir`` broke every subsequent call
-    with ``FileExistsError`` once the download completed)."""
+    Goes through kagglehub's own default cache (``~/.cache/kagglehub/datasets/``)
+    — no external-drive ``output_dir`` (dropped 2026-09-13; kagglehub's
+    re-download check only covers its default cache dir, so a pinned external
+    ``output_dir`` broke every subsequent call with ``FileExistsError`` once the
+    download completed)."""
     import kagglehub
 
-    return [
-        Path(kagglehub.dataset_download(DATASET_IDS["TRAIN"][0])),
-        Path(kagglehub.dataset_download(DATASET_IDS["TRAIN"][1])),
-        Path(kagglehub.dataset_download(DATASET_IDS["TRAIN"][2])),
-        # Path(kagglehub.dataset_download(DATASET_IDS["TRAIN"][3])),
-    ]
+    return Path(kagglehub.dataset_download(DATASET_IDS["TRAIN"][index]))
+
+
+def train_dirs() -> list[Path]:
+    """Download/resolve every enabled POPSIGN train part **at once**
+    (``ENABLED_TRAIN_INDICES`` — 3 parts, ~600GB total today). Only for
+    contexts that genuinely want everything on disk together; the staged main
+    extraction notebook downloads/extracts/deletes one part at a time via
+    ``train_dir()`` instead."""
+    return [train_dir(i) for i in ENABLED_TRAIN_INDICES]
 
 
 def test_dir() -> Path:
@@ -170,6 +180,29 @@ def test_dir() -> Path:
     import kagglehub
 
     return Path(kagglehub.dataset_download(DATASET_IDS["TEST"]))
+
+
+def dataset_cache_dir(handle: str) -> Path:
+    """Local kagglehub cache directory for a *dataset* handle (train/test
+    parts — never GISLR, which is a competition download and lives under a
+    separate ``competitions/`` cache subtree entirely). Resolves kagglehub's
+    own default cache layout directly, so it works without triggering a
+    download."""
+    from kagglehub.cache import get_cached_path
+    from kagglehub.handle import parse_dataset_handle
+
+    return Path(get_cached_path(parse_dataset_handle(handle)))
+
+
+def clear_dataset_cache(handle: str) -> None:
+    """Delete one dataset's local kagglehub cache (downloaded files +
+    completion markers) so the staged extraction notebook can move to the next
+    part without holding both on disk. A no-op if nothing is cached. Never
+    touches GISLR (``dataset_cache_dir`` only resolves dataset handles, and
+    GISLR's id is never passed here)."""
+    d = dataset_cache_dir(handle)
+    if d.exists():
+        shutil.rmtree(d)
 
 
 def resolve_datasets() -> Datasets:
