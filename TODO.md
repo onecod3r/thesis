@@ -461,9 +461,10 @@ Replaces the deleted `popsign.0.dataset.ipynb` stub as the extraction driver
     that this fetches only that one file (3.4MB cache footprint after one
     call, not the 174GB `train-a-e` archive; a directory-prefix `path` 404s,
     so it really is one-file-at-a-time). Extracts in-process (`n_workers=1`),
-    replays with `sb.extract.overlay.render_video` (added same day — draws the
-    `(543,3)` skeleton over every frame of a full video, vs. `render_frames`'s
-    seek-and-grab PNG sampling), then deletes only the files it downloaded.
+    replays with `sb.extract.overlay.render_gif` (draws the `(543,3)` skeleton
+    over every frame, vs. `render_frames`'s seek-and-grab PNG sampling — see
+    the codec bug entry right below for why it's a GIF, not the MP4 it started
+    as), then deletes only the files it downloaded.
     File-listing + per-file download + manifest construction were smoke-tested
     live against `train-a-e` (real Kaggle calls); the extraction step itself
     could not be — this machine has neither the POPSIGN manifests nor the
@@ -492,6 +493,21 @@ Replaces the deleted `popsign.0.dataset.ipynb` stub as the extraction driver
     and pass; the actual multi-hundred-GB download+extract+delete stages are
     unverified end-to-end (would take hours-to-days per part and this machine
     lacks the holistic model, same limitation as above).
+- [x] **BUG (found 2026-09-13, same day): the pilot's overlay video didn't
+  play — blank 0:00 placeholder in the notebook.** Root cause: this machine's
+  OpenCV/FFmpeg build has no working H.264 encoder (`libopenh264` DLL not
+  installed; `avc1`/`H264`/`X264` fourccs all silently fall back to a
+  non-decodable stream — confirmed by testing all four), and its one working
+  fallback, `mp4v` (MPEG-4 Part 2), isn't a codec browsers decode inline, so
+  `IPython.display.Video(embed=True)` renders nothing. Fixed by replacing
+  `overlay.render_video` (MP4) with `overlay.render_gif` (animated GIF — no
+  codec dependency, displays inline anywhere `IPython.display.Image` does).
+  Full-resolution GIF measured 30-40MB on a real 211-frame/120fps clip (GIF
+  compresses photographic content poorly), so `render_gif` downscales
+  (`max_width=360`), subsamples (`max_frames=30`), and palette-quantizes
+  (`palette_colors=64`) — same real clip: 2.3MB, verified inline-playable.
+  Verified live end-to-end against the real `train-a-e` file downloaded for
+  the earlier smoke test.
 
 ### 2.4 Output inspection — `experiments/extraction/popsign.0.dataset.output-inspection.ipynb` (2026-07-19)
 

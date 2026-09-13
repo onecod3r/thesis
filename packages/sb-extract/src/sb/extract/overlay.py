@@ -137,41 +137,72 @@ def render_frames(video_path: Path, landmarks: np.ndarray, frame_indices,
     return written
 
 
-def render_video(video_path: Path, landmarks: np.ndarray, out_path: Path,
-                 draw_face: bool = True, fps: float | None = None) -> Path:
-    """Write a full video with every frame's landmarks drawn on top.
+def render_gif(video_path: Path, landmarks: np.ndarray, out_path: Path,
+              draw_face: bool = True, fps: float | None = None,
+              max_width: int = 360, max_frames: int = 30,
+              palette_colors: int = 64) -> Path:
+    """Write an animated GIF with every frame's landmarks drawn on top.
 
     Unlike `render_frames` (a handful of seek-and-grab PNGs for a contact
-    sheet), this decodes and re-encodes every frame in order — the point is a
-    single-video pilot replay you can actually play back, not a QC sample.
+    sheet), this is a full replay in frame order — the point is a
+    single-video pilot check you can actually watch, not a QC sample.
+
+    **GIF, not MP4.** This machine's OpenCV/FFmpeg build has no real H.264
+    encoder (`libopenh264` DLL not installed — real-H.264 fourccs like
+    `avc1`/`H264` silently fall back to a non-decodable stream) and its
+    fallback codec, MPEG-4 Part 2 (`mp4v`), is not something browsers decode
+    inline — `IPython.display.Video(embed=True)` on an `mp4v` file rendered as
+    a blank 0:00 placeholder (found 2026-09-13, testing the pilot notebook).
+    An animated GIF has no codec dependency at all and displays inline
+    anywhere `IPython.display.Image` does.
+
+    **Downscaled, subsampled, and palette-quantized** — GIF compresses
+    photographic content poorly, so a real POPSIGN clip (1080x1920 or larger,
+    up to ~200 frames at up to 120fps) at full fidelity measured 30-40MB, well
+    into the "notebook cell output bloat" territory the repo has been burned
+    by before (TODO §0.2). `max_width` caps frame width, `max_frames` subsamples
+    evenly across the clip (a debug overlay doesn't need every frame to show
+    whether the detector is tracking the right region), and each frame is
+    quantized to an adaptive `palette_colors`-color palette. Measured on a
+    real 211-frame/120fps/1944x2592 clip: ~2.3MB at the defaults — a typical
+    (much shorter, lower-fps) POPSIGN clip will subsample less and land
+    smaller still.
     """
     import cv2
+    from PIL import Image
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise IOError(f"cannot open video: {video_path}")
-    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or len(landmarks)
     fps = fps or cap.get(cv2.CAP_PROP_FPS) or 30.0
-    writer = cv2.VideoWriter(str(out_path), cv2.VideoWriter_fourcc(*"mp4v"),
-                             fps, (w, h))
+    stride = max(1, n_frames // max_frames) if max_frames else 1
+    frames = []
     try:
         idx = 0
         while True:
             ok, bgr = cap.read()
             if not ok:
                 break
-            frame_lm = (landmarks[idx] if idx < len(landmarks)
-                       else np.full((landmarks.shape[1], 3), np.nan, dtype=landmarks.dtype))
-            drawn = draw_frame(bgr, frame_lm, draw_face=draw_face)
-            drawn = annotate(drawn, [f"frame {idx}"])
-            writer.write(drawn)
+            if idx % stride == 0:
+                frame_lm = (landmarks[idx] if idx < len(landmarks)
+                           else np.full((landmarks.shape[1], 3), np.nan, dtype=landmarks.dtype))
+                drawn = draw_frame(bgr, frame_lm, draw_face=draw_face)
+                drawn = annotate(drawn, [f"frame {idx}"])
+                if max_width and drawn.shape[1] > max_width:
+                    scale = max_width / drawn.shape[1]
+                    drawn = cv2.resize(drawn, (max_width, int(round(drawn.shape[0] * scale))))
+                im = Image.fromarray(cv2.cvtColor(drawn, cv2.COLOR_BGR2RGB))
+                frames.append(im.convert("P", palette=Image.ADAPTIVE, colors=palette_colors))
             idx += 1
     finally:
         cap.release()
-        writer.release()
+    if not frames:
+        raise IOError(f"no frames decoded from {video_path}")
+    frames[0].save(out_path, save_all=True, append_images=frames[1:],
+                  duration=round(1000 / fps * stride), loop=0, optimize=True)
     return out_path
 
 
