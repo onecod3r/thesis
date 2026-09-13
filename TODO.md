@@ -508,6 +508,25 @@ Replaces the deleted `popsign.0.dataset.ipynb` stub as the extraction driver
   (`palette_colors=64`) — same real clip: 2.3MB, verified inline-playable.
   Verified live end-to-end against the real `train-a-e` file downloaded for
   the earlier smoke test.
+- [x] **Two follow-up bugs found running the pilot notebook for real
+  (2026-09-13):**
+  - The `## 4.` markdown cell's source was written with literal `\n`
+    two-character sequences instead of real newlines (a `NotebookEdit` call
+    that didn't escape correctly), so it rendered as one run-on line instead
+    of paragraphs. Fixed; a repo-wide check confirmed no other markdown cell
+    in either extraction notebook has the same corruption (code cells
+    legitimately contain literal `\n` inside string literals, so the check
+    is markdown-only).
+  - `cleanup_temp()` in the last cell raised `PermissionError: WinError 32`
+    on the extracted npz — `np.load()` returns a lazy `NpzFile` that keeps its
+    zip file handle open for as long as the object is referenced, and
+    `pilot_npz` kept holding it across cells; Windows refuses to delete an
+    open file. Fixed by loading inside a `with np.load(...) as _zf:` block in
+    the extract cell and storing a plain `{"landmarks":..., "fps":...}` dict
+    instead of the `NpzFile` object (the overlay cell's `_z["landmarks"]`/
+    `_z["fps"]` indexing needed no change). Verified end-to-end with the real
+    MediaPipe model now present on this machine: real extraction (211 frames,
+    7.0% NaN), a 2.1MB GIF, and `cleanup_temp()` completing with no error.
 
 ### 2.4 Output inspection — `experiments/extraction/popsign.0.dataset.output-inspection.ipynb` (2026-07-19)
 
