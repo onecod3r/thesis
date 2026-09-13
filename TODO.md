@@ -527,8 +527,15 @@ Replaces the deleted `popsign.0.dataset.ipynb` stub as the extraction driver
     `_z["fps"]` indexing needed no change). Verified end-to-end with the real
     MediaPipe model now present on this machine: real extraction (211 frames,
     7.0% NaN), a 2.1MB GIF, and `cleanup_temp()` completing with no error.
-
-### 2.4 Output inspection — `experiments/extraction/popsign.0.dataset.output-inspection.ipynb` (2026-07-19)
+- [x] **BUG (found 2026-09-13): the staged rewrite above only enabled 3 of the
+  4 train parts.** POPSIGN is 5 Kaggle datasets total — `train-a-e`,
+  `train-f-m`, `train-n-s`, `train-t-z` (~175-250GB each) plus test (~17GB) —
+  but `ENABLED_TRAIN_INDICES` shipped as `(0, 1, 2)`, silently dropping
+  `train-t-z`. Fixed: `ENABLED_TRAIN_INDICES` is now `(0, 1, 2, 3)`, and the
+  notebook gained a 4th train stage (download `train-t-z`, manifest, extract,
+  verify, delete cache — same pattern as parts 1-3) between part 3 and the
+  test stage, renumbering test/QC from §6-§8 to §7-§9. Title cell, caveats,
+  and per-stage "part N/3" labels updated to "N/4" throughout. — `experiments/extraction/popsign.0.dataset.output-inspection.ipynb` (2026-07-19)
 
 - [x] Standalone read-only diagnostic showing how an extracted sign is stored:
   archive keys/shapes/dtypes, the 543-row holistic group layout, per-group

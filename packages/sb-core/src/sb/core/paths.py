@@ -137,9 +137,9 @@ DATASET_IDS: DatasetIds = {
 }
 
 
-# indices into DATASET_IDS["TRAIN"] that are downloaded/extracted so far
-# (TODO §2.2); index 3 (t-z) stays disabled until enabled here.
-ENABLED_TRAIN_INDICES: tuple[int, ...] = (0, 1, 2)
+# indices into DATASET_IDS["TRAIN"] that are downloaded/extracted — all 4
+# parts (a-e, f-m, n-s, t-z) are enabled (TODO §2.2).
+ENABLED_TRAIN_INDICES: tuple[int, ...] = (0, 1, 2, 3)
 
 
 def gislr_dir() -> Path:
