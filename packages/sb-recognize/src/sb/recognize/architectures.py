@@ -444,6 +444,13 @@ ARCHS: dict[str, ArchSpec] = {
         True,
         "unidirectional/causal LSTM, LayerNorm in/out",
     ),
+    "gru_deep": ArchSpec(
+        StreamingGRU,
+        "StreamingGRU",
+        True,
+        "same class as gru, deeper/wider via config overrides — depth-vs-plateau "
+        "diagnostic (TODO §4.1) that stays streaming-viable, unlike BiLSTM",
+    ),
     "bilstm": ArchSpec(
         BiLSTM,
         "BiLSTM",

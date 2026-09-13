@@ -49,7 +49,7 @@ FIELDS: dict[str, tuple[str, str]] = {
     "run_id": ("integer", "seconds since Unix epoch at training start = run folder name"),
     "created": ("string", "ISO-8601 local timestamp derived from `run_id`"),
     "dataset": ("string", 'e.g. `"gislr"` — resolved through `modules/model/sources.py`'),
-    "architecture": ("string", "key into `sb.recognize.ARCHS`: `gru` / `lstm` / `bilstm` / `cnn1d` / `conv1d_transformer`"),
+    "architecture": ("string", "key into `sb.recognize.ARCHS`: `gru` / `lstm` / `bilstm` / `cnn1d` / `conv1d_transformer` / `gru_deep`"),
     "model_name": ("string", 'class name, e.g. `"StreamingGRU"`'),
     "streaming": ("boolean", "streaming-viable? (`false` = offline-only reference, never deployable)"),
     "subset": ("string", "landmark-subset name from `modules/dataset/landmark/subsets.py`"),

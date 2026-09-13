@@ -23,6 +23,13 @@
     "gru": {},
     "lstm": {},
     "bilstm": {},
+    "gru_deep": {
+      "overrides": {
+        "hidden_size": 384,
+        "num_layers": 4
+      },
+      "notes": "same StreamingGRU class as gru, deeper+wider (256x2 -> 384x4) — tests whether GRU capacity alone closes the gap to bilstm's 0.7569 without sacrificing streaming (TODO §4.1)."
+    },
     "cnn1d": {
       "overrides": {
         "num_layers": 5
