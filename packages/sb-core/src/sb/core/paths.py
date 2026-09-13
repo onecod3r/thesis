@@ -137,22 +137,6 @@ DATASET_IDS: DatasetIds = {
 }
 
 
-def _dataset_download(handle: str, output_dir: str | None = None) -> Path:
-    """``kagglehub.dataset_download``, but idempotent for a pinned ``output_dir``.
-
-    kagglehub's own re-download check only covers its *default* cache dir; with
-    an explicit ``output_dir`` it always attempts a fresh download and raises
-    ``FileExistsError: output_dir is not empty`` on a second call — every
-    already-downloaded pinned dataset would otherwise fail every subsequent
-    ``resolve_datasets()`` instead of being treated as a cache hit.
-    """
-    import kagglehub
-
-    if output_dir is not None and Path(output_dir).is_dir() and any(Path(output_dir).iterdir()):
-        return Path(output_dir)
-    return Path(kagglehub.dataset_download(handle, output_dir=output_dir))
-
-
 def gislr_dir() -> Path:
     """Download/resolve only the GISLR competition data (requires a Kaggle
     account that has accepted the asl-signs rules)."""
@@ -164,26 +148,20 @@ def gislr_dir() -> Path:
 def train_dirs() -> list[Path]:
     """Download/resolve only the enabled POPSIGN train datasets (~220GB for the
     one enabled part alone). Only 1 of 4 train parts is enabled so far
-    (TODO §2.2); uncomment the rest in ``DATASET_IDS["TRAIN"]`` to download them."""
+    (TODO §2.2); uncomment the rest in ``DATASET_IDS["TRAIN"]`` to download them.
+
+    All parts go through kagglehub's own default cache
+    (``~/.cache/kagglehub/datasets/``) — no external-drive ``output_dir``
+    (dropped 2026-09-13; kagglehub's re-download check only covers its default
+    cache dir, so a pinned external ``output_dir`` broke every subsequent call
+    with ``FileExistsError`` once the download completed)."""
     import kagglehub
 
     return [
         Path(kagglehub.dataset_download(DATASET_IDS["TRAIN"][0])),
         Path(kagglehub.dataset_download(DATASET_IDS["TRAIN"][1])),
-        # NOTE: "popsign/ train-n-s-signs" has an accidental leading space in the
-        # last path segment. Left as-is — it's where the ~160GB archive already
-        # downloaded to, and "fixing" the typo would just start a second
-        # download rather than migrate it. Rename the directory yourself first
-        # if you want the typo gone.
-        _dataset_download(
-            DATASET_IDS["TRAIN"][2],
-            output_dir="D:/datasets/popsign/ train-n-s-signs",
-        ),
-        # Path(
-        #     kagglehub.dataset_download(
-        #         DATASET_IDS["TRAIN"][3], output_dir="E:/datasets/"
-        #     )
-        # ),
+        Path(kagglehub.dataset_download(DATASET_IDS["TRAIN"][2])),
+        # Path(kagglehub.dataset_download(DATASET_IDS["TRAIN"][3])),
     ]
 
 
