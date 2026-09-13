@@ -1149,32 +1149,11 @@ record rather than something remembered by hand.
   the cell submits only untested models and respects the daily cap by
   construction. Exports each to `submission.zip`, submits, marks `tested`.
 - [x] Declare `kaggle` in `pyproject.toml` and `uv sync` — done 2026-07-19.
-- [x] Submission mechanics — **proven end-to-end, but `asl-signs` itself can no
-  longer accept it (2026-09-13).** `~/.kaggle/access_token` *is* present on this
-  machine (the earlier "no credentials" note was stale) and the kernel loop
-  works: pushed a private dataset (`model.tflite` for run 1784447187) plus a
-  minimal delivery kernel (`bracu23101281/asl-signs-submit-1784447187`) that
-  just re-zips it to `submission.zip` — no inference code needed, Kaggle scores
-  the tflite directly. Two things had to be discovered by trial: (1) with both
-  `dataset_sources` and `competition_sources` declared, the input mount path is
-  `/kaggle/input/datasets/<owner>/<slug>/…` (not the bare `/kaggle/input/<slug>/…`
-  the docs imply), and (2) `competition_sources: ["asl-signs"]` is *mandatory*
-  even though the script never reads it — Kaggle rejects a code submission
-  whose kernel didn't declare the competition as a data source. Kernel v7 built
-  clean and produced a valid `submission.zip`.
-  **Then `kaggle competitions submit -k … -v 7` failed**: `400 … "PostProcessorKernelId
-  is no longer supported; use RerunOverrideKernelId instead."` This is a
-  Kaggle-server-side error, not a client bug — `kaggle==2.2.3` (latest available)
-  serializes the request exactly per its own schema (`kernelOwner`/`kernelSlug`/
-  `kernelVersion`), and `kaggle competitions list -s asl-signs` shows the
-  competition's **deadline was 2023-05-01**, over three years closed. Reading the
-  error together with that: Kaggle's `create_code_submission` backend for this
-  archived competition has been migrated/decommissioned and no longer accepts
-  new code submissions through the API, regardless of what the client sends.
-  This is **not fixable from this repo or this machine** — it would need Kaggle
-  support/the website's own late-submission flow (if one still exists for this
-  competition), not more client-side debugging. Don't re-attempt CLI/API
-  submission for `asl-signs` without checking that first.
+- [~] Submission mechanics. The `kaggle` **CLI** path submits through a Kaggle
+  kernel (`-k <owner>/<notebook> -v <version>`), so each zip must be attached to
+  a kernel version first — and there are currently **no credentials on this
+  machine** (`~/.kaggle/kaggle.json` absent, `KAGGLE_USERNAME` unset), so a
+  non-dry-run submit can only fail or hang.
 - [~] **Kaggle MCP server** (offered 2026-07-19) — likely the better path: it
   exposes `mcp_kaggle_start_competition_submission_upload` +
   `kaggle_mcp_submit_to_competition`, i.e. **upload a file and submit it
@@ -1189,22 +1168,6 @@ record rather than something remembered by hand.
   - [ ] Once proven, decide whether `sb.mlops.submission::submit_run`
     keeps shelling out to the CLI or the notebook drives the MCP tools instead;
     the queue query and `mark_tested` bookkeeping are unaffected either way.
-- [x] **Top-5 streaming runs exported to TFLite (2026-09-13).** Ran
-  `sb.recognize.export.tflite.export_run` (the existing Keras-rebuild path, §6.2 —
-  *not* the `litert-torch`/`torch.export` route, which is the same ONNX-adjacent
-  idea already abandoned) for the 5 best canonical-eval GISLR runs **excluding
-  bilstm** (offline reference only, never a deployment candidate): `gru`
-  1784447187/1784453891 (ME_126 xy, 0.7565), 1784451456/1784455294 (FP_118 xy,
-  0.7505), 1784449770 (ME_132 xy, 0.7493). All 5 passed both parity gates
-  (keras ~3-5e-6, tflite-vs-torch ~4-8e-6), landed at 3.4-3.5 MB (well under the
-  40 MB cap), and each run's `meta.json` now points `assets.tflite` /
-  `assets.submission_zip` at `export/model.tflite` / `export/submission.zip`
-  (gitignored, reproducible via `export_run` — not committed). **Not submitted**:
-  the kernel-version delivery loop was proven end-to-end for run 1784447187
-  (see below), but the actual `kaggle competitions submit` call fails — `asl-signs`
-  closed in 2023 and Kaggle's code-submission backend for it appears
-  decommissioned, not a client-side problem. See the submission-mechanics entry
-  below before trying again.
 - [ ] **Security**: an API token was pasted in plaintext into a chat transcript
   on 2026-07-19 and must be treated as compromised — rotate it (Kaggle
   Settings → Generate New Token) and never commit one.
