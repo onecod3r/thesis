@@ -450,6 +450,21 @@ Replaces the deleted `popsign.0.dataset.ipynb` stub as the extraction driver
   `gtsignstudy4a.8035-into-2023_01_30_12_00_12.563-0`, `cv2` cannot open the source
   mp4. Likely a truncated/corrupt download rather than an extraction bug; the
   manifest retries `failed` on the next run, so confirm the source file first.
+- [x] **Single-video pilot + skeleton-overlay replay added (2026-09-13)**, as a
+  new §2 ahead of the worker-count sweep (renumbering it and everything after to
+  §3-§6): samples one random `test`-split video, extracts it in-process
+  (`ex.extract_dataset(..., n_workers=1)` — no pool, safe to run directly in the
+  kernel), then plays it back with `sb.extract.overlay.render_video` (new
+  function, same module as the confidence-tuning QC's `draw_frame`/
+  `render_frames`) drawing the `(543, 3)` landmarks on every frame. Purpose: a
+  numeric detection-rate proxy can't tell "no hands detected" apart from
+  "confidently tracking the wrong region" — only watching the skeleton on the
+  actual video can. Output is throwaway (`data/temp/popsign_single_pilot/`,
+  same policy as the §3 pilot). `render_video` itself was smoke-tested directly
+  (synthetic 5-frame video + random landmarks, `sb-extract` env) since this
+  machine has neither the POPSIGN manifests nor the holistic task model
+  downloaded to run the notebook's own cells end to end — not yet
+  kernel-verified against a real POPSIGN video.
 
 ### 2.4 Output inspection — `experiments/extraction/popsign.0.dataset.output-inspection.ipynb` (2026-07-19)
 

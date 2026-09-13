@@ -137,6 +137,44 @@ def render_frames(video_path: Path, landmarks: np.ndarray, frame_indices,
     return written
 
 
+def render_video(video_path: Path, landmarks: np.ndarray, out_path: Path,
+                 draw_face: bool = True, fps: float | None = None) -> Path:
+    """Write a full video with every frame's landmarks drawn on top.
+
+    Unlike `render_frames` (a handful of seek-and-grab PNGs for a contact
+    sheet), this decodes and re-encodes every frame in order — the point is a
+    single-video pilot replay you can actually play back, not a QC sample.
+    """
+    import cv2
+
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        raise IOError(f"cannot open video: {video_path}")
+    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = fps or cap.get(cv2.CAP_PROP_FPS) or 30.0
+    writer = cv2.VideoWriter(str(out_path), cv2.VideoWriter_fourcc(*"mp4v"),
+                             fps, (w, h))
+    try:
+        idx = 0
+        while True:
+            ok, bgr = cap.read()
+            if not ok:
+                break
+            frame_lm = (landmarks[idx] if idx < len(landmarks)
+                       else np.full((landmarks.shape[1], 3), np.nan, dtype=landmarks.dtype))
+            drawn = draw_frame(bgr, frame_lm, draw_face=draw_face)
+            drawn = annotate(drawn, [f"frame {idx}"])
+            writer.write(drawn)
+            idx += 1
+    finally:
+        cap.release()
+        writer.release()
+    return out_path
+
+
 def contact_sheet(image_paths, ncols: int = 10, thumb_w: int = 220):
     """Tile PNGs into one figure for inline display.
 
