@@ -63,7 +63,9 @@
     "per_class_csv": "assets/per_class_accuracy.csv",
     "per_class_png": "assets/per_class_accuracy.png",
     "eval_summary": "assets/eval_summary.json",
-    "val_predictions": "assets/val_predictions.npz"
+    "val_predictions": "assets/val_predictions.npz",
+    "submission_zip": "export/submission.zip",
+    "tflite": "export/model.tflite"
   },
   "notes": "ME_132 subset \u00b7 regime v2-plateau-300.",
   "submission": {

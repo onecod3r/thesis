@@ -791,6 +791,12 @@ Train on the best-known subset for comparability with the GRU runs.
     into GRU/LSTM/CausalConv1D (the streaming-viable three), not BiLSTM —
     consistent with the existing plan (§7 plateau-breaking phases, §4's ST-GCN/
     TCN/Transformer/Conformer evaluation).
+  - [x] **Built 2026-09-12**: `gru_deep` — same `StreamingGRU` class as `gru`,
+    config override to `hidden_size=384, num_layers=4` (vs shared 256×2),
+    still `streaming=True`. Registered in `ARCHS` (`architectures.py`), config
+    block in `gislr.training.json`, notebook §5b in
+    `gislr.1.models.training.ipynb`. **Awaiting user training run** (this
+    agent never trains).
   - Needs a decision from the user on which of these two this remark meant
     before either sub-item is actioned.
 
@@ -1162,6 +1168,20 @@ record rather than something remembered by hand.
   - [ ] Once proven, decide whether `sb.mlops.submission::submit_run`
     keeps shelling out to the CLI or the notebook drives the MCP tools instead;
     the queue query and `mark_tested` bookkeeping are unaffected either way.
+- [x] **Top-5 streaming runs exported to TFLite (2026-09-13).** Ran
+  `sb.recognize.export.tflite.export_run` (the existing Keras-rebuild path, §6.2 —
+  *not* the `litert-torch`/`torch.export` route, which is the same ONNX-adjacent
+  idea already abandoned) for the 5 best canonical-eval GISLR runs **excluding
+  bilstm** (offline reference only, never a deployment candidate): `gru`
+  1784447187/1784453891 (ME_126 xy, 0.7565), 1784451456/1784455294 (FP_118 xy,
+  0.7505), 1784449770 (ME_132 xy, 0.7493). All 5 passed both parity gates
+  (keras ~3-5e-6, tflite-vs-torch ~4-8e-6), landed at 3.4-3.5 MB (well under the
+  40 MB cap), and each run's `meta.json` now points `assets.tflite` /
+  `assets.submission_zip` at `export/model.tflite` / `export/submission.zip`
+  (gitignored, reproducible via `export_run` — not committed). **Not submitted**:
+  the actual Kaggle upload still blocks on the mechanics below (no
+  `kaggle.json`/kernel-version flow proven yet) — do that once §6.3's submission
+  mechanics are resolved, not by improvising a new path.
 - [ ] **Security**: an API token was pasted in plaintext into a chat transcript
   on 2026-07-19 and must be treated as compromised — rotate it (Kaggle
   Settings → Generate New Token) and never commit one.
