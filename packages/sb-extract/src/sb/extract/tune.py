@@ -19,11 +19,11 @@ resumable — re-running skips videos already extracted, so an interrupt costs a
 most the videos in flight. Scoring and the visual check stay in the notebook
 (§5/§6), which needs no worker pool.
 
-Usage (any CWD — the script bootstraps its own imports):
+Usage (any CWD — sb-extract is an editable-installed workspace member):
 
-    .venv/Scripts/python.exe src/modules/scripts/tune_confidence.py
-    .venv/Scripts/python.exe src/modules/scripts/tune_confidence.py --configs default pose_strict
-    .venv/Scripts/python.exe src/modules/scripts/tune_confidence.py --workers 8 --force
+    .venv/Scripts/python.exe -m sb.extract.tune
+    .venv/Scripts/python.exe -m sb.extract.tune --configs default pose_strict
+    .venv/Scripts/python.exe -m sb.extract.tune --workers 8 --force
 """
 import argparse
 import json
