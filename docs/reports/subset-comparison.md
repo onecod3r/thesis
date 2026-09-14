@@ -8,11 +8,11 @@ daily-log entry (TODO §0.5); the original narrative is
 | | |
 |---|---|
 | **Question** | Which landmark subset carries the most class information — as opposed to which moves the most (see [motion-energy.md](motion-energy.md))? |
-| **Instrument** | `src/gislr.0.dataset.subset-comparison.ipynb` (TODO §3.0) |
-| **Subjects** | every subset in `src/modules/dataset/landmark/subsets.py`: FULL_543, FP_118 (1st-place), ME_126, ME_132, HANDS_42, HANDS_POSE_50 |
+| **Instrument** | `experiments/recognition/gislr.0.dataset.subset-comparison.ipynb` (TODO §3.0) |
+| **Subjects** | every subset in `sb.core.subsets`: FULL_543, FP_118 (1st-place), ME_126, ME_132, HANDS_42, HANDS_POSE_50 |
 | **Scopes** | A: 10 videos of one class (within-class consistency) · B: 10 sampled signs, 3,672 videos · C: global, all 94,477 videos / 250 classes, 189 resumable chunks |
 | **Split** | probe uses the canonical stratified 90/10 split, seed 42, 9,448 val — the same split every GRU run uses |
-| **Data** | `src/data/cache/gislr/subset_comparison/{leaderboard.csv, scope_{b,c}_landmark_scores.parquet, scope_c_per_class/<subset>.csv}` |
+| **Data** | `data/cache/gislr/subset_comparison/{leaderboard.csv, scope_{b,c}_landmark_scores.parquet, scope_c_per_class/<subset>.csv}` |
 
 ## 1. Why motion energy wasn't enough
 

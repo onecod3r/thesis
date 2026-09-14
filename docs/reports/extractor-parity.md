@@ -74,7 +74,7 @@ that and the actual requirement, and each one looked like the last problem:
    `readBinary` that exists only in its node path. A local mirror of the `.wasm`
    cannot be used; the base must be `http(s)`.
 
-Only past all three does the WebGL requirement surface. `src/dom_shim.ts` keeps
+Only past all three does the WebGL requirement surface. `packages/sb-extract-ts/src/dom_shim.ts` keeps
 those three layers **precisely so the failure names the real constraint** — it
 is documentation that executes, not an attempted fix, and the file says so.
 

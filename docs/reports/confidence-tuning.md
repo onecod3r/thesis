@@ -8,11 +8,18 @@ quality is measured.
 | | |
 |---|---|
 | **Question** | Which `HolisticLandmarker` confidence thresholds produce good landmarks on POPSIGN video, before ~64K videos of CPU time is committed to bulk extraction? |
-| **Instrument** | `src/popsign.0.dataset.confidence-tuning.ipynb` + `modules/scripts/tune_confidence.py` (TODO §2.3) |
-| **Sample** | 50 videos = 5 classes (`alligator`, `bath`, `car`, `fireman`, `give`) × 10, seeded, recorded to `sample.json` |
+| **Instrument** | `experiments/extraction/popsign.0.dataset.confidence-tuning.ipynb` + `sb.extract.tune` (`python -m sb.extract.tune`, TODO §2.3) |
+| **Sample** | 50 videos = 5 classes (`alligator`, `bath`, `car`, `fireman`, `give`) × 10, seeded, recorded to `sample.json` — drawn from the `train-a-e` POPSIGN part on disk at the time |
 | **Configs run** | `default` (50/50 videos), `pose_strict` (49/50) — the other five arms in `configs.json` are not yet extracted |
 | **Ground truth** | none exists for POPSIGN — every number here is a labelled **proxy** |
-| **Data** | `src/data/cache/popsign/confidence_tuning/{metrics.parquet, config_scores.csv, overlays/}` |
+| **Data** | `data/cache/popsign/confidence_tuning/{metrics.parquet, config_scores.csv, overlays/}` |
+
+**Note (2026-09-14):** the extraction path was restructured since this report was written —
+`packages/sb-extract` replaces the old `modules/dataset/landmark/` tree, `sb.extract.tune`
+replaces `modules/scripts/tune_confidence.py`, and POPSIGN train parts now stream one at a
+time through kagglehub's own cache instead of a pinned `D:`/`E:` drive path (TODO §2.2). The
+sample/config/measurements below are unaffected; only the instrument paths changed, and are
+corrected throughout this report.
 
 ---
 
@@ -122,7 +129,7 @@ in the grid addresses.
 
 No ground-truth landmarks exist for POPSIGN, so each metric is chosen because a
 known MediaPipe failure mode on this footage makes it worse
-(`modules/dataset/landmark/quality.py`):
+(`sb.extract.quality`):
 
 - **per-group detection rate** — fraction of frames with a non-NaN block; a
   too-high threshold shows up here first.
@@ -154,7 +161,8 @@ Rendered so far for `default` only (100 frames).
 
 A `Pool` started from a Jupyter kernel hung silently: the cell sat at **0% for 30
 minutes with the CPU at 2%, zero worker processes alive, and no error**. The sweep
-was therefore moved into **`modules/scripts/tune_confidence.py`**, with
+was therefore moved into a real script (**`modules/scripts/tune_confidence.py`** at
+the time, now **`sb.extract.tune`**), with
 `extraction._assert_pool_usable` refusing the in-notebook case up front and
 `n_workers=1` running genuinely in-process for smoke tests. Same work: ~100 videos
 in ~10 minutes as a script versus 0 files in 30 minutes in-notebook.

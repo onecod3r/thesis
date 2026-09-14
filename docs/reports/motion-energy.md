@@ -8,11 +8,11 @@ as a daily-log entry (TODO §0.5); the original narrative is
 | | |
 |---|---|
 | **Question** | Which of the 543 MediaPipe Holistic landmarks actually move, and does that motion reproduce from a small sample — before GPU-hours are spent on models that ingest all of them? |
-| **Instrument** | `src/gislr.0.dataset.motion-energy.ipynb` (TODO §1) |
+| **Instrument** | `experiments/recognition/gislr.0.dataset.motion-energy.ipynb` (TODO §1) |
 | **Data** | GISLR (`asl-signs`): 94,477 videos, 250 signs, 21 participants, 543 landmarks/frame (468 face, 21 per hand, 33 pose), xyz |
 | **Scopes** | per-video (50 seeded), per-category (10 seeded signs), global (all 94,477 videos, 189 resumable chunks) |
 | **Metric** | per-landmark RMS speed (Savitzky-Golay smoothed, scored over raw-valid frame transitions only) |
-| **Data** | `src/data/cache/gislr/motion_analysis/{per_video,per_category,global}/summary.parquet` |
+| **Data** | `data/cache/gislr/motion_analysis/{per_video,per_category,global}/summary.parquet` |
 
 This test measures *motion*, not *discriminativeness* — a landmark that moves
 identically in every sign has high motion energy and zero class information.
@@ -131,10 +131,13 @@ Keeping every "keep" row = **126 landmarks (ME-126)**; the strict
 
 ### Cross-check against the Kaggle GISLR 1st-place solution
 
-The 1st-place entry (`src/gislr.0.competition.entry.1st.ipynb`, hoyso48; CV
-0.80 / public LB 0.80 / private LB 0.88) keeps 118 landmarks × xy = 236 of
-1,629 raw values/frame (14.5%) — no external data, trained from scratch on the
-full competition set.
+The 1st-place entry (hoyso48; CV 0.80 / public LB 0.80 / private LB 0.88)
+keeps 118 landmarks × xy = 236 of 1,629 raw values/frame (14.5%) — no external
+data, trained from scratch on the full competition set. The reference
+notebook itself (`src/gislr.0.competition.entry.1st.ipynb` at the time) is no
+longer in the working tree — removed in commit `f7be9a1`, recoverable via
+`git show fd1c7aa:src/gislr.0.competition.entry.1st.ipynb`; its port now lives
+at `experiments/recognition/gislr.1.models.firstplace.ipynb`.
 
 | decision | motion-energy (xy) verdict | 1st place | agreement |
 |---|---|---|---|
