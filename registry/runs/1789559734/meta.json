@@ -1,0 +1,108 @@
+{
+  "schema_version": 4,
+  "run_id": 1789559734,
+  "created": "2026-09-16T17:55:34",
+  "dataset": "gislr",
+  "architecture": "gru",
+  "model_name": "StreamingGRU",
+  "streaming": true,
+  "subset": "ME_132",
+  "coords": "xy",
+  "n_landmarks": 132,
+  "feature_dim": 264,
+  "n_classes": 250,
+  "n_params": 860938,
+  "split": {
+    "strategy": "stratified 80/20 (fixed, GISLR_Stratified-provided)",
+    "random_state": 42,
+    "n_val": 18896
+  },
+  "training": {
+    "regime": "v2-plateau-300",
+    "source": "gislr.1.models.training.ipynb",
+    "epoch_cap": 300,
+    "epochs_trained": 81,
+    "best_epoch": 80,
+    "early_stopped": true,
+    "finished": true,
+    "wall_time_min": 18.2
+  },
+  "hyperparameters": {
+    "batch_size": 1024,
+    "lr": 0.001414,
+    "hidden_size": 256,
+    "num_layers": 2,
+    "dropout": 0.3,
+    "weight_decay": 0.0001,
+    "epochs": 300,
+    "grad_clip": 5.0,
+    "lr_factor": 0.5,
+    "lr_patience": 5,
+    "es_patience": 15,
+    "es_min_delta": 0.001,
+    "seed": 42,
+    "max_seq_len": 128,
+    "num_workers": 0,
+    "loss": "CE + label smoothing 0.1",
+    "precision": "AMP"
+  },
+  "provenance": {
+    "git_commit": "2613426e7279f37d029d54487de1b21509563934",
+    "git_branch": "main",
+    "git_dirty": true,
+    "code_dirty": false,
+    "dirty_code_paths": [],
+    "config_path": "experiments/recognition/configs/gislr.training.json",
+    "config_sha256": "sha256:7c3886da1f92b8c31c3c315a1b873f0edb49924255c65e7b113684452746e0b0",
+    "feature_pipeline": "base_v1",
+    "feature_cache_key": "b94308e09d35b436",
+    "source": {
+      "name": "gislr",
+      "kaggle_ref": "bracu23101281/gislr-stratified",
+      "version": null,
+      "n_videos": 94477,
+      "manifest": "train.csv",
+      "manifest_sha256": "sha256:1a1d3a1fa62e83e57ed4df30925c3aeee631910f960841f8bb877e3bbf7801b4",
+      "resolved_dir": "C:\\Users\\user2\\.cache\\kagglehub\\datasets\\bracu23101281\\gislr-stratified\\versions\\1"
+    },
+    "env": {
+      "python": "3.12.3",
+      "platform": "win32-AMD64",
+      "gpu": "NVIDIA GeForce RTX 4080 SUPER",
+      "cuda": "13.0",
+      "torch": "2.13.0+cu130",
+      "numpy": "2.5.1",
+      "pandas": "3.0.3",
+      "pyarrow": "24.0.0",
+      "scikit-learn": "1.9.0",
+      "mediapipe": "0.10.35"
+    },
+    "captured_at": "2026-09-16T17:55:33"
+  },
+  "metrics": {
+    "train_val_acc": 0.7518,
+    "eval_status": "pending",
+    "overall_accuracy": null,
+    "macro_accuracy": null,
+    "median_class_accuracy": null,
+    "n_classes_below_50pct": null
+  },
+  "checkpoints": {
+    "best": "best.pt",
+    "last": "last.pt"
+  },
+  "assets": {
+    "landmarks": "assets/landmarks.npy",
+    "history": "assets/history.json"
+  },
+  "submission": {
+    "tested": false,
+    "platform": null,
+    "submitted_at": null,
+    "public_score": null,
+    "private_score": null,
+    "reference": null,
+    "notes": ""
+  },
+  "notes": "ME_132 \u00b7 gru \u00b7 regime v2-plateau-300."
+}

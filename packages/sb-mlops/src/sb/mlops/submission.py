@@ -1,32 +1,29 @@
-"""Submission queue: which trained runs still need scoring on the official test set.
+"""Which trained runs still need scoring on the official/held-out test set.
 
-Every trained model should eventually be scored on the real test set, and Kaggle
-allows **100 submissions per day**. Both facts are handled by making submission
-state part of the run record (``meta.json["submission"]``, schema v3) and
-selecting work with a query rather than by hand:
+Every trained model should eventually be scored, and submission state lives on
+the run record (``meta.json["submission"]``, schema v3) so "which runs still
+need this" is a query rather than something remembered by hand:
 
     dataset = 'gislr' AND submission.tested = false   LIMIT 100
 
-so each pass submits only untested models and respects the daily cap by
-construction. DuckDB reads the meta.json files directly (``registry.META_GLOB``)
-— ``index.csv`` is the committed snapshot, never the query path.
+DuckDB reads the meta.json files directly (``registry.META_GLOB``) —
+``index.csv`` is the committed snapshot, never the query path.
 
 The `tested` flag is deliberately dataset-agnostic (see
-``registry.SUBMISSION_DEFAULT``): for GISLR it means a Kaggle submission landed,
-for a dataset with no leaderboard it means a local held-out evaluation ran. The
-queue function takes the dataset as a parameter and knows nothing about Kaggle.
+``registry.SUBMISSION_DEFAULT``): it means "scored on the official/held-out
+test set", whatever that means for the dataset.
 
-**Kaggle mechanics caveat.** ``asl-signs`` is a *code competition*: the
-documented command
-
-    kaggle competitions submit -c asl-signs -f submission.zip \\
-        -k <owner>/<notebook> -v <version> -m "<message>"
-
-submits **through a Kaggle kernel** (``-k``/``-v``), so each model's zip has to
-be attached to a kernel version first. Until that loop has been walked end to
-end by hand, keep ``dry_run=True`` (the default) — it prints the exact commands
-instead of firing them. The `kaggle` CLI must be declared in pyproject.toml and
-installed via ``uv sync``.
+**GISLR (since 2026-09-16): local, not Kaggle.** GISLR moved off the live
+``asl-signs`` competition to the self-produced ``GISLR_Stratified`` dataset,
+whose ``test.csv`` split every canonical eval already scores on — that split
+*is* the held-out test set now. ``sb.recognize.evaluate.evaluate_run`` marks
+``tested`` itself (``platform="local"``) the moment it scores a run, so
+``untested_runs``/the queue below should read as empty in steady state — there
+is no active submission step for GISLR any more, and the
+``kaggle_submit_command``/``submit_run`` helpers below are unused by anything
+in this repo. They're kept only because the mechanics (a *code competition*
+submits through a Kaggle kernel: ``-k``/``-v``, ``dry_run=True`` by default)
+would still apply to some future dataset with a real leaderboard.
 """
 
 from dataclasses import dataclass
@@ -92,8 +89,10 @@ def leaderboard(dataset: str = "gislr", limit: int | None = None):
 
 
 def untested_runs(dataset: str = "gislr", limit: int = DAILY_LIMIT):
-    """The submission queue: untested runs for a dataset, best first, capped at
-    the daily submission limit."""
+    """Runs not yet scored on the official/held-out test set, best first,
+    capped at the daily submission limit. For GISLR this should read as empty
+    in steady state — `evaluate_run` marks a run tested the moment it's
+    canonically evaluated, since that eval already runs on the held-out set."""
     return query_runs(
         where=f"dataset = '{dataset}' AND COALESCE(submission.tested, false) = false",
         order_by="accuracy DESC NULLS LAST",

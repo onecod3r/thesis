@@ -18,8 +18,11 @@ Usage (any CWD — installed as a console script):
 <run_dir> is a registry folder (registry/runs/<run_id>/). Writes
 assets/per_class_accuracy.{csv,png} + assets/eval_summary.json +
 assets/val_predictions.npz, promotes meta.json metrics to
-eval_status="canonical", and registers the new assets — rebuild the index
-afterwards with `sb-index`.
+eval_status="canonical", registers the new assets, and — since this split IS
+GISLR_Stratified's own held-out test.csv, not a self-computed val fraction —
+marks meta.json["submission"] tested=True (platform="local") unless the run
+was already tested some other way. Rebuild the index afterwards with
+`sb-index`.
 
 **The checkpoint is usually not on this disk.** Weights are pushed to Kaggle and
 pruned locally, so this fetches the run's `best.pt` through `kagglehub` on
@@ -263,6 +266,25 @@ def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True,
                       val_predictions="assets/val_predictions.npz")
     log(f"updated {run_dir / 'meta.json'} (eval_status=canonical) — rebuild the "
         f"index with modules/scripts/build_model_index.py")
+
+    # `submission.tested` means "scored on the official/held-out test set" —
+    # dataset-agnostic by design (README § the submission block). For GISLR
+    # since 2026-09-16 that set IS this split: val_split is read straight from
+    # GISLR_Stratified's own test.csv, not a self-computed val fraction, so
+    # this canonical eval already satisfies it — no separate Kaggle submission
+    # needed or possible any more (the live asl-signs download is gone).
+    # Never overwrite an existing tested record (e.g. a historical Kaggle
+    # submission on an older run) with this weaker local one.
+    if not meta["submission"]["tested"]:
+        R.mark_tested(
+            run_dir, platform="local",
+            reference=f"{source.name} canonical eval",
+            public_score=summary["overall_accuracy"],
+            notes=f"scored on {source.name}'s held-out test split ({len(val_split)} videos) "
+                  "via sb.recognize.evaluate — no external leaderboard",
+        )
+        log(f"marked submission.tested=True (platform=local, "
+            f"score={summary['overall_accuracy']:.4f})")
     return summary
 
 

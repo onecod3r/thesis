@@ -726,6 +726,19 @@ is **not** yet chosen, and the sweep should not simply be finished as-is:
 - [ ] The two GISLR diagnostic notebooks that read raw parquet directly
   (motion-energy, subset-comparison) are now broken by this switch — filed
   under §0.1.
+- [x] **Replaced the Kaggle submission step with local testing (2026-09-16).**
+  GISLR_Stratified's `test.csv` split IS the dataset's held-out test set now,
+  and the canonical eval already scores on it — so `sb.recognize.evaluate.
+  evaluate_run` marks `meta.json["submission"] = {tested: true, platform:
+  "local"}` itself the moment it scores a run, rather than requiring a
+  separate Kaggle-competition submission (which is no longer reachable —
+  there's no live `asl-signs` download to submit against). Removed §8
+  "Kaggle submission queue" from `gislr.2.models.evaluation.ipynb` entirely;
+  reframed §7 (TFLite export) as a plain deployment export, no longer gated
+  on or framed around a submission queue. `sb.mlops.submission`'s
+  `kaggle_submit_command`/`submit_run` helpers are kept (unused by anything
+  in this repo now) in case a future dataset has a real leaderboard.
+  README's "submission" block section and TODO/CLAUDE.md updated to match.
 
 - [x] Motion energy (feeds from §1) — delivered; keep/discard recommendation in
   `docs/2026-07-15.md` §4 (keep: hands 42 + upper-body pose 8 + lips 40 + eyes/
