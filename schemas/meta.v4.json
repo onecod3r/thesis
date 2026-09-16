@@ -48,7 +48,7 @@
     },
     "architecture": {
       "type": "string",
-      "description": "key into sb.recognize.ARCHS: gru / lstm / bilstm / cnn1d / conv1d_transformer"
+      "description": "key into sb.recognize.ARCHS: gru / lstm / bilstm / cnn1d / conv1d_transformer / gru_deep"
     },
     "model_name": {
       "type": "string",
@@ -84,7 +84,7 @@
     },
     "split": {
       "type": "object",
-      "description": "{strategy, random_state, n_val} \u2014 the canonical split (stratified 90/10, seed 42, 9,448 val)"
+      "description": "{strategy, random_state, n_val} \u2014 the canonical split (GISLR_Stratified's fixed 80/20, upstream seed 42, 18,896 val; reset 2026-09-16 from a self-computed stratified 90/10, 9,448 val)"
     },
     "training": {
       "type": "object",

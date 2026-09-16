@@ -133,7 +133,12 @@ DATASET_IDS: DatasetIds = {
         "mrgeislinger/popsign-asl-v1-0-game-train-t-z-signs",
     ],
     "TEST": "mrgeislinger/popsign-asl-v1-0-game-test",
-    "GISLR": "asl-signs",
+    # GISLR_Stratified (2026-09-16): a self-produced Kaggle *dataset*, not the
+    # asl-signs *competition* — pre-converted (T,543,3) npz per sequence plus
+    # its own train.csv/test.csv (fixed 80/20 split, stratified on sign). Ships
+    # no sign_to_prediction_index_map.json, so gislr_dir() derives and writes
+    # one. Replaces the live asl-signs parquet download entirely.
+    "GISLR": "bracu23101281/gislr-stratified",
 }
 
 
@@ -143,11 +148,34 @@ ENABLED_TRAIN_INDICES: tuple[int, ...] = (0, 1, 2, 3)
 
 
 def gislr_dir() -> Path:
-    """Download/resolve only the GISLR competition data (requires a Kaggle
-    account that has accepted the asl-signs rules)."""
-    import kagglehub
+    """Download/resolve the GISLR_Stratified dataset: a regular Kaggle
+    *dataset* download (unlike the asl-signs *competition* download this
+    replaced), so it lives under kagglehub's normal dataset cache and
+    ``dataset_cache_dir()``/``clear_dataset_cache()`` both apply to it.
 
-    return Path(kagglehub.competition_download(DATASET_IDS["GISLR"]))
+    It ships train.csv/test.csv (uid, sign, participant_id, sequence_id,
+    split, npz_relpath) but not the competition's
+    ``sign_to_prediction_index_map.json`` — one is derived (sorted signs ->
+    index, stable across machines) and written into the resolved dir the
+    first time it's missing, so every existing GISLR consumer
+    (``vocab.load_label_map``) keeps working unchanged.
+    """
+    import json
+
+    import kagglehub
+    import pandas as pd
+
+    d = Path(kagglehub.dataset_download(DATASET_IDS["GISLR"]))
+    label_map_path = d / "sign_to_prediction_index_map.json"
+    if not label_map_path.is_file():
+        signs = set(pd.read_csv(d / "train.csv")["sign"]) | set(
+            pd.read_csv(d / "test.csv")["sign"]
+        )
+        label_map_path.write_text(
+            json.dumps({sign: i for i, sign in enumerate(sorted(signs))}),
+            encoding="utf-8",
+        )
+    return d
 
 
 def train_dir(index: int) -> Path:
@@ -183,11 +211,12 @@ def test_dir() -> Path:
 
 
 def dataset_cache_dir(handle: str) -> Path:
-    """Local kagglehub cache directory for a *dataset* handle (train/test
-    parts — never GISLR, which is a competition download and lives under a
-    separate ``competitions/`` cache subtree entirely). Resolves kagglehub's
-    own default cache layout directly, so it works without triggering a
-    download."""
+    """Local kagglehub cache directory for a *dataset* handle (POPSIGN
+    train/test parts, and GISLR_Stratified since 2026-09-16 — the old
+    asl-signs *competition* download lived under a separate
+    ``competitions/`` cache subtree, but GISLR is a regular dataset now).
+    Resolves kagglehub's own default cache layout directly, so it works
+    without triggering a download."""
     from kagglehub.cache import get_cached_path
     from kagglehub.handle import parse_dataset_handle
 
@@ -197,9 +226,8 @@ def dataset_cache_dir(handle: str) -> Path:
 def clear_dataset_cache(handle: str) -> None:
     """Delete one dataset's local kagglehub cache (downloaded files +
     completion markers) so the staged extraction notebook can move to the next
-    part without holding both on disk. A no-op if nothing is cached. Never
-    touches GISLR (``dataset_cache_dir`` only resolves dataset handles, and
-    GISLR's id is never passed here)."""
+    part without holding both on disk. A no-op if nothing is cached. Applies
+    to any dataset handle, GISLR_Stratified included."""
     d = dataset_cache_dir(handle)
     if d.exists():
         shutil.rmtree(d)

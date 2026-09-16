@@ -31,8 +31,8 @@ KEY_LENGTH = 16  # hex chars of the sha256 used as the directory name
 
 # these belong to the SPLIT, not to a pipeline, but they change the cached rows
 # so they are part of the address
-SPLIT_STRATEGY = "stratified 90/10"
-SPLIT_SEED = 42
+SPLIT_STRATEGY = "stratified 80/20 (fixed, GISLR_Stratified-provided)"
+SPLIT_SEED = 42  # the upstream split's seed — recorded for provenance, not applied here
 
 
 def features_root(dataset: str = "gislr") -> Path:
@@ -48,18 +48,28 @@ def _hash_manifest(path_str: str, size: int, mtime: float) -> str | None:
     return sha256_file(path_str)
 
 
-def manifest_fingerprint(data_dir: Path | str, manifest: str = "train.csv") -> str | None:
-    """Fingerprint of the split manifest a cache's rows came from.
+def manifest_fingerprint(
+    data_dir: Path | str, manifest: str | tuple[str, ...] = ("train.csv", "test.csv")
+) -> str | None:
+    """Fingerprint of the split manifest(s) a cache's rows came from.
 
-    GISLR is a Kaggle *competition* download with no version number, so this
-    hash is what actually distinguishes one copy of the dataset from another.
-    Memoized on (path, size, mtime) — it is read on every key computation.
+    GISLR_Stratified is a Kaggle dataset with no content version exposed here,
+    so this hash is what actually distinguishes one copy from another — and
+    since ``train.csv`` and ``test.csv`` together define the fixed split, both
+    must be hashed for the fingerprint to reflect either one changing.
+    Memoized per-file on (path, size, mtime) — read on every key computation.
     """
-    path = Path(data_dir) / manifest
-    if not path.is_file():
+    names = (manifest,) if isinstance(manifest, str) else manifest
+    paths = [Path(data_dir) / name for name in names]
+    if not all(p.is_file() for p in paths):
         return None
-    st = path.stat()
-    return _hash_manifest(str(path), st.st_size, st.st_mtime)
+    parts: list[str] = []
+    for p in paths:
+        part = _hash_manifest(str(p), p.stat().st_size, p.stat().st_mtime)
+        if part is None:
+            return None
+        parts.append(part)
+    return hashlib.sha256("".join(parts).encode("utf-8")).hexdigest()
 
 
 def cache_inputs(
@@ -71,7 +81,7 @@ def cache_inputs(
     coords: str,
     data_dir: Path | str,
     dataset: str = "gislr",
-    manifest: str = "train.csv",
+    manifest: str | tuple[str, ...] = ("train.csv", "test.csv"),
 ) -> dict:
     """Everything that determines a feature cache's bytes.
 

@@ -75,6 +75,16 @@ docs daily/weekly/reports split).
   exploration code, not POPSIGN extraction — retire that content (superseded by
   `gislr.0.dataset.motion-energy.ipynb`) and rebuild the notebook as the extraction
   driver (§2).
+- [ ] **BROKEN (2026-09-16): `gislr.0.dataset.motion-energy.ipynb` and
+  `gislr.0.dataset.subset-comparison.ipynb` no longer run.** GISLR moved off the
+  live `asl-signs` competition parquet download to the self-produced
+  `GISLR_Stratified` npz dataset (see §3.1's new entry, README "Datasets"); both
+  notebooks call `gislr_dir()` and then read raw per-frame parquet directly via
+  DuckDB, which the new dataset doesn't provide (npz per sequence instead).
+  Their findings (`docs/reports/motion-energy.md`,
+  `docs/reports/subset-comparison.md`) stand as historical results — same
+  status as the popsign.1.mediapipe.ipynb notebook above. Retire or rebuild
+  on the npz format before running either again.
 
 ### 0.2 Packaging / config
 
@@ -679,6 +689,43 @@ is **not** yet chosen, and the sweep should not simply be finished as-is:
 ---
 
 ## 3. Data-Driven Landmark Importance
+
+### 3.0.2 GISLR moved to a self-produced npz dataset — canonical-split reset (2026-09-16)
+
+
+- [x] **`sb.core.paths.gislr_dir()` now downloads `bracu23101281/gislr-stratified`**
+  (Kaggle dataset, not the `asl-signs` competition): pre-converted `(T,543,3)`
+  npz per sequence + `train.csv`/`test.csv` (fixed 80/20 split, stratified on
+  `sign` only, upstream seed 42). Training/eval code updated:
+  `sb.recognize.data.get_canonical_split` reads the fixed split as-given
+  (N_VAL 9,448 → 18,896) instead of computing its own 90/10;
+  `base_v1`/`firstplace_v1`/`evaluate.py` read npz instead of parquet.
+  `sign_to_prediction_index_map.json` (not shipped by the new dataset) is
+  derived and written into the resolved dir on first use.
+- [x] **Fixed a real landmark-order mismatch** in the producing notebook's npz:
+  it wrote `pose[0:33], face[33:501], left_hand[501:522], right_hand[522:543]`,
+  not this repo's canonical gislr-holistic order (`schema.GROUPS`) that every
+  `subsets.py` index array (ME_126, FP_118, …) assumes. Fixed with a permutation
+  (`sb.recognize.features.gislr_stratified.CANONICAL_TO_STORED`) applied at
+  read time, verified against a synthetic npz with per-group markers.
+- [x] **This is a canonical-split reset**, same shape as the 2026-07-18 registry
+  reset: the 37 runs canonically evaluated on the old self-computed 90/10 split
+  are historical references only, not comparable to anything evaluated on the
+  new one. `sb-evaluate`'s docstring, README's "Canonical evaluation" section
+  and the `meta.json` schema's `split` field description are updated; old
+  `meta.json` records are left as-is (their `split` block describes the split
+  they actually used).
+- [ ] Old `asl-signs` competition kagglehub cache deleted from disk (user request,
+  2026-09-16) — confirm nothing still expects it (only `gislr_dir()` referenced
+  it, and that function no longer does).
+- [ ] `sb.mlops.run.source_ref`'s `version` field is still hardcoded `None` even
+  though `GISLR_Stratified` is a versioned Kaggle dataset (croissant metadata
+  reports version 1) — not wired up in this pass, since it wasn't blocking
+  anything. Low-effort follow-up: thread the dataset's own version through
+  `DatasetSource`/`P.build()`.
+- [ ] The two GISLR diagnostic notebooks that read raw parquet directly
+  (motion-energy, subset-comparison) are now broken by this switch — filed
+  under §0.1.
 
 - [x] Motion energy (feeds from §1) — delivered; keep/discard recommendation in
   `docs/2026-07-15.md` §4 (keep: hands 42 + upper-body pose 8 + lips 40 + eyes/

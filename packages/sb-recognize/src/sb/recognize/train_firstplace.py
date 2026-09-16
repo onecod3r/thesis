@@ -147,7 +147,7 @@ def _build_meta(*, run_dir, cfg, subset, feature_dim, n_params, n_classes, hyp,
         "n_classes": int(n_classes),
         "n_params": int(n_params),
         "split": {
-            "strategy": "stratified 90/10",
+            "strategy": "stratified 80/20 (fixed, GISLR_Stratified-provided)",
             "random_state": D.SEED,
             "n_val": D.N_VAL,
         },

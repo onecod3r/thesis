@@ -58,7 +58,7 @@ FIELDS: dict[str, tuple[str, str]] = {
     "feature_dim": ("integer", "input width per frame"),
     "n_classes": ("integer", "label-space size"),
     "n_params": ("integer", "trainable parameters"),
-    "split": ("object", "`{strategy, random_state, n_val}` — the canonical split (`stratified 90/10`, seed 42, 9,448 val)"),
+    "split": ("object", "`{strategy, random_state, n_val}` — the canonical split (GISLR_Stratified's fixed 80/20, upstream seed 42, 18,896 val; reset 2026-09-16 from a self-computed `stratified 90/10`, 9,448 val)"),
     "training": ("object", '`{regime, source, epoch_cap, epochs_trained, best_epoch, early_stopped, finished, wall_time_min}`, plus `stop_reason` (`"completed"`/`"plateau"`/`"collapse"`/`"nan"`) on `fp-onecycle-300` runs. `source` is the DRIVER NOTEBOOK, not the dataset'),
     "hyperparameters": ("object", "full `HYP` dict + `seed`, `max_seq_len`, `num_workers`, `loss`, `precision`"),
     "provenance": ("object|null", "what state of the world produced the run — see below. `null` for pre-v4 runs, and that is permanent"),

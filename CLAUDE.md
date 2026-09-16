@@ -2,7 +2,7 @@
 
 ## What this repo is
 
-Notebook-driven ML research: streaming (causal, frame-by-frame) sign language recognition on MediaPipe landmarks. Two datasets — **GISLR** (Kaggle `asl-signs`, pre-extracted landmarks) and **POPSIGN** (~870GB raw video, extraction in progress). No app, no test suite, no CI. `experiments/` notebooks are the dev surface, driving `packages/sb-*/`; `README.md` / `TODO.md` / `docs/` are the committed record of results.
+Notebook-driven ML research: streaming (causal, frame-by-frame) sign language recognition on MediaPipe landmarks. Two datasets — **GISLR** (Kaggle dataset `bracu23101281/gislr-stratified`, pre-converted npz landmarks derived from `asl-signs`) and **POPSIGN** (~870GB raw video, extraction in progress). No app, no test suite, no CI. `experiments/` notebooks are the dev surface, driving `packages/sb-*/`; `README.md` / `TODO.md` / `docs/` are the committed record of results.
 
 **Never run model training yourself.** Build the notebook, hand it to the user to execute, analyze results after.
 
@@ -24,7 +24,7 @@ Notebook-driven ML research: streaming (causal, frame-by-frame) sign language re
   sb-extract.exe --help       # POPSIGN extraction
   ```
   `ops/` is housekeeping only (PowerShell etc.), no project Python.
-- Dataset resolution is **lazy** — importing `sb.core.paths` downloads nothing. `gislr_dir()` for GISLR only; `resolve_datasets()` for everything (POPSIGN included, huge). Needs a Kaggle account that accepted the `asl-signs` rules.
+- Dataset resolution is **lazy** — importing `sb.core.paths` downloads nothing. `gislr_dir()` for GISLR only (a regular Kaggle dataset download since 2026-09-16, not the `asl-signs` competition); `resolve_datasets()` for everything (POPSIGN included, huge).
 - `.env` (gitignored) holds `KAGGLE_MCP_TOKEN`. `POPSIGN_LANDMARKS_DRIVE` not currently set → extraction falls back to `data/raw/popsign`; set it before a bulk run if you don't want hundreds of GB there.
 - Type checking: `.venv/Scripts/ty.exe check` from repo root (canonical; `pyrefly` dropped 2026-07-22).
 - No `jq` on this machine — parse notebook JSON with `python -c "import json; ..."`.
@@ -50,7 +50,7 @@ Notebook-driven ML research: streaming (causal, frame-by-frame) sign language re
 - **Checkpoints live on Kaggle, not on disk** — `best.pt` pushed then deleted locally; a run folder normally has no weights. `sb-evaluate`/TFLite export auto-fetch via `sb.mlops.artifacts.ensure_local` (sha256-verified) — **never add a manual "pull it first" step**. Slug `bracu23101281/signbridge-<dataset>/pyTorch/<architecture>/<version>` (model=dataset family, variation=architecture, version=any run); everything else goes in the version note + meta.json, so a version list is *not* a learning curve. `sb-sync rescheme` migrates uploads after a naming change (Kaggle has no rename).
 - **Never delete a checkpoint with `rm`.** `sb-sync prune` only deletes when manifest/remote/local hashes all agree. `sb-sync drop-resume` clears `last.pt` for finished runs only.
 - **Data placement**: `data/` is gitignored absolutely; registry lives outside it at top level. raw→`data/raw/<dataset>/`, reusable derived→`data/cache/<dataset>/`, throwaway→`data/temp/` (delete after use via `sb.core.paths.cleanup_temp()`), third-party→`data/external/`. Raw kagglehub data never enters the repo.
-- **Canonical GISLR eval**: stratified 90/10 split, `random_state=42`, 9,448-video val set, per-class accuracy from raw parquet — `sb.recognize.evaluate` reproduces this and promotes `meta.json` to `eval_status: "canonical"`. A new run displaces the leaderboard only on this exact split/metric.
+- **Canonical GISLR eval**: GISLR_Stratified's fixed 80/20 split (18,896-video val set, stratified on `sign` only, upstream seed 42), per-class accuracy from the raw npz files — `sb.recognize.evaluate` reproduces this and promotes `meta.json` to `eval_status: "canonical"`. A new run displaces the leaderboard only on this exact split/metric. **Reset 2026-09-16** when GISLR moved off the live `asl-signs` competition parquet download to the self-produced `bracu23101281/gislr-stratified` Kaggle dataset (pre-converted npz) — the 37 runs evaluated on the old self-computed 90/10 split (9,448 val) are historical references only.
 - **Docs**: logs (time-ordered) vs reports (standalone findings). `docs/logs/daily/<YYYY-MM-DD>.md`; weekly `docs/logs/weekly/<YYYY>-<WW>.md` (Sun→Sat, week 1 = week containing Jan 1, not ISO); topic reports `docs/reports/<topic>.md`. Figures under matching `assets/`.
 
 ### Building a notebook

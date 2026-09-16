@@ -6,9 +6,10 @@ channels follow its "coords" key ("xyz" or "xy"), landmark selection its
 "landmarks" key. The model classes are imported from sb.recognize.architectures — the same
 definitions the notebooks train — so state_dicts can never drift.
 
-Reproduces the canonical split (stratified 10%, seed 42, 9,448 videos) and the
-dataset preprocessing (NaN->0, uniform subsample to MAX_SEQ_LEN frames),
-straight from the raw parquet files — no feature cache needed.
+Reproduces the canonical split (GISLR_Stratified's fixed 80/20 split, an
+18,896-video val set) and the dataset preprocessing (NaN->0, uniform
+subsample to MAX_SEQ_LEN frames), straight from the raw npz files — no
+feature cache needed.
 
 Usage (any CWD — installed as a console script):
 
@@ -47,7 +48,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pyarrow.parquet as pq
 import torch
 
 from sb.mlops import registry as R
@@ -55,6 +55,7 @@ from sb.mlops import run as P
 from sb.mlops.artifacts import ensure_local
 from sb.recognize.architectures import build_model
 from sb.recognize.data import MAX_SEQ_LEN, ROWS_PER_FRAME
+from sb.recognize.features.gislr_stratified import load_npz
 from sb.recognize.sources import get_source
 
 BATCH = 256
@@ -62,14 +63,9 @@ TOPK = 5  # ranked alternatives kept per sample (see the topk_* arrays below)
 
 
 def load_video(path, landmarks, coords):
-    cols = list(coords)
-    table = pq.read_table(path, columns=cols)
-    data = np.column_stack([table.column(c).to_numpy() for c in cols])
-    n = data.shape[0] // ROWS_PER_FRAME
-    arr = data.reshape(n, ROWS_PER_FRAME, len(cols)).astype(np.float32)
+    rows = landmarks if landmarks is not None else np.arange(ROWS_PER_FRAME)
+    arr = load_npz(path, rows, coords)
     arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
-    if landmarks is not None:
-        arr = arr[:, landmarks, :]
     T = arr.shape[0]
     if T > MAX_SEQ_LEN:
         arr = arr[np.linspace(0, T - 1, MAX_SEQ_LEN).astype(int)]

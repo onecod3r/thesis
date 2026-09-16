@@ -14,7 +14,7 @@ needs from a dataset:
 1. **where it lives** — lazily, so importing this module downloads nothing;
 2. **its label map** — sign → class index;
 3. **its canonical split** — the comparability contract, seeded and asserted;
-4. **how to read one sample** — parquet rows here, npz for POPSIGN later.
+4. **how to read one sample** — npz for both GISLR (since 2026-09-16) and POPSIGN.
 
 plus the identity used for cache addressing and provenance (name, upstream ref,
 manifest filename).
@@ -65,7 +65,7 @@ def _gislr_dir() -> Path:
 
 
 def _gislr_read_sample(path, rows, coords="xyz", *, keep_nan: bool = False):
-    """One video's parquet → ``(T, len(rows), len(coords))``.
+    """One video's npz → ``(T, len(rows), len(coords))``.
 
     ``keep_nan`` picks the pipeline: the base stack zeroes NaN at cache-build
     time, the 1st-place stack must keep it (its normalization is NaN-aware and
@@ -80,13 +80,13 @@ def _gislr_read_sample(path, rows, coords="xyz", *, keep_nan: bool = False):
 
 GISLR = DatasetSource(
     name="gislr",
-    kaggle_ref="asl-signs",
+    kaggle_ref="bracu23101281/gislr-stratified",
     manifest="train.csv",
     resolve_dir=_gislr_dir,
     label_map=vocab.load_label_map,
     canonical_split=D.get_canonical_split,
     read_sample=_gislr_read_sample,
-    sample_path=lambda data_dir, row: data_dir / row["path"],
+    sample_path=lambda data_dir, row: data_dir / row["npz_relpath"],
 )
 
 SOURCES: dict[str, DatasetSource] = {GISLR.name: GISLR}

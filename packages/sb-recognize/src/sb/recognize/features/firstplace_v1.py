@@ -40,13 +40,12 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
-import pyarrow.parquet as pq
 import torch
 from torch.utils.data import Dataset, Sampler
 
-from sb.core.schema import N_LANDMARKS as ROWS_PER_FRAME
 from sb.recognize.data import subset_tag
 from sb.recognize.features import cache
+from sb.recognize.features.gislr_stratified import load_npz
 
 # Feature-cache identity for THIS pipeline (TODO §9.2). Bump the version when a
 # change here alters the cached bytes; the key moves and nothing stale is reused.
@@ -134,16 +133,13 @@ def mirror_permutation(rows: np.ndarray) -> np.ndarray:
 # ============================================================
 
 def load_video_raw(path: Path, rows: np.ndarray, coords: str = "xy") -> np.ndarray:
-    """One parquet -> (T, len(rows), len(coords)) float32 **with NaN intact**.
+    """One GISLR_Stratified npz -> (T, len(rows), len(coords)) float32
+    **with NaN intact**.
 
     The NaNs are the whole point (see module docstring); that is the only
-    difference from ``data.load_video_subset``.
+    difference from ``base_v1.load_video``.
     """
-    cols = list(coords)
-    table = pq.read_table(path, columns=cols)
-    data = np.column_stack([table.column(c).to_numpy() for c in cols])
-    n = data.shape[0] // ROWS_PER_FRAME
-    return data.reshape(n, ROWS_PER_FRAME, len(cols))[:, rows, :].astype(np.float32)
+    return load_npz(path, rows, coords)
 
 
 def build_cache(df, prefix: str, subset, coords: str, data_dir: Path,
@@ -164,7 +160,7 @@ def build_cache(df, prefix: str, subset, coords: str, data_dir: Path,
         return data_path, off_path
 
     t0 = time.time()
-    paths = [data_dir / p for p in df["path"]]
+    paths = [data_dir / p for p in df["npz_relpath"]]
     rows = subset.array
     chunks, offsets = [], [0]
     with ThreadPoolExecutor(12) as ex:

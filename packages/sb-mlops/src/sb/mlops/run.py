@@ -14,11 +14,13 @@ day. What matters for reproducibility is whether the *code that executes* —
 only thing :func:`warn_if_dirty` shouts about. Notebook dirtiness is recorded
 as information, not as an alarm.
 
-**Dataset version.** GISLR is a Kaggle *competition* download, which carries no
-version number, so `source.version` is null by construction. The fingerprint
-that actually distinguishes one copy from another is `manifest_sha256` — the
-hash of the split manifest (`train.csv`) every run's canonical split is derived
-from.
+**Dataset version.** GISLR is now the self-produced `GISLR_Stratified` Kaggle
+*dataset* (2026-09-16, replacing the live `asl-signs` *competition* download,
+which carried no version number and is why `source.version` is still recorded
+as null here — not yet wired up to read the dataset's own version). The
+fingerprint that actually distinguishes one copy from another is
+`manifest_sha256` — the hash of the split manifest (`train.csv`) every run's
+canonical split is derived from.
 
 Import-cheap and side-effect free by construction: no torch/mediapipe import
 (versions come from package metadata, the GPU name only if torch is *already*
@@ -42,8 +44,10 @@ REPO_ROOT = ROOT_DIR
 CODE_PATHS = ("packages", "experiments/recognition/configs",
               "experiments/extraction/configs")
 
-# Recorded per run. scikit-learn is in the list because `train_test_split`
-# defines the canonical split — a change there moves the val set itself.
+# Recorded per run. scikit-learn is kept in the list for historical runs —
+# `train_test_split` used to define the canonical split (pre-2026-09-16); the
+# split is now read as-given from GISLR_Stratified's train.csv/test.csv, so a
+# scikit-learn version change no longer moves anything for GISLR.
 ENV_PACKAGES = ("torch", "numpy", "pandas", "pyarrow", "scikit-learn", "mediapipe")
 
 # Feature-pipeline identities. These name the *code path* that produced the
@@ -176,7 +180,7 @@ def source_ref(
     ref = {
         "name": dataset,
         "kaggle_ref": kaggle_ref,
-        "version": None,  # competition downloads carry no version (see docstring)
+        "version": None,  # not yet wired up to the dataset's own version (see docstring)
         "n_videos": int(n_videos) if n_videos is not None else None,
         "manifest": manifest,
         "manifest_sha256": None,

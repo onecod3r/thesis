@@ -1,9 +1,9 @@
 """`base_v1` — the default feature pipeline: row-select, NaN -> 0, subsample.
 
 One flat float32 array + a frame-offset index per (split, subset, coords),
-decoded from the raw parquet once and shared by every architecture. NaN becomes
-0 at cache-build time and clips longer than ``MAX_SEQ_LEN`` are uniformly
-subsampled at read time.
+decoded from the GISLR_Stratified npz files once and shared by every
+architecture. NaN becomes 0 at cache-build time and clips longer than
+``MAX_SEQ_LEN`` are uniformly subsampled at read time.
 
 Contrast with :mod:`sb.recognize.features.firstplace_v1`, which must keep NaN
 alive to training time and crops rather than subsamples. The two are separate
@@ -21,12 +21,11 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pyarrow.parquet as pq
 import torch
 from torch.utils.data import Dataset
 
-from sb.core.schema import N_LANDMARKS
 from sb.recognize.features import cache
+from sb.recognize.features.gislr_stratified import load_npz
 
 PIPELINE = "base_v1"
 PIPELINE_VERSION = 1
@@ -57,13 +56,9 @@ def cache_dir(subset, coords: str, data_dir: Path | str, dataset: str = "gislr")
 
 
 def load_video(path, rows: np.ndarray, coords: str = "xyz") -> np.ndarray:
-    """One parquet -> (T, len(rows), len(coords)) float32, NaN->0.
+    """One GISLR_Stratified npz -> (T, len(rows), len(coords)) float32, NaN->0.
     Row selection happens here so caches only ever hold the subset's data."""
-    cols = list(coords)
-    table = pq.read_table(path, columns=cols)
-    data = np.column_stack([table.column(c).to_numpy() for c in cols])
-    n = data.shape[0] // N_LANDMARKS
-    arr = data.reshape(n, N_LANDMARKS, len(cols))[:, rows, :].astype(np.float32)
+    arr = load_npz(path, rows, coords)
     return np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
 
 
@@ -91,7 +86,7 @@ def build_cache(
         return data_path, off_path
 
     t0 = time.time()
-    paths = [data_dir / p for p in df["path"]]
+    paths = [data_dir / p for p in df["npz_relpath"]]
     rows = subset.array
     chunks, offsets = [], [0]
     with ThreadPoolExecutor(12) as ex:
