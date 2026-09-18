@@ -81,11 +81,11 @@
   },
   "metrics": {
     "train_val_acc": 0.7425,
-    "eval_status": "pending",
-    "overall_accuracy": null,
-    "macro_accuracy": null,
-    "median_class_accuracy": null,
-    "n_classes_below_50pct": null
+    "eval_status": "canonical",
+    "overall_accuracy": 0.742485182049111,
+    "macro_accuracy": 0.7404188063165794,
+    "median_class_accuracy": 0.7565835065835066,
+    "n_classes_below_50pct": 9
   },
   "checkpoints": {
     "best": "best.pt",
@@ -93,16 +93,20 @@
   },
   "assets": {
     "landmarks": "assets/landmarks.npy",
-    "history": "assets/history.json"
+    "history": "assets/history.json",
+    "per_class_csv": "assets/per_class_accuracy.csv",
+    "per_class_png": "assets/per_class_accuracy.png",
+    "eval_summary": "assets/eval_summary.json",
+    "val_predictions": "assets/val_predictions.npz"
   },
   "submission": {
-    "tested": false,
-    "platform": null,
-    "submitted_at": null,
-    "public_score": null,
+    "tested": true,
+    "platform": "local",
+    "submitted_at": "2026-09-16T20:20:43",
+    "public_score": 0.742485182049111,
     "private_score": null,
-    "reference": null,
-    "notes": ""
+    "reference": "gislr canonical eval",
+    "notes": "scored on gislr's held-out test split (18896 videos) via sb.recognize.evaluate \u2014 no external leaderboard"
   },
   "notes": "FP_118 \u00b7 gru \u00b7 regime v2-plateau-300."
 }
