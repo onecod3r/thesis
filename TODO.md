@@ -920,14 +920,32 @@ leaderboard/registry — see `sb.recognize.interp`'s module docstring.
   end-to-end on synthetic data (train_fold resume, k-fold row alignment,
   saliency/permutation shapes) — the notebook itself has NOT been run: per
   CLAUDE.md, training is handed to the user to execute.
-- [ ] **Run it** (user) — training cost is real: full-543 engineered features
-  (5442-wide) × 3 architectures × 5 folds + 3 final fits, GPU. Expect this to
-  take meaningfully longer than a single `gislr.1.models.training.ipynb`
-  architecture section.
-- [ ] Once run: compare the three architectures' `ranking_score` against the
-  existing motion-energy (§1) and discriminability-probe (§3.0) landmark
-  rankings — do independently-derived importance signals agree on which
-  landmarks matter, or does each method see something different?
+- [x] **Run it** (user, 2026-09-18) — test accuracy DNN 71.02% / LSTM 70.55% /
+  GRU 67.96% (own feature pipeline + full-543, not leaderboard-comparable);
+  region-level ranking hands > pose > face for all three architectures,
+  cross-architecture Spearman ρ > 0.8. Full results, per-class accuracy, top
+  confusions: `docs/reports/landmark-importance.md`.
+- [x] Compare the three architectures' `ranking_score` against the existing
+  motion-energy (§1) and discriminability-probe (§3.0) landmark rankings —
+  **region-level agreement confirmed** (2026-09-18): this model-derived
+  ranking independently reproduces the ME-126 hands > pose > face ordering
+  from a third, unrelated method. Landmark-level correlation (Spearman ρ of
+  `ranking_score` vs motion-energy RMS speed / probe F-ratio) is still open,
+  filed below.
+- [ ] Landmark-level correlation of `ranking_score` vs motion-energy RMS speed
+  and vs the discriminability-probe's per-landmark F-ratio (region-level
+  agreement is confirmed above; per-landmark is a finer-grained open question).
+- [ ] **Per-axis (x/y/z/speed) saliency** — added 2026-09-18 as a report-only
+  analysis script (not in the notebook or `sb.recognize.interp`), since the
+  attention gate and `gradient_saliency` both collapse each landmark's 10
+  channels into one number. Finding: z carries 15–24% of saliency mass vs
+  36–49% each for x/y (all three architectures) — same direction as the
+  motion-energy report's z-noise finding but a much smaller gap; not yet
+  reconciled against the pending canonical xy-vs-xyz ablation evals (§3.1).
+  If this diagnostic is worth keeping, promote it into
+  `sb.recognize.interp.importance` (e.g. `channel_saliency()`) plus a
+  notebook cell, so it's reproducible from the notebook itself. Detail:
+  `docs/reports/landmark-importance.md` §3/§6.
 
 ---
 
