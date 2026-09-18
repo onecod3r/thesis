@@ -26,6 +26,7 @@ stale, trust the sections.
 | 4b | **Regenerate the POPSIGN train manifest** (30,867 rows covers 1 of 4 parts), then `popsign_cycle run --part test` to exercise verify against a known-good tree | §2.2, §10.3 | all four train parts are downloaded; the stale manifest blocks the primary dataset, and verify should be trusted before it deletes 220 GB |
 | 5 | **§7.2 normalization or §7.4 augmentation**, under §7.6's ablation protocol | §7.1 → §7.2/§7.4 | the diagnosis is complete: the plateau is a generalization gap (train confusion 0.012 vs val 0.273), and these are the two levers that attack one |
 | 6 | Re-run the evaluation notebook on the 42-run registry | §6.1 | it last ran against 18 runs; only 1 of 42 run folders has a confusion matrix |
+| 7 | **Run `gislr.1.models.landmark-importance.ipynb`** (built 2026-09-16, not yet executed) | §3.3 | custom DNN/LSTM/GRU + full-543 engineered features + rotating k-fold — the model-derived complement to the motion-energy/probe landmark rankings (§1/§3.0) |
 
 Decisions still owed by the user, blocking real work:
 
@@ -877,6 +878,56 @@ is now a one-line config change. Awaiting user run.
   completed as written — the v1 weights were destroyed in the 2026-07-18 reset —
   so the comparison that exists is train-loop numbers in the daily logs, not a
   canonical one.
+
+### 3.3 Model-derived landmark importance: custom DNN/LSTM/GRU, full-543 (2026-09-16, built — not yet run)
+
+Directly answers the §3.0's "position as complementary to gradient saliency
+and SHAP from trained models" follow-up: three trained-from-scratch
+architectures whose only job is exposing what weight the model itself assigns
+each of the 543 landmarks, rather than inferring it from motion energy or a
+probe classifier (§1/§3.0). Deliberately **not** part of the canonical
+leaderboard/registry — see `sb.recognize.interp`'s module docstring.
+
+- [x] **Feature pipeline** `sb.recognize.interp.features` (`landmark_interp_v1`):
+  full 543 landmarks (no subset), per-frame translation-invariant
+  (mid-shoulder-centered) + scale-invariant (inter-shoulder-normalized)
+  position, velocity, acceleration, speed (10 channels/landmark = 5430) plus a
+  12-scalar relational block (inter-hand fingertip/wrist distances,
+  hand-to-face-anchor distances). Content-addressed cache under
+  `data/cache/gislr/features/landmark_interp_v1/`, same skip-if-exists pattern
+  as `base_v1`.
+- [x] **Models** `sb.recognize.interp.models`: `LandmarkDNN` (memory-free,
+  classifies one frame at a time — every valid frame gets the video's label,
+  video-level prediction is the probability-averaged vote over frames) and
+  `LandmarkRNN` (causal GRU/LSTM, same last-valid-frame streaming contract as
+  `StreamingGRU`). All three share one learned `LandmarkAttention` gate
+  (per-landmark sigmoid weight) as their first layer — the direct,
+  architecture-comparable landmark-importance signal, rather than reading it
+  off each architecture's own internal weight shapes.
+- [x] **Training driver** `sb.recognize.interp.train`: resumable, config-driven
+  (`experiments/recognition/configs/gislr.landmark-importance.json`), stratified
+  5-fold CV over `train.csv` (every training video validated exactly once,
+  out-of-fold), then one final model per architecture fit on all of `train.csv`
+  and evaluated once on the untouched canonical `test.csv`.
+- [x] **Importance metrics** `sb.recognize.interp.importance`: attention gate +
+  gradient×input saliency + permutation importance, combined into one
+  rank-averaged `ranking_score` per landmark, grouped by region (Face / Pose /
+  Left hand / Right hand, `sb.core.schema.GROUPS`).
+- [x] **Notebook**: `experiments/recognition/gislr.1.models.landmark-importance.ipynb`
+  — OOF per-class accuracy + confusion matrix, held-out test-set evaluation,
+  landmark ranking + region heatmap, cross-architecture ranking-agreement
+  (Spearman ρ). All package code (`sb.recognize.interp.*`) unit-smoke-tested
+  end-to-end on synthetic data (train_fold resume, k-fold row alignment,
+  saliency/permutation shapes) — the notebook itself has NOT been run: per
+  CLAUDE.md, training is handed to the user to execute.
+- [ ] **Run it** (user) — training cost is real: full-543 engineered features
+  (5442-wide) × 3 architectures × 5 folds + 3 final fits, GPU. Expect this to
+  take meaningfully longer than a single `gislr.1.models.training.ipynb`
+  architecture section.
+- [ ] Once run: compare the three architectures' `ranking_score` against the
+  existing motion-energy (§1) and discriminability-probe (§3.0) landmark
+  rankings — do independently-derived importance signals agree on which
+  landmarks matter, or does each method see something different?
 
 ---
 
