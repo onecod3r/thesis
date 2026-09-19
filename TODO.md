@@ -947,7 +947,7 @@ leaderboard/registry — see `sb.recognize.interp`'s module docstring.
   notebook cell, so it's reproducible from the notebook itself. Detail:
   `docs/reports/landmark-importance.md` §3/§6.
 
-### 3.4 Engineered-feature discriminability: joint angles + kinematics (2026-09-19, built — not yet run)
+### 3.4 Engineered-feature discriminability: joint angles + kinematics (2026-09-19, built + run)
 
 A finer-grained complement to §3.0 (per-landmark position/speed descriptors)
 and §3.3 (trained-model attention/saliency): a **richer, hand-crafted**
@@ -989,19 +989,47 @@ another class's. No training involved.
 - [x] Smoke-tested against real `GISLR_Stratified` data (not just synthetic):
   angle geometry verified against known synthetic poses (180°/90° arm bends);
   Scope A (30 real videos) and a shrunk Scope B (~1,200 real videos, 4
-  classes) both ran end-to-end with plausible output — angle and relational
-  features had the highest mean F-ratio of any feature type in the shrunk
-  run, region ranking (right_hand > left_hand > pose > face) agreed in
-  direction with §1/§3.0/§3.3's hands > pose > face finding.
-- [ ] **Run it** (user) — Scope A + Scope B (`N_SCOPE_B_CLASSES=15`) at the
-  configured tunables; write up `docs/reports/feature-discriminability.md`
-  after.
+  classes) both ran end-to-end with plausible output. This caught a real bug
+  (see below).
+- [x] **Run it** (user, 2026-09-19) — Scope A (3 classes × 10 videos) + Scope
+  B (15 classes, 4,497 videos). **Angles are the most information-dense
+  feature type**: 56 angle features alone reach 68.3% probe accuracy vs 79.4%
+  for 3,258 position features (~50× more information per feature); adding
+  angles to the full feature set gains +2.5pt (79.6% → 82.1%) for 1.1% more
+  features. Top individual feature by F-ratio is `angle_R_palm_facing_mean`
+  (F=163.7), beating every raw landmark coordinate. Tolerance-band overlap
+  agrees on *which* features are good but is flat across types in aggregate
+  (0.97–1.0); every top feature still has `worst_pair_overlap == 1.0` — no
+  single feature separates all 15 classes, only the full probe does. Full
+  results: `docs/reports/feature-discriminability.md`.
+- [x] **Caught + fixed a real aggregation bug during analysis**: the
+  type/region breakdown cell didn't apply the same `F > 0` gate the
+  per-feature top-N tables did, so 33 constant (never-detected-landmark)
+  `detection_rate` features + 1 constant `meta` feature were ranking as the
+  *tightest-separated feature types* purely from their trivially zero-width
+  bands, despite carrying zero class information. Patched the notebook cell,
+  re-ran it against cached data (no new video processing), re-embedded the
+  corrected output. Detail: `docs/reports/feature-discriminability.md` §2.1.
+- [ ] **Region-ranking divergence, unresolved**: this pass's region ordering
+  (right_hand > left_hand > face > pose, pose last) disagrees with every
+  prior region ranking (§1/§3.0/§3.3 all found hands > pose > face). Plausibly
+  a 15-class-sample artifact, or that this pipeline uses raw mean position
+  for pose rather than the `x_std`/speed descriptors §3.0 found pose
+  informative on, or that it uses all 33 pose rows rather than
+  `UPPER_BODY_POSE_8`. Not distinguished yet — `docs/reports/feature-discriminability.md` §4.
 - [ ] Global scope (all 94,477 videos / 250 classes) — not run in this pass,
-  same staging `subset-comparison` used (A→B before committing to global).
+  same staging `subset-comparison` used (A→B before committing to global);
+  needed before §1's feature-type ranking or the region divergence above can
+  be treated as settled rather than a 15-class snapshot.
+- [ ] Promote the feature-type probe ablation (angle-only/position-only/etc.
+  accuracy, `docs/reports/feature-discriminability.md` §1's table) into a
+  notebook cell — currently only a supplementary analysis script, same status
+  as landmark-importance's per-axis-saliency addendum (§3.3).
 - [ ] `TOLERANCE_K` (currently a single global 1.5) sensitivity check before
   treating `mean_overlap` rankings as final.
 - [ ] If a winning feature/angle subset emerges, feed it into a trained-model
-  ablation (mirrors how §3.0's probe findings fed §3.1).
+  ablation (mirrors how §3.0's probe findings fed §3.1) — `angle_R_palm_facing_mean`
+  and the finger PIP-flex angles are the strongest individual candidates.
 
 ---
 
