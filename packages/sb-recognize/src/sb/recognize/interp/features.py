@@ -35,6 +35,7 @@ from sb.recognize.features import cache
 from sb.recognize.features.gislr_stratified import load_npz
 from sb.recognize.interp.geometry import RELATIONAL_DIM, RELATIONAL_NAMES
 from sb.recognize.interp.geometry import center_and_scale as _center_and_scale
+from sb.recognize.interp.geometry import derivatives as _derivatives
 from sb.recognize.interp.geometry import relational_block as _relational_block
 
 PIPELINE = "landmark_interp_v1"
@@ -45,17 +46,6 @@ FULL_543 = SUBSETS["FULL_543"]
 CHANNELS_PER_LANDMARK = 10  # x,y,z (normalized) | vx,vy,vz | ax,ay,az | speed
 PER_LANDMARK_DIM = len(FULL_543) * CHANNELS_PER_LANDMARK  # 5430
 FEATURE_DIM = PER_LANDMARK_DIM + RELATIONAL_DIM  # 5442
-
-
-def _derivatives(pos: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """position (T,543,3) -> (velocity, acceleration, speed); t=0 has zero
-    velocity/acceleration by construction (no t=-1 frame to difference against)."""
-    vel = np.zeros_like(pos)
-    vel[1:] = pos[1:] - pos[:-1]
-    acc = np.zeros_like(pos)
-    acc[1:] = vel[1:] - vel[:-1]
-    speed = np.linalg.norm(vel, axis=-1)  # (T, 543)
-    return vel, acc, speed
 
 
 def build_frame_features(raw: np.ndarray) -> np.ndarray:

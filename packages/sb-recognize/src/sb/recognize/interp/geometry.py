@@ -48,6 +48,18 @@ def center_and_scale(raw: np.ndarray) -> np.ndarray:
     return np.nan_to_num(normed, nan=0.0, posinf=0.0, neginf=0.0)
 
 
+def derivatives(pos: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """position (T, L, C) -> (velocity, acceleration, speed); t=0 has zero
+    velocity/acceleration by construction (no t=-1 frame to difference
+    against). Dimension-agnostic in the last axis (C=2 for xy, 3 for xyz)."""
+    vel = np.zeros_like(pos)
+    vel[1:] = pos[1:] - pos[:-1]
+    acc = np.zeros_like(pos)
+    acc[1:] = vel[1:] - vel[:-1]
+    speed = np.linalg.norm(vel, axis=-1)  # (T, L)
+    return vel, acc, speed
+
+
 def relational_block(pos: np.ndarray) -> np.ndarray:
     """(T, 543, 3) normalized positions -> (T, RELATIONAL_DIM) distances."""
     T = pos.shape[0]

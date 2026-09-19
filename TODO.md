@@ -1031,6 +1031,77 @@ another class's. No training involved.
   ablation (mirrors how §3.0's probe findings fed §3.1) — `angle_R_palm_facing_mean`
   and the finger PIP-flex angles are the strongest individual candidates.
 
+### 3.5 Curated-feature DNN + LSTM: ME-126 + xy + joint angles, top-N eval (2026-09-19, built — not yet run)
+
+Acts on §3.4's own follow-up above: trains real, evaluated models on exactly
+the feature recipe the prior three interpretability experiments converged
+on — **ME-126** landmark subset (§1/§3.0/§3.3), **xy only** (§3.1's
+established default), **+ 28 engineered joint angles** (§3.4's
+highest-information-density feature type) — instead of re-deriving
+importance. DNN + LSTM only (no GRU). Answered separately (no code change):
+neither `LandmarkDNN` nor `LandmarkRNN`/`StreamingGRU`/`StreamingLSTM` are
+"trained frame by frame" in a live-updating sense — see "Backlog / Someday"
+below.
+
+- [x] **Refactor**: `sb.recognize.interp.geometry` gained `derivatives()`
+  (promoted from `features._derivatives`, bit-identical verified before/after
+  on a fixed seed — `features.py`'s already-reported `landmark_interp_v1`
+  output is unchanged).
+- [x] **New pipeline** `sb.recognize.interp.features_curated`
+  (`landmark_curated_v1`): normalizes + computes all 28 angles on the full
+  543-landmark 3D geometry **first** (2 angles need a z cross-product
+  component), *then* subsets to ME-126 and drops z from the raw per-landmark
+  coordinate channel — z-dropping and angle-computation don't conflict
+  because angles are a derived quantity, not a raw coordinate. `FEATURE_DIM`
+  = 882 (126 landmarks x 7 channels: xy position/velocity/acceleration +
+  speed) + 28 angles + 12 relational = **922**, an 83% reduction from
+  `landmark_interp_v1`'s 5,442.
+- [x] **`sb.recognize.interp.models` generalized** (additive, backward
+  compatible): `LandmarkAttention`/`split_features`/`LandmarkDNN`/
+  `LandmarkRNN` now take explicit dimension args (`n_landmarks`,
+  `channels_per_landmark`, `angle_dim`, `relational_dim`) defaulting to
+  `landmark_interp_v1`'s shape — verified the old landmark-importance call
+  sites (`LandmarkDNN(hidden_sizes, num_classes)`, no dim args) produce
+  identical output before/after, in eval mode (dropout makes train-mode
+  comparison noisy, not a bug). New `LandmarkRNN.forward_all(x, lengths) ->
+  (B, T, C)` applies the trained head to every timestep instead of only the
+  last — verified its value at each sequence's own last valid frame equals
+  `forward()`'s output exactly. `sb.recognize.interp.train`'s two loader
+  functions gained a `feature_dim` parameter (same default-preserving
+  pattern).
+- [x] **Output contract**: both models produce a confidence score for every
+  of the 250 signs at every frame (`LandmarkDNN.forward` already did this;
+  `forward_all` gives the LSTM the same property at inference) — read
+  honestly: neither was trained with per-frame supervision (see Backlog
+  item below), so this is an inference-time read-out, not a new training
+  claim.
+- [x] **Top-N evaluation**: true label counted correct if it's anywhere in
+  the top N confidences (not just rank 1) — e.g. `wake` 0.9 / `awake` 0.8
+  with true label `awake` is a top-2 hit. Reuses `sb.recognize.evaluate.py`'s
+  existing `topk_idx`/`topk_prob` vocabulary rather than inventing a new
+  metric. A confusable-pair section (the 16 pairs from §7.1/
+  `docs/reports/pair-similarity.md`) checks specifically whether the *wrong*
+  member of a pair winning rank 1 gets recovered at rank 2.
+- [x] **Notebook**: `experiments/recognition/gislr.1.models.curated-features.ipynb`
+  — curated feature cache → model factories → **single final fit** per
+  architecture (no k-fold — unlike §3.3, this doesn't need out-of-fold
+  landmark-ranking coverage) → held-out `test.csv` eval + top-N table →
+  confusable-pair rank-recovery table → per-frame confidence-trace plots
+  (diagnostic) → summary. Config: `experiments/recognition/configs/gislr.curated-features.json`.
+- [x] Smoke-tested against real `GISLR_Stratified` data end-to-end (not just
+  synthetic): feature shapes + angle-block bit-match against
+  `kinematics.compute_angles`; a full mini run (5-class shrink, 2 epochs,
+  both architectures, real npz) through caching → training → eval → top-N →
+  confusable-pair table → per-frame trace plotting, all on GPU. Caught and
+  fixed one real bug: the per-frame-trace example cell crashed
+  (`plt.subplots(0, ...)`) when its hardcoded example signs weren't present
+  in a shrunk run's class set — added a graceful fallback.
+- [ ] **Run it** (user) — full 250-class final fit + held-out eval; write up
+  `docs/reports/curated-features.md` after.
+- [ ] Trained-model confirmation of whether the curated recipe beats
+  `landmark_interp_v1`/ME-126-xyz baselines on accuracy, not just probe
+  proxies — this notebook's own numbers ARE that confirmation once run.
+
 ---
 
 ## 4. Architecture Benchmarking

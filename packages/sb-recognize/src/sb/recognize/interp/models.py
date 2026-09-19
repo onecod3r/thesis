@@ -60,27 +60,57 @@ class LandmarkAttention(nn.Module):
         return per_landmark * g
 
 
-def split_features(flat: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    """(..., FEATURE_DIM) -> (per_landmark (..., 543, 10), relational (..., 12))."""
-    per_landmark = flat[..., :PER_LANDMARK_DIM].reshape(
-        *flat.shape[:-1], N_LANDMARKS, CHANNELS_PER_LANDMARK
+def split_features(
+    flat: torch.Tensor,
+    per_landmark_dim: int = PER_LANDMARK_DIM,
+    n_landmarks: int = N_LANDMARKS,
+    channels_per_landmark: int = CHANNELS_PER_LANDMARK,
+    angle_dim: int = 0,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """(..., feature_dim) -> (per_landmark (..., n_landmarks, channels),
+    angles (..., angle_dim), relational (..., remainder)).
+
+    Column order ``[per_landmark, angles, relational]`` matches
+    ``features_curated.build_frame_features``. Default args reproduce
+    ``landmark_interp_v1``'s layout exactly (``angle_dim=0`` -> an empty
+    angle slice, ``relational`` gets everything after ``per_landmark``) —
+    every existing caller that doesn't pass these keeps working unchanged.
+    """
+    per_landmark = flat[..., :per_landmark_dim].reshape(
+        *flat.shape[:-1], n_landmarks, channels_per_landmark
     )
-    relational = flat[..., PER_LANDMARK_DIM:]
-    return per_landmark, relational
+    rest = flat[..., per_landmark_dim:]
+    angles, relational = rest[..., :angle_dim], rest[..., angle_dim:]
+    return per_landmark, angles, relational
 
 
 class LandmarkDNN(nn.Module):
     """Memory-free per-frame classifier: attention-gated landmarks -> flatten
     -> MLP -> per-frame logits. Trained on every frame independently
     (frame-level label = the video's label), so it never sees more than one
-    frame's worth of state — the "one frame at a time" baseline."""
+    frame's worth of state — the "one frame at a time" baseline.
 
-    def __init__(self, hidden_sizes: tuple[int, ...], num_classes: int, dropout: float = 0.3):
+    Dimension args default to ``landmark_interp_v1``'s shape (full 543
+    landmarks x 10 channels, no angle block, 12 relational) — pass explicit
+    values for a different pipeline (e.g. ``features_curated``'s 126
+    landmarks x 7 channels + 28 angles + 12 relational).
+    """
+
+    def __init__(
+        self, hidden_sizes: tuple[int, ...], num_classes: int, dropout: float = 0.3,
+        n_landmarks: int = N_LANDMARKS, channels_per_landmark: int = CHANNELS_PER_LANDMARK,
+        angle_dim: int = 0, relational_dim: int = RELATIONAL_DIM,
+    ):
         super().__init__()
-        self.attn = LandmarkAttention()
-        self.input_norm = nn.LayerNorm(FEATURE_DIM)
+        self.n_landmarks = n_landmarks
+        self.channels_per_landmark = channels_per_landmark
+        self.per_landmark_dim = n_landmarks * channels_per_landmark
+        self.angle_dim = angle_dim
+        feature_dim = self.per_landmark_dim + angle_dim + relational_dim
+        self.attn = LandmarkAttention(n_landmarks=n_landmarks)
+        self.input_norm = nn.LayerNorm(feature_dim)
         layers: list[nn.Module] = []
-        prev = FEATURE_DIM
+        prev = feature_dim
         for h in hidden_sizes:
             layers += [nn.Linear(prev, h), nn.LayerNorm(h), nn.GELU(), nn.Dropout(dropout)]
             prev = h
@@ -88,31 +118,46 @@ class LandmarkDNN(nn.Module):
         self.head = nn.Linear(prev, num_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """``x``: (B, T, FEATURE_DIM) -> per-frame logits (B, T, num_classes).
-        Padded frames are classified too; the notebook masks them out of the
+        """``x``: (B, T, feature_dim) -> per-frame logits (B, T, num_classes).
+        Padded frames are classified too; callers mask them out of the
         loss/metrics using ``lengths`` (cheaper than packing for a model with
-        no recurrent state to pack)."""
-        per_landmark, relational = split_features(x)
-        gated = self.attn(per_landmark).flatten(-2)  # (B, T, 5430)
-        feats = self.input_norm(torch.cat([gated, relational], dim=-1))
+        no recurrent state to pack). This is already the "confidence score
+        per frame, over every label" output a live/streaming reader would
+        want — apply ``softmax(dim=-1)`` to get probabilities."""
+        per_landmark, angles, relational = split_features(
+            x, self.per_landmark_dim, self.n_landmarks, self.channels_per_landmark, self.angle_dim
+        )
+        gated = self.attn(per_landmark).flatten(-2)
+        feats = self.input_norm(torch.cat([gated, angles, relational], dim=-1))
         return self.head(self.trunk(feats))
 
 
 class LandmarkRNN(nn.Module):
     """Unidirectional LSTM/GRU over attention-gated, projected landmark
     features — streaming-viable (causal, last-valid-frame readout), the same
-    contract as ``sb.recognize.architectures.StreamingGRU``."""
+    contract as ``sb.recognize.architectures.StreamingGRU``.
+
+    Dimension args default to ``landmark_interp_v1``'s shape, same as
+    :class:`LandmarkDNN` — see its docstring.
+    """
 
     def __init__(
         self, cell: str, proj_size: int, hidden_size: int, num_layers: int,
         num_classes: int, dropout: float = 0.3,
+        n_landmarks: int = N_LANDMARKS, channels_per_landmark: int = CHANNELS_PER_LANDMARK,
+        angle_dim: int = 0, relational_dim: int = RELATIONAL_DIM,
     ):
         super().__init__()
         assert cell in ("gru", "lstm"), f"cell must be 'gru' or 'lstm', got {cell!r}"
-        self.attn = LandmarkAttention()
-        self.input_norm = nn.LayerNorm(FEATURE_DIM)
+        self.n_landmarks = n_landmarks
+        self.channels_per_landmark = channels_per_landmark
+        self.per_landmark_dim = n_landmarks * channels_per_landmark
+        self.angle_dim = angle_dim
+        feature_dim = self.per_landmark_dim + angle_dim + relational_dim
+        self.attn = LandmarkAttention(n_landmarks=n_landmarks)
+        self.input_norm = nn.LayerNorm(feature_dim)
         self.proj = nn.Sequential(
-            nn.Linear(FEATURE_DIM, proj_size), nn.LayerNorm(proj_size), nn.GELU()
+            nn.Linear(feature_dim, proj_size), nn.LayerNorm(proj_size), nn.GELU()
         )
         rnn_cls = nn.GRU if cell == "gru" else nn.LSTM
         self.rnn = rnn_cls(
@@ -123,13 +168,38 @@ class LandmarkRNN(nn.Module):
             nn.LayerNorm(hidden_size), nn.Dropout(dropout), nn.Linear(hidden_size, num_classes)
         )
 
-    def forward(self, x: torch.Tensor, lengths: torch.Tensor) -> torch.Tensor:
-        per_landmark, relational = split_features(x)
+    def _encode(self, x: torch.Tensor, lengths: torch.Tensor) -> torch.Tensor:
+        """``x``: (B, T, feature_dim) -> unpacked RNN hidden states (B, T,
+        hidden_size), shared by :meth:`forward` (reads the last valid frame)
+        and :meth:`forward_all` (reads every frame)."""
+        per_landmark, angles, relational = split_features(
+            x, self.per_landmark_dim, self.n_landmarks, self.channels_per_landmark, self.angle_dim
+        )
         gated = self.attn(per_landmark).flatten(-2)
-        feats = self.input_norm(torch.cat([gated, relational], dim=-1))
+        feats = self.input_norm(torch.cat([gated, angles, relational], dim=-1))
         proj = self.proj(feats)
         packed = pack_padded_sequence(proj, lengths.cpu(), batch_first=True, enforce_sorted=True)
         packed_out, _ = self.rnn(packed)
         out, _ = pad_packed_sequence(packed_out, batch_first=True)
+        return out
+
+    def forward(self, x: torch.Tensor, lengths: torch.Tensor) -> torch.Tensor:
+        """Last-valid-frame logits (B, num_classes) — what training/the
+        canonical streaming contract uses; unchanged behavior."""
+        out = self._encode(x, lengths)
         idx = (lengths - 1).view(-1, 1, 1).expand(-1, 1, out.size(-1)).to(out.device)
         return self.head(out.gather(1, idx).squeeze(1))
+
+    def forward_all(self, x: torch.Tensor, lengths: torch.Tensor) -> torch.Tensor:
+        """Per-frame logits (B, T, num_classes) — the same trained head
+        applied to every timestep's hidden state, not just the last one.
+
+        Purely a read-out choice: the model is still trained with a loss at
+        the last valid frame only (:meth:`forward`), so frames before the
+        sign is mostly complete were never supervised to have a meaningful
+        confidence vector. Use this for inspecting how confidence evolves
+        frame-by-frame, not as a claim that early-frame confidence is
+        reliable — callers must mask past each sequence's own ``lengths``,
+        same convention ``LandmarkDNN``/``run_epoch_dnn`` uses."""
+        out = self._encode(x, lengths)
+        return self.head(out)

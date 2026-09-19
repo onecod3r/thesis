@@ -91,9 +91,13 @@ def collate_with_row(batch):
 
 
 def make_fold_loader(
-    data, offsets, labels, row_indices, batch_size: int, shuffle: bool, seed: int = 42
+    data, offsets, labels, row_indices, batch_size: int, shuffle: bool, seed: int = 42,
+    feature_dim: int = FEATURE_DIM,
 ) -> DataLoader:
-    ds = FoldArrayDataset(data, offsets, labels, row_indices, feature_dim=FEATURE_DIM)
+    """``feature_dim`` defaults to ``landmark_interp_v1``'s 5,442 — pass a
+    pipeline's own ``FEATURE_DIM`` (e.g. ``features_curated.FEATURE_DIM``,
+    922) to load a different cache through the same loader."""
+    ds = FoldArrayDataset(data, offsets, labels, row_indices, feature_dim=feature_dim)
     g = torch.Generator()
     g.manual_seed(seed)
     return DataLoader(
@@ -102,11 +106,13 @@ def make_fold_loader(
     )
 
 
-def make_row_tracked_loader(data, offsets, labels, row_indices, batch_size: int) -> DataLoader:
+def make_row_tracked_loader(
+    data, offsets, labels, row_indices, batch_size: int, feature_dim: int = FEATURE_DIM,
+) -> DataLoader:
     """Never shuffled — used wherever a prediction must be scattered back into
     a full-split array by its original row index (OOF predictions, the final
-    test-set pass)."""
-    ds = FoldArrayDataset(data, offsets, labels, row_indices, feature_dim=FEATURE_DIM, return_row=True)
+    test-set pass). ``feature_dim`` as in :func:`make_fold_loader`."""
+    ds = FoldArrayDataset(data, offsets, labels, row_indices, feature_dim=feature_dim, return_row=True)
     return DataLoader(ds, batch_size=batch_size, shuffle=False, collate_fn=collate_with_row, num_workers=0)
 
 
