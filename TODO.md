@@ -1029,7 +1029,7 @@ another class's. No training involved.
   ablation (mirrors how §3.0's probe findings fed §3.1) — `angle_R_palm_facing_mean`
   and the finger PIP-flex angles are the strongest individual candidates.
 
-### 3.5 Curated-feature DNN + LSTM: ME-126 + xy + joint angles, top-N eval (2026-09-19, built — not yet run)
+### 3.5 Curated-feature DNN + LSTM: ME-126 + xy + joint angles, top-N eval (2026-09-19, built + run)
 
 Acts on §3.4's own follow-up above: trains real, evaluated models on exactly
 the feature recipe the prior three interpretability experiments converged
@@ -1094,11 +1094,40 @@ below.
   fixed one real bug: the per-frame-trace example cell crashed
   (`plt.subplots(0, ...)`) when its hardcoded example signs weren't present
   in a shrunk run's class set — added a graceful fallback.
-- [ ] **Run it** (user) — full 250-class final fit + held-out eval; write up
-  `docs/reports/curated-features.md` after.
-- [ ] Trained-model confirmation of whether the curated recipe beats
-  `landmark_interp_v1`/ME-126-xyz baselines on accuracy, not just probe
-  proxies — this notebook's own numbers ARE that confirmation once run.
+- [x] **Run it** (user, 2026-09-19) — full 250-class final fit + held-out
+  eval. **LSTM 69.09% top-1 / 79.65% top-2 / 87.53% top-5; DNN 57.76% /
+  72.53% / 85.08%.** Confusable-pair classes get ~2× the top-1→top-2 lift
+  of every other class (DNN +25.1pp vs +13.3pp; LSTM +21.7pp vs +9.0pp) —
+  model-level confirmation of §7.1's near-miss finding. Full results:
+  `docs/reports/curated-features.md`.
+- [x] Trained-model confirmation of whether the curated recipe beats
+  `landmark_interp_v1`/ME-126-xyz baselines on accuracy — **mixed,
+  architecture-dependent**: LSTM lost only 1.46pp vs full-543
+  `landmark_interp_v1` (70.55%→69.09%) despite an 83% smaller feature
+  space; DNN lost 13.26pp (71.02%→57.76%) — a memory-free model needs a
+  richer per-frame signal than ME-126+angles alone provides, but a causal
+  model's temporal integration mostly absorbs the same cut. Single runs,
+  not repeated — direction is a reasonable read, the exact ratio isn't.
+- [ ] Neither model converged within its 60-epoch cap (`es_patience=8`
+  never triggered) — DNN's train≈val (well-fit, likely still underfit);
+  LSTM's train 86%/val 69% (~17pp generalization gap, same signature
+  `plateau-diagnosis.md` found for the canonical registry runs). Re-run
+  with a real stopping condition / more epochs before treating these
+  numbers as the recipe's ceiling.
+- [ ] `landmark_curated_v1` zero-fills detection gaps (`geometry.
+  center_and_scale`'s policy, same as `landmark_interp_v1`) rather than
+  interpolating them the way `kinematics.py` (§3.4) does — visible as a
+  multi-frame confidence dead-zone in one of the per-frame trace examples.
+  Worth an ablation: does gap interpolation change the training numbers.
+- [ ] **Concrete motivation for the backlogged live-prediction idea**: one
+  `scissors` test video's LSTM confidence trace peaks at ~0.95–1.0 for the
+  true label mid-sequence, then a competitor (`cut`) overtakes it by the
+  last frame — the frame the model is actually read out at. A non-last-frame
+  readout (max-over-time / average of the last K frames) would have gotten
+  this one right; untested at the aggregate-accuracy level.
+- [ ] Feed the curated recipe into a canonical-comparable architecture
+  (`StreamingGRU`/`StreamingLSTM`, not the interp track's `LandmarkRNN`) if
+  the smaller feature space is worth pursuing as a deployment candidate.
 
 ---
 
@@ -1662,16 +1691,17 @@ Figure out whether this is overfitting, underfitting or a data/label ceiling
   confusable pairs) — it decides which phase below runs next.
 - [x] **Re-test §6's binary separability probes with the richer angle+kinematics
   feature set** (`experiments/recognition/gislr.0.dataset.pair-similarity.ipynb`,
-  built + smoke-tested 2026-09-19, TODO §3.4's `sb.recognize.interp.kinematics`/
+  built + run 2026-09-19, TODO §3.4's `sb.recognize.interp.kinematics`/
   `discriminability`, new `probe_classifier_cv` for the same 5-fold-CV
   methodology §6 used) — all 16 documented pairs + 8 random-pair controls,
-  per-pair probe broken down by feature type (angle/position/speed/...). Not
-  yet run at full scale (shrunk 2-pair smoke test only, real data) —
-  `awake`/`wake` came back 0.506 acc (chance, matching §6's 0.463–0.506) and
-  `lips`/`mouth` 0.628 (matching §6's 0.638 "both") even with angles added,
-  consistent with §6's own reading that **pooling itself, not the channel
-  choice, is the ceiling**. Full 16-pair run + write-up (`docs/reports/pair-similarity.md`)
-  awaiting the user.
+  per-pair probe broken down by feature type (angle/position/speed/...).
+  **Full run: `corr(confusion_rate, probe_accuracy)` = Spearman ρ −0.71,
+  matching §6's −0.72 almost exactly** with a completely different feature
+  set. `awake`/`wake` stays at chance (0.512) under every single feature
+  type, individually or combined; control pairs average 0.954. **Confirms
+  §6's own reading that pooling itself, not the channel choice, is the
+  ceiling** — angles don't rescue what pooling loses. Full write-up:
+  `docs/reports/pair-similarity.md`.
 
 ### 7.2 Phase 2 — Fix normalization (remove signer-appearance bias)
 
