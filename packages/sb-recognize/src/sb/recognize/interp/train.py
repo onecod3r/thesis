@@ -97,13 +97,21 @@ def make_fold_loader(
 ) -> DataLoader:
     """``feature_dim`` defaults to ``landmark_interp_v1``'s 5,442 — pass a
     pipeline's own ``FEATURE_DIM`` (e.g. ``features_curated.FEATURE_DIM``,
-    922) to load a different cache through the same loader."""
+    922) to load a different cache through the same loader.
+
+    ``pin_memory=True`` + the ``non_blocking=True`` transfers in
+    ``run_epoch_dnn``/``run_epoch_rnn`` let the H2D copy overlap with GPU
+    compute — the same pair ``sb.recognize.train``'s production driver
+    already uses. Neither changes a single computed value (CUDA's
+    stream-ordering guarantees the copy finishes before it's read); this is
+    a GPU-utilization fix, not a training-behavior change, so it's safe even
+    for a notebook whose results are already reported."""
     ds = FoldArrayDataset(data, offsets, labels, row_indices, feature_dim=feature_dim)
     g = torch.Generator()
     g.manual_seed(seed)
     return DataLoader(
         ds, batch_size=batch_size, shuffle=shuffle, collate_fn=FEAT.collate_fn,
-        num_workers=0, generator=g if shuffle else None,
+        num_workers=0, pin_memory=True, generator=g if shuffle else None,
     )
 
 
@@ -114,7 +122,8 @@ def make_row_tracked_loader(
     a full-split array by its original row index (OOF predictions, the final
     test-set pass). ``feature_dim`` as in :func:`make_fold_loader`."""
     ds = FoldArrayDataset(data, offsets, labels, row_indices, feature_dim=feature_dim, return_row=True)
-    return DataLoader(ds, batch_size=batch_size, shuffle=False, collate_fn=collate_with_row, num_workers=0)
+    return DataLoader(ds, batch_size=batch_size, shuffle=False, collate_fn=collate_with_row,
+                      num_workers=0, pin_memory=True)
 
 
 def _frame_mask(lengths: torch.Tensor, T: int, device) -> torch.Tensor:
@@ -131,7 +140,8 @@ def run_epoch_dnn(model, loader, criterion, device, optimizer=None, grad_clip: f
     ctx = torch.enable_grad() if train_mode else torch.no_grad()
     with ctx:
         for feats, lengths, labels in loader:
-            feats, labels = feats.to(device), labels.to(device)
+            feats = feats.to(device, non_blocking=True)
+            labels = labels.to(device, non_blocking=True)
             B, T, _ = feats.shape
             mask = _frame_mask(lengths, T, device)  # (B, T)
             if train_mode:
@@ -166,7 +176,8 @@ def run_epoch_rnn(model, loader, criterion, device, optimizer=None, scaler=None,
     ctx = torch.enable_grad() if train_mode else torch.no_grad()
     with ctx:
         for feats, lengths, labels in loader:
-            feats, labels = feats.to(device), labels.to(device)
+            feats = feats.to(device, non_blocking=True)
+            labels = labels.to(device, non_blocking=True)
             if train_mode:
                 optimizer.zero_grad(set_to_none=True)
             with torch.amp.autocast("cuda", enabled=use_amp):
@@ -294,7 +305,7 @@ def predict_probs_indexed(
     all_rows, all_probs, all_labels = [], [], []
     batches = tqdm(loader, desc=desc, leave=False) if desc else loader
     for feats, lengths, labels, rows in batches:
-        feats = feats.to(device)
+        feats = feats.to(device, non_blocking=True)
         if arch == "dnn":
             B, T, _ = feats.shape
             mask = _frame_mask(lengths, T, device)

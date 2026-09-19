@@ -1172,6 +1172,21 @@ notebook, same training regime:
   data; a real mini training+eval pass for `bilstm_base` (5-class shrink,
   real `base_v1` cache, real GPU training, `predict_probs_indexed`) ran
   clean end to end.
+- [x] **GPU-utilization fix (2026-09-19 remark)**: the interp track's
+  training loop (`sb.recognize.interp.train.py`) was missing the three
+  things `sb.recognize.train`'s production driver already has —
+  `non_blocking=True` H2D transfers (`run_epoch_dnn`, `run_epoch_rnn`,
+  `predict_probs_indexed`), `pin_memory=True` on both loader factories, and
+  `torch.backends.cudnn.benchmark = True` (added to this notebook's setup
+  cell only — a global torch setting, so it's not retrofit onto already-run
+  notebooks). None of these change a single computed value (CUDA's
+  stream-ordering guarantees correctness), so they're safe even for a
+  notebook whose results are already reported. On top of that,
+  `bilstm_curated` (no historical regime to stay faithful to) gets a
+  `batch_size: 4096, lr: 0.005656` override in the config — `bilstm_base`
+  keeps `shared` byte-for-byte, preserving the exact-replica requirement.
+  Verified with real data: override plumbing picks the right hyp per arm,
+  training still runs clean end to end.
 - [ ] **Run it** (user) — full 250-class final fit + held-out eval for both
   arms; write up `docs/reports/bilstm-curated.md` after.
 - [ ] If `bilstm_base`'s single-final-fit number is wanted as a literal new
