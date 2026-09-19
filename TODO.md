@@ -2380,6 +2380,21 @@ long-running frame loop.
 
 - [ ] (add unscoped ideas here as they come up, promote to a numbered section once
   they have a concrete plan)
+- [ ] **Live, per-frame-updating streaming prediction with reset-on-accept**
+  (2026-09-19 remark). Today's causal RNNs (`sb.recognize.architectures.StreamingGRU`/
+  `StreamingLSTM`, and `sb.recognize.interp.models.LandmarkRNN`) are *trained*
+  with one loss at the **last valid frame only** — they can technically run
+  frame-by-frame at inference (the recurrent state is causal), but nothing
+  supervises the running prediction to be meaningful mid-sequence, only at the
+  end. The idea: a model explicitly trained so its confidence vector is
+  correct *at every frame* as evidence accumulates, plus a UX-facing feature
+  to reset/clear the running state once a sign is accepted (so it starts
+  fresh for the next sign in a continuous stream, rather than one video-length
+  clip at a time). Needs: a training scheme with per-frame supervision (not
+  just a final-frame loss), a definition of "accepted" (confidence threshold?
+  hold duration?) and what "reset" does to hidden state, and a live/streaming
+  evaluation protocol (this repo currently only evaluates one full clip in,
+  one label out). Not scoped yet — no notebook, no architecture change.
 
 ---
 
