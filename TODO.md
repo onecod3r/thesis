@@ -1187,8 +1187,27 @@ notebook, same training regime:
   keeps `shared` byte-for-byte, preserving the exact-replica requirement.
   Verified with real data: override plumbing picks the right hyp per arm,
   training still runs clean end to end.
-- [ ] **Run it** (user) — full 250-class final fit + held-out eval for both
-  arms; write up `docs/reports/bilstm-curated.md` after.
+- [x] **Run it** (user, 2026-09-19) — `bilstm_base` trained cleanly, 73.71%
+  top-1 / 86.15% top-3 / 89.36% top-5 (comparable to the current-split
+  canonical GRU runs at 74–75%). **`bilstm_curated` collapsed**: early-stopped
+  at epoch 16, `train_loss`/`val_loss` pinned at `ln(250)=5.52` the entire
+  run and `val_acc` stuck at 0.42% — exactly chance for 250 classes, a dead
+  uniform predictor from epoch 1, not slow convergence.
+- [x] **Root cause, found and fixed**: the `batch_size=4096, lr=0.005656`
+  override 4x'd both together (linear batch-size scaling of `lr`) — verified
+  on real data that this combination collapses the model from epoch 1
+  (`train_loss` 5.89→5.59, flat, `val_acc` flat at 0.0042 for 4 epochs),
+  while dropping the `lr` override (batch 4096, production's unscaled
+  0.001414) breaks the collapse (`val_acc` 0.0042→0.0103 within 3 epochs,
+  genuinely rising off chance). Adam-family optimizers don't tolerate the
+  linear LR-scaling rule without a warmup schedule, which this notebook
+  doesn't have. Fixed: `gislr.bilstm-curated.json`'s `bilstm_curated` arm
+  now overrides only `batch_size` (still 4096, for GPU utilization),
+  `bilstm_base` is unaffected (never had an `lr` override). A `CAUTION` note
+  in the config's `notes` field warns against re-adding an `lr` override
+  without a warmup + a repeated real-data check.
+- [ ] **Re-run `bilstm_curated`** (user) with the fixed config; write up
+  `docs/reports/bilstm-curated.md` (both arms) after.
 - [ ] If `bilstm_base`'s single-final-fit number is wanted as a literal new
   registry entry (this notebook's regime matches `gislr.training.json`'s
   hyperparameters but not its k-fold-free driver/registry-writing path),

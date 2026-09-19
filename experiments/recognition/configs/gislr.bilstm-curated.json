@@ -2,7 +2,7 @@
   "schema_version": 1,
   "dataset": "gislr",
   "topic": "bilstm-curated",
-  "notes": "Two BiLSTM arms on the current canonical split (TODO §3.6): arm A is the exact, unmodified sb.recognize.architectures.BiLSTM class fed base_v1 ME-126/xy raw landmarks (252-dim) -- a faithful re-baseline, since every registry BiLSTM run predates the 2026-09-16 split reset, so it keeps `shared`'s batch_size/lr exactly as gislr.training.json has them (no override) for a true replica. Arm B is the new LandmarkBiLSTM (same fwd-last/bwd-first readout, plus the attention gate + generalized dims every other interp-track model has) fed features_curated's ME-126+xy+28-angle+relational pipeline (922-dim); it has no historical regime to match, so its batch_size/lr are overridden higher to keep the GPU fed (tiny per-sample tensors at batch 1024 were leaving it underused -- 2026-09-19 remark). Not part of ARCHS/the registry -- see sb.recognize.interp's module docstring for why. Both arms are OFFLINE-ONLY (bidirectional).",
+  "notes": "Two BiLSTM arms on the current canonical split (TODO §3.6): arm A is the exact, unmodified sb.recognize.architectures.BiLSTM class fed base_v1 ME-126/xy raw landmarks (252-dim) -- a faithful re-baseline, since every registry BiLSTM run predates the 2026-09-16 split reset, so it keeps `shared`'s batch_size/lr exactly as gislr.training.json has them (no override) for a true replica. Arm B is the new LandmarkBiLSTM (same fwd-last/bwd-first readout, plus the attention gate + generalized dims every other interp-track model has) fed features_curated's ME-126+xy+28-angle+relational pipeline (922-dim); it has no historical regime to match, so its batch_size is overridden higher to keep the GPU fed (tiny per-sample tensors at batch 1024 were leaving it underused -- 2026-09-19 remark). Not part of ARCHS/the registry -- see sb.recognize.interp's module docstring for why. Both arms are OFFLINE-ONLY (bidirectional). CAUTION (2026-09-19): an earlier version of this config also 4x'd `lr` (linear batch-size scaling) alongside the 4x batch_size bump -- that combination collapsed bilstm_curated into a uniform predictor from epoch 1 (loss pinned at ln(250)=5.52, val_acc stuck at chance 0.4%, early-stopped at epoch 16). Adam-family optimizers don't tolerate that scaling rule without a warmup; verified on real data that dropping the lr override (keeping production's 0.001414 at batch 4096) breaks the collapse (val_acc rises above chance within a few epochs). Do not re-add an lr override here without a warmup schedule and a repeated real-data check like the one that caught this.",
   "seed": 42,
   "final_fit_val_fraction": 0.05,
   "top_n": [1, 3, 5],
@@ -26,11 +26,10 @@
       "proj_size": null
     },
     "bilstm_curated": {
-      "description": "sb.recognize.interp.models.LandmarkBiLSTM, fed features_curated (922-dim). batch_size/lr overridden (below) to use the GPU's headroom -- no historical regime to stay faithful to.",
+      "description": "sb.recognize.interp.models.LandmarkBiLSTM, fed features_curated (922-dim). batch_size overridden (below) to use the GPU's headroom -- no historical regime to stay faithful to. lr is deliberately NOT overridden -- see the top-level `notes` for why.",
       "proj_size": 256,
       "overrides": {
-        "batch_size": 4096,
-        "lr": 0.005656
+        "batch_size": 4096
       }
     }
   }
