@@ -7,7 +7,7 @@ work in a bare environment.
 - ``registry``   — run folders, meta.json schema + writing, asset registration
 - ``run``        — provenance capture: commit, config hash, cache key, env
 - ``index``      — every meta.json flattened into registry/index.csv
-- ``submission`` — the DuckDB submission queue (untested runs, daily cap)
+- ``query`` — DuckDB queries over the run records (leaderboard)
 - ``artifacts``  — off-machine checkpoint sync (R2) + the manifest
 - ``promote``    — aliases: which run is champion, and what deployment fetches
 - ``docs``       — regenerate the schema, index and README generated blocks
