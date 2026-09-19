@@ -19,6 +19,12 @@ has no per-landmark structure to read a weight off of otherwise).
   pack/pad-and-read-last-valid-frame contract as
   ``sb.recognize.architectures.StreamingGRU``/``StreamingLSTM``, so it is
   streaming-viable by the same definition the rest of the repo uses.
+- :class:`LandmarkBiLSTM` — bidirectional LSTM, same **offline-only**
+  constraint and fwd-last/bwd-first readout as
+  ``sb.recognize.architectures.BiLSTM`` (TODO §3.6): the backward pass reads
+  future frames, so this can never be a deployment candidate; it exists to
+  price what bidirectionality (and, here, engineered features) buy at the
+  accuracy ceiling.
 """
 
 import torch
@@ -203,3 +209,57 @@ class LandmarkRNN(nn.Module):
         same convention ``LandmarkDNN``/``run_epoch_dnn`` uses."""
         out = self._encode(x, lengths)
         return self.head(out)
+
+
+class LandmarkBiLSTM(nn.Module):
+    """Bidirectional LSTM over attention-gated, projected landmark features —
+    **OFFLINE-ONLY**, same constraint as ``sb.recognize.architectures.BiLSTM``:
+    the backward pass reads future frames, so this can never be a deployment
+    candidate. Readout: forward direction at the last valid frame + backward
+    direction at t=0 (which has seen the whole sequence), concatenated ->
+    ``2*hidden_size`` head — identical convention to the production class,
+    just with the attention gate + generalized dims every other model in this
+    module has (`LandmarkDNN`/`LandmarkRNN`'s docstrings explain the pattern).
+    """
+
+    def __init__(
+        self, proj_size: int, hidden_size: int, num_layers: int,
+        num_classes: int, dropout: float = 0.3,
+        n_landmarks: int = N_LANDMARKS, channels_per_landmark: int = CHANNELS_PER_LANDMARK,
+        angle_dim: int = 0, relational_dim: int = RELATIONAL_DIM,
+    ):
+        super().__init__()
+        self.n_landmarks = n_landmarks
+        self.channels_per_landmark = channels_per_landmark
+        self.per_landmark_dim = n_landmarks * channels_per_landmark
+        self.angle_dim = angle_dim
+        feature_dim = self.per_landmark_dim + angle_dim + relational_dim
+        self.attn = LandmarkAttention(n_landmarks=n_landmarks)
+        self.input_norm = nn.LayerNorm(feature_dim)
+        self.proj = nn.Sequential(
+            nn.Linear(feature_dim, proj_size), nn.LayerNorm(proj_size), nn.GELU()
+        )
+        self.lstm = nn.LSTM(
+            proj_size, hidden_size, num_layers, batch_first=True,
+            dropout=dropout if num_layers > 1 else 0.0, bidirectional=True,
+        )
+        self.head = nn.Sequential(
+            nn.LayerNorm(2 * hidden_size), nn.Dropout(dropout),
+            nn.Linear(2 * hidden_size, num_classes),
+        )
+
+    def forward(self, x: torch.Tensor, lengths: torch.Tensor) -> torch.Tensor:
+        per_landmark, angles, relational = split_features(
+            x, self.per_landmark_dim, self.n_landmarks, self.channels_per_landmark, self.angle_dim
+        )
+        gated = self.attn(per_landmark).flatten(-2)
+        feats = self.input_norm(torch.cat([gated, angles, relational], dim=-1))
+        proj = self.proj(feats)
+        packed = pack_padded_sequence(proj, lengths.cpu(), batch_first=True, enforce_sorted=True)
+        packed_out, _ = self.lstm(packed)
+        out, _ = pad_packed_sequence(packed_out, batch_first=True)  # (B, T, 2H)
+        H = out.size(-1) // 2
+        idx = (lengths - 1).view(-1, 1, 1).expand(-1, 1, H).to(out.device)
+        fwd_last = out[..., :H].gather(1, idx).squeeze(1)  # fwd state at last valid frame
+        bwd_first = out[:, 0, H:]  # bwd state at t=0 (saw everything)
+        return self.head(torch.cat([fwd_last, bwd_first], dim=-1))

@@ -1129,6 +1129,59 @@ below.
   (`StreamingGRU`/`StreamingLSTM`, not the interp track's `LandmarkRNN`) if
   the smaller feature space is worth pursuing as a deployment candidate.
 
+### 3.6 BiLSTM on the current split: exact replica vs curated-feature variant (2026-09-19, built — not yet run)
+
+Every registry `bilstm` run predates the 2026-09-16 canonical-split reset
+(`registry/index.csv`: all 7 have `split.n_val=9448`) — there is no BiLSTM
+number on the split the three current-split `gru` runs (74–75%) and §3.5's
+curated-feature DNN/LSTM (69.09%/57.76%) are measured on. Two arms, same
+notebook, same training regime:
+
+- [x] **`bilstm_base`** — the production `sb.recognize.architectures.BiLSTM`
+  class, **unmodified**, fed `sb.recognize.features.base_v1`'s ME-126/xy raw
+  landmarks (252-dim, the exact historical feature pipeline). Needs zero new
+  model code: `BiLSTM.forward(x, lengths) -> (B, C)` already matches
+  `sb.recognize.interp.train`'s generic `train_fold`/`predict_probs_indexed`
+  contract.
+- [x] **`bilstm_curated`** — new `sb.recognize.interp.models.LandmarkBiLSTM`
+  (additive; attention gate + generalized dims, same pattern
+  `LandmarkDNN`/`LandmarkRNN` established, plus the production `BiLSTM`'s
+  own fwd-last/bwd-first readout convention), fed `features_curated`'s
+  ME-126+xy+28-angle+relational pipeline (922-dim, already cached from
+  §3.5).
+- [x] **Notebook**: `experiments/recognition/gislr.1.models.bilstm-curated.ipynb`
+  — mirrors §3.5's structure (feature caches → model factories → single
+  final fit per arm → held-out `test.csv` eval + top-N → confusable-pair
+  check), plus a closing comparison cell that live-queries
+  `registry/index.csv` (`sb.mlops.query.query_runs`) for the three
+  current-split canonical `gru` runs and pulls in §3.5's numbers, so this
+  notebook situates itself against everything else on the same held-out
+  set. No per-frame confidence-trace section — bidirectional models need
+  the whole sequence, so frame-by-frame isn't a meaningful read-out here.
+  Config: `experiments/recognition/configs/gislr.bilstm-curated.json`,
+  hyperparameters copied verbatim from `gislr.training.json`'s `shared`
+  block (same regime as every historical registry run) for both arms.
+- [x] **Both arms are OFFLINE-ONLY** (bidirectional = reads future frames,
+  same constraint the production `BiLSTM` class's own docstring states) —
+  this prices bidirectionality + engineered features at the accuracy
+  ceiling, not a deployment candidate.
+- [x] Smoke-tested against real `GISLR_Stratified` data (not just
+  synthetic): `LandmarkBiLSTM` forward-pass sanity-checked directionally
+  (perturbing a padded frame doesn't change the output; perturbing frame 0,
+  which only the backward pass reads at t=0, does) before touching real
+  data; a real mini training+eval pass for `bilstm_base` (5-class shrink,
+  real `base_v1` cache, real GPU training, `predict_probs_indexed`) ran
+  clean end to end.
+- [ ] **Run it** (user) — full 250-class final fit + held-out eval for both
+  arms; write up `docs/reports/bilstm-curated.md` after.
+- [ ] If `bilstm_base`'s single-final-fit number is wanted as a literal new
+  registry entry (this notebook's regime matches `gislr.training.json`'s
+  hyperparameters but not its k-fold-free driver/registry-writing path),
+  the simpler and separate route is to (re-)run
+  `gislr.1.models.training.ipynb`'s existing `bilstm`/`ME_126`/`xy` config —
+  it already resolves to the current split automatically, no code changes
+  needed there.
+
 ---
 
 ## 4. Architecture Benchmarking
