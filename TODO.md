@@ -947,6 +947,62 @@ leaderboard/registry — see `sb.recognize.interp`'s module docstring.
   notebook cell, so it's reproducible from the notebook itself. Detail:
   `docs/reports/landmark-importance.md` §3/§6.
 
+### 3.4 Engineered-feature discriminability: joint angles + kinematics (2026-09-19, built — not yet run)
+
+A finer-grained complement to §3.0 (per-landmark position/speed descriptors)
+and §3.3 (trained-model attention/saliency): a **richer, hand-crafted**
+per-frame feature set — joint angles, frame-gap-aware velocity/speed,
+Savitzky-Golay jitter, rolling variance, on top of the existing mid-shoulder-
+centered/inter-shoulder-scaled positions and hand/face relational distances —
+scored not just by ANOVA F-ratio/probe accuracy but by a new **tolerance-band
+overlap** metric: does a feature's per-class `mean ± k·std` range collide with
+another class's. No training involved.
+
+- [x] **Refactor**: `sb.recognize.interp.geometry` — extracted
+  `center_and_scale`/`relational_block` out of `features.py`
+  (`landmark_interp_v1`, unchanged behavior) so the new pipeline reuses the
+  same normalization instead of re-deriving it.
+- [x] **New pipeline** `sb.recognize.interp.kinematics`
+  (`landmark_kinematics_v1`): reindex + linearly interpolate every gap (one
+  undetected landmark or a fully-undetected frame) over a contiguous frame
+  range — frames are never dropped mid-sequence, so a derivative computed
+  across a gap reads as steady motion rather than a spike, and `n_frames`/
+  `valid_frame_frac` are kept as diagnostics. Savitzky-Golay smoothing
+  (window 7/polyorder 2, same constants as motion-energy) on normalized
+  position before deriving velocity/speed; jitter = raw − smoothed, RMS'd per
+  region; rolling variance of speed, region-averaged. 28 joint angles (arm,
+  wrist orientation, 5-finger ×2-joint flexion ×2 hands, palm-facing) —
+  `ANGLE_SPECS`/`ANGLE_NAMES`. Reduces straight to a flat, named, per-video
+  descriptor dict (mean+std per signal) — not a training tensor.
+- [x] **New analysis module** `sb.recognize.interp.discriminability`:
+  `f_ratio`/`probe_classifier` (same recipe §3.0 used, now reusable — the old
+  `subset-comparison.ipynb` code is unreachable, broken per §0.1), plus
+  `tolerance_bands`/`band_overlap` (the new metric) and
+  `nearest_neighbor_margins` (a small Scope-A visual diagnostic).
+- [x] **Notebook**: `experiments/recognition/gislr.0.dataset.feature-discriminability.ipynb`
+  — npz-based (not the broken DuckDB/parquet path §0.1 left behind), Scope A
+  (3 classes × 10 videos, eyeball check) + Scope B (15 sampled classes,
+  resumable chunked manifest driver reused from motion-energy/
+  subset-comparison) + feature-type/region breakdown + verdict cells. Global
+  scope (all 250 classes) deliberately **not** run in this pass — filed
+  below.
+- [x] Smoke-tested against real `GISLR_Stratified` data (not just synthetic):
+  angle geometry verified against known synthetic poses (180°/90° arm bends);
+  Scope A (30 real videos) and a shrunk Scope B (~1,200 real videos, 4
+  classes) both ran end-to-end with plausible output — angle and relational
+  features had the highest mean F-ratio of any feature type in the shrunk
+  run, region ranking (right_hand > left_hand > pose > face) agreed in
+  direction with §1/§3.0/§3.3's hands > pose > face finding.
+- [ ] **Run it** (user) — Scope A + Scope B (`N_SCOPE_B_CLASSES=15`) at the
+  configured tunables; write up `docs/reports/feature-discriminability.md`
+  after.
+- [ ] Global scope (all 94,477 videos / 250 classes) — not run in this pass,
+  same staging `subset-comparison` used (A→B before committing to global).
+- [ ] `TOLERANCE_K` (currently a single global 1.5) sensitivity check before
+  treating `mean_overlap` rankings as final.
+- [ ] If a winning feature/angle subset emerges, feed it into a trained-model
+  ablation (mirrors how §3.0's probe findings fed §3.1).
+
 ---
 
 ## 4. Architecture Benchmarking
