@@ -25,6 +25,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
+from tqdm.auto import tqdm
 
 from sb.recognize.features import base_v1 as FEAT
 from sb.recognize.interp.features import FEATURE_DIM
@@ -279,15 +280,20 @@ def train_fold(
 
 @torch.no_grad()
 def predict_probs_indexed(
-    model, arch: str, loader: DataLoader, device
+    model, arch: str, loader: DataLoader, device, desc: str | None = None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Video-level predicted class-probability matrix, true labels, and the
     ORIGINAL row index each prediction belongs to — pass a loader built by
     :func:`make_row_tracked_loader` so results can be scattered back into a
-    full-split array regardless of collate_fn's per-batch length-sort."""
+    full-split array regardless of collate_fn's per-batch length-sort.
+
+    ``desc``: pass a label to show a ``tqdm`` bar over batches (inference is
+    fast enough that this is opt-in, not automatic — the callers that want it
+    ask for it explicitly)."""
     model.eval()
     all_rows, all_probs, all_labels = [], [], []
-    for feats, lengths, labels, rows in loader:
+    batches = tqdm(loader, desc=desc, leave=False) if desc else loader
+    for feats, lengths, labels, rows in batches:
         feats = feats.to(device)
         if arch == "dnn":
             B, T, _ = feats.shape

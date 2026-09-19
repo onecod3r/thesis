@@ -133,7 +133,7 @@ def build_cache(
         for i, arr in enumerate(ex.map(load_video, paths)):
             chunks.append(arr.reshape(-1))
             offsets.append(offsets[-1] + arr.shape[0])
-            if progress is not None and i % 500 == 0:
+            if progress is not None:
                 progress(i, len(paths))
     flat = np.concatenate(chunks)
     for target, payload in (
