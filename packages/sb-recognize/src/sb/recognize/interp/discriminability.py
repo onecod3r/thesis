@@ -21,7 +21,7 @@ import pandas as pd
 from sklearn.feature_selection import f_classif
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, balanced_accuracy_score
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.preprocessing import StandardScaler
 
 
@@ -131,6 +131,41 @@ def probe_classifier(
         "macro_acc": float(balanced_accuracy_score(y_val, pred)),
         "n_train": len(y_tr),
         "n_val": len(y_val),
+    }
+
+
+def probe_classifier_cv(
+    X: np.ndarray,
+    y: np.ndarray,
+    seed: int = 42,
+    n_splits: int = 5,
+    max_iter: int = 200,
+    tol: float = 1e-3,
+) -> dict:
+    """K-fold cross-validated multinomial logistic probe: mean/std accuracy.
+
+    Same standardize-then-fit recipe as :func:`probe_classifier`, but averaged
+    over `n_splits` stratified folds instead of a single held-out split — the
+    lower the sample count (e.g. a two-class pair with a few hundred videos),
+    the more a single split's accuracy is noise. Matches the 5-fold-CV binary
+    separability-probe methodology `docs/reports/plateau-diagnosis.md` §6 used
+    for `awake`/`wake` and friends, so results are directly comparable.
+    """
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
+    accs, macro_accs = [], []
+    for train_idx, val_idx in skf.split(X, y):
+        scaler = StandardScaler().fit(X[train_idx])
+        clf = LogisticRegression(max_iter=max_iter, tol=tol)
+        clf.fit(scaler.transform(X[train_idx]), y[train_idx])
+        pred = clf.predict(scaler.transform(X[val_idx]))
+        accs.append(accuracy_score(y[val_idx], pred))
+        macro_accs.append(balanced_accuracy_score(y[val_idx], pred))
+    return {
+        "acc_mean": float(np.mean(accs)),
+        "acc_std": float(np.std(accs)),
+        "macro_acc_mean": float(np.mean(macro_accs)),
+        "macro_acc_std": float(np.std(macro_accs)),
+        "n_splits": n_splits,
     }
 
 

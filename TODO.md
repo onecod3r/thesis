@@ -1591,6 +1591,18 @@ Figure out whether this is overfitting, underfitting or a data/label ceiling
   before treating 0.35 as the number.
 - [ ] Write the verdict up (overfitting / underfitting / imbalance / specific
   confusable pairs) — it decides which phase below runs next.
+- [x] **Re-test §6's binary separability probes with the richer angle+kinematics
+  feature set** (`experiments/recognition/gislr.0.dataset.pair-similarity.ipynb`,
+  built + smoke-tested 2026-09-19, TODO §3.4's `sb.recognize.interp.kinematics`/
+  `discriminability`, new `probe_classifier_cv` for the same 5-fold-CV
+  methodology §6 used) — all 16 documented pairs + 8 random-pair controls,
+  per-pair probe broken down by feature type (angle/position/speed/...). Not
+  yet run at full scale (shrunk 2-pair smoke test only, real data) —
+  `awake`/`wake` came back 0.506 acc (chance, matching §6's 0.463–0.506) and
+  `lips`/`mouth` 0.628 (matching §6's 0.638 "both") even with angles added,
+  consistent with §6's own reading that **pooling itself, not the channel
+  choice, is the ceiling**. Full 16-pair run + write-up (`docs/reports/pair-similarity.md`)
+  awaiting the user.
 
 ### 7.2 Phase 2 — Fix normalization (remove signer-appearance bias)
 
