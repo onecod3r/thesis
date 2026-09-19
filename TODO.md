@@ -76,16 +76,14 @@ docs daily/weekly/reports split).
   exploration code, not POPSIGN extraction — retire that content (superseded by
   `gislr.0.dataset.motion-energy.ipynb`) and rebuild the notebook as the extraction
   driver (§2).
-- [ ] **BROKEN (2026-09-16): `gislr.0.dataset.motion-energy.ipynb` and
-  `gislr.0.dataset.subset-comparison.ipynb` no longer run.** GISLR moved off the
-  live `asl-signs` competition parquet download to the self-produced
-  `GISLR_Stratified` npz dataset (see §3.1's new entry, README "Datasets"); both
-  notebooks call `gislr_dir()` and then read raw per-frame parquet directly via
-  DuckDB, which the new dataset doesn't provide (npz per sequence instead).
-  Their findings (`docs/reports/motion-energy.md`,
-  `docs/reports/subset-comparison.md`) stand as historical results — same
-  status as the popsign.1.mediapipe.ipynb notebook above. Retire or rebuild
-  on the npz format before running either again.
+- [x] `gislr.0.dataset.motion-energy.ipynb` — **deleted 2026-09-19** (it broke on
+  2026-09-16 when GISLR moved to npz; retired rather than rebuilt). Its findings
+  stand in `docs/reports/motion-energy.md`; the notebook is in git history
+  (≤ `e52dd6e`). The global xy-only re-run (§1.8) would need a new npz-based notebook.
+- [ ] **BROKEN (2026-09-16): `gislr.0.dataset.subset-comparison.ipynb` no longer
+  runs** — same cause (reads raw parquet via DuckDB). Its findings
+  (`docs/reports/subset-comparison.md`) stand as historical results. Retire or
+  rebuild on the npz format.
 
 ### 0.2 Packaging / config
 
@@ -737,8 +735,8 @@ is **not** yet chosen, and the sweep should not simply be finished as-is:
   "Kaggle submission queue" from `gislr.2.models.evaluation.ipynb` entirely;
   reframed §7 (TFLite export) as a plain deployment export, no longer gated
   on or framed around a submission queue. `sb.mlops.submission`'s
-  `kaggle_submit_command`/`submit_run` helpers are kept (unused by anything
-  in this repo now) in case a future dataset has a real leaderboard.
+  Kaggle-submit helpers were **deleted 2026-09-19**; the module was renamed
+  `sb.mlops.query` and keeps only the DuckDB leaderboard queries.
   README's "submission" block section and TODO/CLAUDE.md updated to match.
 
 - [x] Motion energy (feeds from §1) — delivered; keep/discard recommendation in
@@ -1533,7 +1531,7 @@ record rather than something remembered by hand.
   that variable in the environment, never inline.
   - [ ] Authorize the server from an **interactive** session (OAuth cannot run
     in a non-interactive one), then submit one model by hand end to end.
-  - [ ] Once proven, decide whether `sb.mlops.submission::submit_run`
+  - [ ] Once proven, decide whether the (since-deleted, 2026-09-19) `submit_run`
     keeps shelling out to the CLI or the notebook drives the MCP tools instead;
     the queue query and `mark_tested` bookkeeping are unaffected either way.
 - [ ] **Security**: an API token was pasted in plaintext into a chat transcript
