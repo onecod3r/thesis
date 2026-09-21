@@ -29,7 +29,7 @@ stale, trust the sections.
 | 7 | **Run `gislr.1.models.landmark-importance.ipynb`** (built 2026-09-16, not yet executed) | §3.3 | custom DNN/LSTM/GRU + full-543 engineered features + rotating k-fold — the model-derived complement to the motion-energy/probe landmark rankings (§1/§3.0) |
 | ~~8~~ | ~~Run `gislr.0.dataset.motion-energy.ipynb`~~ — **done 2026-09-21**: all three scopes, 0 failed units, results in `docs/reports/motion-energy.md` §5 | §1 | — |
 | 9 | **Run `gislr.1.models.training.ipynb` §§5b/6/7/8** (`gru_deep`/`lstm`/`bilstm`/`cnn1d` × 3 subsets, 12 runs) | §4.3 | closes the current-split benchmark gap — 52 of 55 registry runs are on the retired split, only `gru` has been re-run since the reset; no porting needed, the cells are already correct, just never executed |
-| 10 | **Run `gislr.1.models.five-arch-benchmark.ipynb`** (gru/lstm/bilstm/cnn/dnn, one feature pipeline, built + smoke-tested 2026-09-2x, not yet run) | §3.7 | brings `dnn` into a direct comparison with the other four for the first time on raw ME-126/xy, and adds the mean true-class-confidence metric the user asked for |
+| ~~10~~ | ~~Run `gislr.1.models.five-arch-benchmark.ipynb`~~ — **done 2026-09-21**: `bilstm` 0.7392 (offline) > `gru` 0.7380 > `lstm` 0.7286 > `cnn` 0.6696 > `dnn` 0.6485; `dnn`'s mean true-class confidence (0.24) a quarter of the rest — results in `docs/reports/five-arch-benchmark.md` | §3.7 | — |
 
 Decisions still owed by the user, blocking real work:
 
@@ -1292,7 +1292,7 @@ notebook, same training regime:
   it already resolves to the current split automatically, no code changes
   needed there.
 
-### 3.7 Five-architecture benchmark on one feature pipeline, plus a mean true-class-confidence metric (2026-09-2x, built — not yet run)
+### 3.7 Five-architecture benchmark on one feature pipeline, plus a mean true-class-confidence metric (built + run 2026-09-21)
 
 **Ask:** run GRU, LSTM, BiLSTM, CNN and DNN under identical conditions, and
 add a "top-n (maximum)" metric alongside top-1/3/5. Clarified the metric with
@@ -1347,14 +1347,43 @@ ranked top-N accuracy.
   confidence metric, overall and per-gloss — runs clean for every arm.
   Cache/artifacts from the smoke test deleted before handoff (throwaway,
   like every other notebook this session).
-- [ ] **Run it** (user); write up `docs/reports/five-arch-benchmark.md` after
-  — cross-check `gru`/`lstm`/`bilstm`/`cnn` here (single-final-fit) against
-  their canonical registry counterparts once §4.3's 12-run gap is filled, as
-  a sanity check that the two protocols agree; report where `dnn` lands
-  relative to the other four, and which glosses come out lowest-confidence
-  across architectures (a signal for TODO §7's confusable-pair work,
-  independent of the ranked-accuracy view `pair-similarity.md` already
-  used).
+- [x] **Run it** (user) — **run 2026-09-21, all five arms, 0 failures, ~51 min
+  wall clock.** Held-out `test.csv` top-1: `bilstm` 0.7392 (offline-only) >
+  `gru` 0.7380 > `lstm` 0.7286 > `cnn` 0.6696 > `dnn` 0.6485 — among
+  streaming-viable arms `gru` leads, and every arm sits at or below the
+  canonical `gru`/ME_132/xy registry entry (0.7517), so nothing here beats
+  the existing streaming baseline. `bilstm`'s number agrees with the
+  same-pipeline `bilstm_base` run from `bilstm-curated.ipynb` (0.7371) to
+  within 0.2pp. **Standout: `dnn`'s mean true-class confidence (0.2387) is a
+  quarter of every other arm's (0.59–0.61)** despite top-3/5 accuracy in the
+  same range as `cnn` — ranked accuracy and confidence decouple for the
+  per-frame, softmax-averaged architecture. `give`/`gift` is the hardest
+  confusable pair and `give` the lowest-confidence gloss, for every single
+  arm — two independent metrics agreeing on one sign. `cnn`/`dnn` trained
+  far longer (137-138 vs 66-79 epochs) with almost no train/val gap
+  (underfitting, not better generalization — both still land well below the
+  recurrent arms on top-1). Full write-up: `docs/reports/five-arch-benchmark.md`.
+  Note: the notebook's own confusable-pair (§5) and registry-comparison (§6)
+  cells only print in-kernel rather than caching to disk — the report
+  recomputed both from each arm's saved `test_predictions.npz` rather than
+  losing them; filed as a follow-up to fix the notebook itself.
+- [ ] **Cross-check `gru`/`lstm`/`bilstm`/`cnn` here (single-final-fit)
+  against their canonical registry counterparts** once §4.3's 12-run gap is
+  filled — right now only `gru` has a comparison point (0.7380 here vs
+  0.7450 canonical, −0.70pp, protocols not identical), not a clean
+  same-protocol check for the other three.
+- [ ] **`dnn`'s mean-true-class-confidence collapse** — is it specific to
+  averaging per-frame softmaxes, or would a per-frame-max/last-frame readout
+  close the gap? Also: `dnn` scores *worse* on the 922-dim curated pipeline
+  (0.5776, `curated-features.md`) than on this raw 252-dim pipeline
+  (0.6485), but *better* on the full-543 engineered pipeline (0.7102,
+  `landmark-importance.md`) — non-monotonic in dimensionality, possibly the
+  same "no projection/attention gate" pattern `bilstm-curated.md` found for
+  curated features specifically.
+- [ ] Fill in the notebook's §4b/§5/§6 cells to actually cache their output
+  (per-gloss confidence already does; confusable-pair table and registry
+  comparison don't) so a re-run doesn't require reconstructing them from
+  `test_predictions.npz` the way this write-up did.
 
 ---
 
