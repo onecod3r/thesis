@@ -29,6 +29,7 @@ stale, trust the sections.
 | 7 | **Run `gislr.1.models.landmark-importance.ipynb`** (built 2026-09-16, not yet executed) | §3.3 | custom DNN/LSTM/GRU + full-543 engineered features + rotating k-fold — the model-derived complement to the motion-energy/probe landmark rankings (§1/§3.0) |
 | ~~8~~ | ~~Run `gislr.0.dataset.motion-energy.ipynb`~~ — **done 2026-09-21**: all three scopes, 0 failed units, results in `docs/reports/motion-energy.md` §5 | §1 | — |
 | 9 | **Run `gislr.1.models.training.ipynb` §§5b/6/7/8** (`gru_deep`/`lstm`/`bilstm`/`cnn1d` × 3 subsets, 12 runs) | §4.3 | closes the current-split benchmark gap — 52 of 55 registry runs are on the retired split, only `gru` has been re-run since the reset; no porting needed, the cells are already correct, just never executed |
+| 10 | **Run `gislr.1.models.five-arch-benchmark.ipynb`** (gru/lstm/bilstm/cnn/dnn, one feature pipeline, built + smoke-tested 2026-09-2x, not yet run) | §3.7 | brings `dnn` into a direct comparison with the other four for the first time on raw ME-126/xy, and adds the mean true-class-confidence metric the user asked for |
 
 Decisions still owed by the user, blocking real work:
 
@@ -1290,6 +1291,70 @@ notebook, same training regime:
   `gislr.1.models.training.ipynb`'s existing `bilstm`/`ME_126`/`xy` config —
   it already resolves to the current split automatically, no code changes
   needed there.
+
+### 3.7 Five-architecture benchmark on one feature pipeline, plus a mean true-class-confidence metric (2026-09-2x, built — not yet run)
+
+**Ask:** run GRU, LSTM, BiLSTM, CNN and DNN under identical conditions, and
+add a "top-n (maximum)" metric alongside top-1/3/5. Clarified the metric with
+the user first: not another ranked top-N tier, but **the probability mass
+the model assigns to the correct class specifically, independent of its
+rank** — e.g. true label `sleep`, model outputs `dog: 0.9, cat: 0.65,
+sleep: 0.2` → that sample scores **0.2**, averaged per gloss and overall.
+Called **mean true-class confidence** in code/docs to avoid confusion with
+ranked top-N accuracy.
+
+- [x] **New notebook**: `experiments/recognition/gislr.1.models.five-arch-benchmark.ipynb`
+  + `experiments/recognition/configs/gislr.five-arch-benchmark.json` —
+  mirrors `bilstm-curated.ipynb`'s proven structure (single final fit, small
+  internal-val carve-out, `sb.recognize.interp.train`'s generic driver).
+  **All five arms share one feature pipeline** (`base_v1`, ME-126/xy,
+  252-dim) and **one hyperparameter regime** (copied verbatim from
+  `gislr.training.json`'s `shared` block — same batch/lr/epochs/patience the
+  current-split `gru`/`lstm`/`bilstm`/`cnn1d` registry runs use), so all five
+  are directly comparable to each other.
+  - `gru`/`lstm`/`bilstm`/`cnn` — the unmodified production classes
+    (`sb.recognize.architectures`), fed straight through
+    `sb.recognize.interp.train`'s generic `forward(x, lengths) -> (B, C)`
+    path (`run_epoch_rnn`) — `cnn`(`CausalConv1D`) fits this contract too
+    despite not being recurrent.
+  - `cnn`'s `num_layers` overrides to **5**, the same TODO §5.5.1 fix
+    `gislr.training.json`'s `cnn1d` already has — `num_layers` means dilated
+    conv *blocks* for this architecture (receptive field), not recurrent
+    layers; at the shared `num_layers=2` it would crush to a 13-frame
+    receptive field.
+  - `dnn` — `sb.recognize.interp.models.LandmarkDNN`, fed the same flat
+    252-dim vector directly (`n_landmarks=126, channels_per_landmark=2,
+    angle_dim=0, relational_dim=0` — no angle/relational blocks, `base_v1`
+    doesn't compute them). **Never measured on this raw pipeline before**
+    (only on full-543 `landmark_interp_v1` in `landmark-importance.ipynb`, or
+    the 922-dim curated pipeline in `curated-features.ipynb`) — this closes
+    that gap. Per-frame classifier, memory-free, video prediction =
+    softmax-averaged over valid frames (`run_epoch_dnn`,
+    `predict_probs_indexed`'s `arch=="dnn"` branch).
+  - **Mean true-class confidence**: `probs[arange(N), true_labels]` — one
+    line, computed alongside the existing top-1/3/5 ranked-accuracy block
+    from the same prediction matrix. §4b breaks it out **per gloss**
+    (`per_gloss_confidence.csv`) — which signs does each architecture
+    "believe in" least, even when it still ranks them correctly at top-1?
+  - Confusable-pair check + registry-leaderboard comparison sections carried
+    over from `bilstm-curated.ipynb` unchanged (same 16 pairs, same
+    live-query pattern).
+- [x] **Smoke-tested against real data** before handoff: model-factory
+  construction + forward pass for all five arms (correct output shapes —
+  `(B,C)` for four, `(B,T,C)` for `dnn`; correct `cnn` `num_layers=5`), then
+  a full 2-epoch end-to-end pass (real feature cache, real training loop,
+  real held-out eval) confirming the whole pipeline — including the new
+  confidence metric, overall and per-gloss — runs clean for every arm.
+  Cache/artifacts from the smoke test deleted before handoff (throwaway,
+  like every other notebook this session).
+- [ ] **Run it** (user); write up `docs/reports/five-arch-benchmark.md` after
+  — cross-check `gru`/`lstm`/`bilstm`/`cnn` here (single-final-fit) against
+  their canonical registry counterparts once §4.3's 12-run gap is filled, as
+  a sanity check that the two protocols agree; report where `dnn` lands
+  relative to the other four, and which glosses come out lowest-confidence
+  across architectures (a signal for TODO §7's confusable-pair work,
+  independent of the ranked-accuracy view `pair-similarity.md` already
+  used).
 
 ---
 
