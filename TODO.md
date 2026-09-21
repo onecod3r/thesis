@@ -28,6 +28,7 @@ stale, trust the sections.
 | 6 | Re-run the evaluation notebook on the 42-run registry | §6.1 | it last ran against 18 runs; only 1 of 42 run folders has a confusion matrix |
 | 7 | **Run `gislr.1.models.landmark-importance.ipynb`** (built 2026-09-16, not yet executed) | §3.3 | custom DNN/LSTM/GRU + full-543 engineered features + rotating k-fold — the model-derived complement to the motion-energy/probe landmark rankings (§1/§3.0) |
 | ~~8~~ | ~~Run `gislr.0.dataset.motion-energy.ipynb`~~ — **done 2026-09-21**: all three scopes, 0 failed units, results in `docs/reports/motion-energy.md` §5 | §1 | — |
+| 9 | **Run `gislr.1.models.training.ipynb` §§5b/6/7/8** (`gru_deep`/`lstm`/`bilstm`/`cnn1d` × 3 subsets, 12 runs) | §4.3 | closes the current-split benchmark gap — 52 of 55 registry runs are on the retired split, only `gru` has been re-run since the reset; no porting needed, the cells are already correct, just never executed |
 
 Decisions still owed by the user, blocking real work:
 
@@ -1505,6 +1506,77 @@ so it isn't chased as three separate untracked efforts:
   native Keras; exporting the port needs Keras equivalents of Conv1DBlock /
   ECA / TransformerBlock. Not needed to measure accuracy, required before any
   Kaggle submission of this model (§6.3).
+
+### 4.3 Full-registry benchmark on the current split + legacy-run deprecation (2026-09-2x)
+
+**Audited 2026-09-2x** whether any training notebook/config still targets the
+retired `asl-signs` parquet / self-computed 90/10 split, since the request was
+to "port outdated training regimes" to GISLR_Stratified. **Finding: nothing
+needs porting.** Every training-producing notebook and config already resolves
+the current split automatically (`gislr_dir()` / `get_canonical_split` /
+`get_source("gislr")`) — `gislr.1.models.training.ipynb`,
+`gislr.1.models.firstplace.ipynb`, `gislr.1.models.landmark-importance.ipynb`,
+`gislr.1.models.curated-features.ipynb`, `gislr.1.models.bilstm-curated.ipynb`
+all read npz already. The 52-of-55 legacy-split registry entries are old
+because they were trained **before** the 2026-09-16 reset, not because their
+code is stale — re-running the exact same notebook cells now trains on the
+current split with zero code changes. (Two non-training, diagnostic
+notebooks — `gislr.0.dataset.subset-comparison.ipynb` and TF-era
+`popsign.2.model.ipynb` — are still on the old path; tracked separately under
+§0.1/§0.4, not part of this item since they don't produce registry runs.)
+
+**Legacy-run deprecation — done (schema-light, no migration).** Rather than
+add a persisted `deprecated` field to every one of 52 `meta.json` files
+(schema v4 → v5, a real migration for zero new information — `dataset` +
+`split.n_val` already determine this permanently), declared obsolete via a
+**derived** `legacy_split` boolean (GISLR only, `split.n_val == 9448`):
+- `sb.mlops.registry.is_legacy_gislr_split(meta)` — the one predicate
+  everything below calls, so the rule can't drift.
+- `index.csv` gained a `legacy_split` column (`build_model_index.py
+  --legacy` / `--current` to filter); the README's generated leaderboard
+  block now excludes legacy runs by default (`index.markdown_summary`) —
+  **52 on the retired split, only 3 current** (all `gru`).
+- `sb.mlops.query.leaderboard()` keeps its existing default (`include_legacy=True`
+  — every caller, including `gislr.2.models.evaluation.ipynb`'s top-N
+  selection for learning curves/confusion matrices/**TFLite export**, behaves
+  identically to before); pass `include_legacy=False` for a current-split-only
+  view. `query_runs` exposes `split_n_val`/`legacy_split` directly for any
+  `WHERE` clause.
+- `sb.mlops.promote.check()` now **refuses to promote a legacy-split GISLR
+  run** to any alias — closes a real gap (nothing previously stopped a
+  stale-split run from becoming `champion.recognize.streaming`).
+
+**Benchmark gap — what's left to actually run** (all via existing,
+unmodified code; no porting). `gislr.training.json` already configures
+`gru`/`lstm`/`bilstm`/`gru_deep`/`cnn1d` × `{ME_126, ME_132, FP_118}` × `xy`
+(15 combos) in one notebook; `gislr.1.models.training.ipynb`'s cells train
+all 3 subsets for one architecture per cell (`train_from_config(ARCH,
+subsets=None)`). Current status:
+- [x] `gru` × 3 subsets — **already run 2026-09-16**, the only current-split
+  entries so far (0.7517/0.7450/0.7425).
+- [ ] `gru_deep`, `lstm`, `bilstm`, `cnn1d` × 3 subsets each = **12 runs** —
+  cells built, **never executed even once** (`execution_count: null` in the
+  notebook as of this audit) — run notebook §§5b/6/7/8 (user).
+- [ ] `conv1d_transformer` (1st-place port) × `FP_118`/xy — **not a simple
+  re-run**: §4.2 tracks its own unresolved collapse investigation
+  independently of the split reset; its next run (once that's fixed) will
+  land on the current split automatically like everything else, so no
+  separate porting action is needed here, only the §4.2 fix.
+- [?] `gru` × `xyz` (any subset) — existed pre-reset (52-run legacy set
+  includes xyz variants) but `gislr.training.json` only configures `xy`.
+  **Decision needed, not silently resolved**: the whole point of the ME-126
+  subset work was "xy beats xyz" (`docs/reports/motion-energy.md` §2.3,
+  `docs/reports/subset-comparison.md`) — re-benchmarking xyz on the current
+  split would satisfy "replace every legacy combo" literally, but may just
+  reproduce a settled conclusion at real GPU cost. Left open rather than
+  added to the config unasked.
+
+Once the 12 runs above land, re-run `gen_docs.py` to refresh the leaderboard
+and cross-check every architecture's current-split number against its
+legacy-split counterpart in `index.csv` (`--legacy` vs `--current`) as a
+migration sanity check — same architecture/subset should land in the same
+neighborhood; a large unexplained swing would flag a real regression, not
+just a stale-split artifact.
 
 ---
 

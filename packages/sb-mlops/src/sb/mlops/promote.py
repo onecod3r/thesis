@@ -65,6 +65,11 @@ def check(run_dir: Path, alias: str) -> list[str]:
         problems.append(
             "not canonically evaluated — promote only what has been measured on "
             "the canonical split (sb-evaluate <run_dir>)")
+    if R.is_legacy_gislr_split(meta):
+        problems.append(
+            "trained on the retired 9,448-val GISLR split (pre-2026-09-16 "
+            "canonical-split reset) — not comparable to the current 18,896-val "
+            "split; promote a current-split run instead")
     if not _backed_up(run_dir):
         problems.append(
             "weights are not in the off-machine store — promoting a checkpoint "

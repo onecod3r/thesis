@@ -84,7 +84,7 @@
     },
     "split": {
       "type": "object",
-      "description": "{strategy, random_state, n_val} \u2014 the canonical split (GISLR_Stratified's fixed 80/20, upstream seed 42, 18,896 val; reset 2026-09-16 from a self-computed stratified 90/10, 9,448 val)"
+      "description": "{strategy, random_state, n_val} \u2014 the canonical split (GISLR_Stratified's fixed 80/20, upstream seed 42, 18,896 val; reset 2026-09-16 from a self-computed stratified 90/10, 9,448 val). index.csv/query_runs derive a legacy_split boolean from this (GISLR only, n_val==9448) rather than storing one \u2014 see is_legacy_gislr_split"
     },
     "training": {
       "type": "object",

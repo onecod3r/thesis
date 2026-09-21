@@ -48,7 +48,7 @@ LEAD_COLUMNS = [
     "median_class_accuracy", "n_classes_below_50pct", "train_val_acc",
     "n_landmarks", "feature_dim", "n_params", "n_classes",
     "model_name", "streaming",
-    "split_strategy", "split_random_state", "split_n_val",
+    "split_strategy", "split_random_state", "split_n_val", "legacy_split",
     "training_regime", "training_source", "training_epoch_cap",
     "training_epochs_trained", "training_best_epoch", "training_early_stopped",
     "training_finished", "training_wall_time_min",
@@ -106,6 +106,10 @@ def load_runs() -> pd.DataFrame:
         return pd.DataFrame(columns=[*LEAD_COLUMNS, "notes"])
     df = pd.DataFrame(rows)
     df["val_acc"] = df["overall_accuracy"].fillna(df["train_val_acc"])
+    # Derived, not stored (see registry.is_legacy_gislr_split) — same rule,
+    # applied to the already-flattened columns rather than raw meta.json.
+    df["legacy_split"] = ((df["dataset"] == "gislr")
+                          & (df["split_n_val"] == R.GISLR_LEGACY_SPLIT_N_VAL))
     ordered = [c for c in LEAD_COLUMNS if c in df.columns]
     rest = [c for c in df.columns if c not in ordered and c != "notes"]
     df = df[ordered + rest + ["notes"]]
@@ -124,18 +128,25 @@ def markdown_summary(df: pd.DataFrame, top: int = 5) -> str:
     canonical = int((df["eval_status"] == "canonical").sum())
     tested = int(df["submission_tested"].fillna(False).astype(bool).sum())
     prov = int(df["prov_git_commit"].notna().sum()) if "prov_git_commit" in df else 0
+    legacy = int(df["legacy_split"].sum()) if "legacy_split" in df else 0
     lines = [
         f"**{len(df)} runs** · {canonical} canonically evaluated · {tested} scored "
         f"on a held-out test set · {prov} carrying provenance "
-        f"(schema v{R.SCHEMA_VERSION}).",
+        f"(schema v{R.SCHEMA_VERSION})"
+        + (f" · **{legacy} on the retired GISLR 9,448-val split** "
+           "(pre-2026-09-16 reset, historical reference only — see TODO §4.3)"
+           if legacy else "") + ".",
         "",
-        f"Top {top} by canonical val accuracy "
-        "(training-loop best where the canonical eval has not run):",
+        f"Top {top} by canonical val accuracy, **current-split GISLR runs only** "
+        "(training-loop best where the canonical eval has not run; legacy-split "
+        "runs are excluded here, not deleted — `index.csv`'s `legacy_split` "
+        "column still lists them):",
         "",
         "| run | dataset | architecture | subset | coords | val acc | eval | params |",
         "|---|---|---|---|---|---|---|---|",
     ]
-    best = df.sort_values("val_acc", ascending=False).head(top)
+    current = df[~df["legacy_split"]] if "legacy_split" in df else df
+    best = current.sort_values("val_acc", ascending=False).head(top)
     for _, r in best.iterrows():
         lines.append(
             f"| `{r['run_id']}` | {r['dataset']} | {r['architecture']} | "
@@ -154,6 +165,12 @@ def main():
     ap.add_argument("--untested", action="store_true",
                     help="show only runs not yet scored on the official test set "
                          "(submission.tested = false) — the submission queue")
+    ap.add_argument("--legacy", action="store_true",
+                    help="show only GISLR runs on the retired 9,448-val split "
+                         "(pre-2026-09-16 reset)")
+    ap.add_argument("--current", action="store_true",
+                    help="show only runs NOT on the retired GISLR split "
+                         "(the inverse of --legacy; a no-op for non-GISLR rows)")
     ap.add_argument("--no-migrate", action="store_true",
                     help="skip the older-meta.json schema backfill")
     ap.add_argument("--markdown", action="store_true",
@@ -184,11 +201,16 @@ def main():
             view = view[view[col].str.lower() == getattr(args, col).lower()]
     if args.untested:
         view = view[~view["submission_tested"].fillna(False).astype(bool)]
+    if args.legacy:
+        view = view[view["legacy_split"]]
+    if args.current:
+        view = view[~view["legacy_split"]]
     if args.top:
         view = view.head(args.top)
 
     show = ["dataset", "architecture", "run_id", "subset", "coords",
-            "val_acc", "eval_status", "submission_tested", "n_params", "created"]
+            "val_acc", "eval_status", "legacy_split", "submission_tested",
+            "n_params", "created"]
     with pd.option_context("display.width", 200, "display.max_columns", None):
         print(view[show].to_string(index=False))
 

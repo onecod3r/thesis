@@ -34,6 +34,15 @@ CKPT_BEST = "best.pt"
 CKPT_LAST = "last.pt"
 RUN_PTR_DIR = CACHE_DIR / "runs"  # <dataset>_<arch>_<tag>.txt -> active run dir
 
+# GISLR canonical-split reset (2026-09-16, README "Canonical evaluation" /
+# TODO §3.0.2): the fixed 80/20 GISLR_Stratified split has 18,896 val videos;
+# every run recorded before the reset used a self-computed 90/10 split with
+# 9,448. These numbers are GISLR-specific — POPSIGN's `split` field has its
+# own, unrelated semantics — so everything derived from them below is gated
+# on `dataset == "gislr"`.
+GISLR_LEGACY_SPLIT_N_VAL = 9448
+GISLR_CURRENT_SPLIT_N_VAL = 18896
+
 # DuckDB entry point: read_json_auto(META_GLOB) gives one row per run, so
 # "the leaderboard" is a query over the run records themselves. index.csv is the
 # committed snapshot of that query, never the query path.
@@ -58,7 +67,7 @@ FIELDS: dict[str, tuple[str, str]] = {
     "feature_dim": ("integer", "input width per frame"),
     "n_classes": ("integer", "label-space size"),
     "n_params": ("integer", "trainable parameters"),
-    "split": ("object", "`{strategy, random_state, n_val}` — the canonical split (GISLR_Stratified's fixed 80/20, upstream seed 42, 18,896 val; reset 2026-09-16 from a self-computed `stratified 90/10`, 9,448 val)"),
+    "split": ("object", "`{strategy, random_state, n_val}` — the canonical split (GISLR_Stratified's fixed 80/20, upstream seed 42, 18,896 val; reset 2026-09-16 from a self-computed `stratified 90/10`, 9,448 val). `index.csv`/`query_runs` derive a `legacy_split` boolean from this (GISLR only, `n_val==9448`) rather than storing one — see `is_legacy_gislr_split`"),
     "training": ("object", '`{regime, source, epoch_cap, epochs_trained, best_epoch, early_stopped, finished, wall_time_min}`, plus `stop_reason` (`"completed"`/`"plateau"`/`"collapse"`/`"nan"`) on `fp-onecycle-300` runs. `source` is the DRIVER NOTEBOOK, not the dataset'),
     "hyperparameters": ("object", "full `HYP` dict + `seed`, `max_seq_len`, `num_workers`, `loss`, `precision`"),
     "provenance": ("object|null", "what state of the world produced the run — see below. `null` for pre-v4 runs, and that is permanent"),
@@ -146,6 +155,19 @@ def load_meta(run_dir: Path) -> dict:
     meta.setdefault("submission", dict(SUBMISSION_DEFAULT))
     meta.setdefault("provenance", None)
     return meta
+
+
+def is_legacy_gislr_split(meta: dict) -> bool:
+    """True for a GISLR run recorded on the retired 9,448-val split — the
+    2026-09-16 canonical-split reset's definition of "declared obsolete":
+    superseded by, and not comparable to, anything on the current 18,896-val
+    split. Deliberately not persisted anywhere (no schema field, no
+    migration) — `dataset`/`split.n_val` already record this permanently and
+    accurately, so deriving it on read is the only version that can't drift.
+    Always False for a non-GISLR run; POPSIGN's `split.n_val` means something
+    else entirely."""
+    return (meta.get("dataset") == "gislr"
+            and meta.get("split", {}).get("n_val") == GISLR_LEGACY_SPLIT_N_VAL)
 
 
 def write_meta(run_dir: Path, meta: dict) -> Path:
