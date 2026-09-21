@@ -1,7 +1,15 @@
 # GISLR landmark motion-energy analysis
 
-**Status: complete.** All three scopes executed end to end, 0 failed units. This
-report backfills the standalone write-up for a test that previously lived only
+**Status: complete, two runs.** §1–§4 below are the original 2026-07-15 run
+(raw `asl-signs` parquet, xyz-first with a sample-only xy decomposition). That
+notebook broke 2026-09-16 when GISLR moved to the GISLR_Stratified npz dataset,
+was deleted 2026-09-19, and was rebuilt + re-run 2026-09-21 — **§5** is that
+rerun: xy-native at the source (not decomposed after), jitter smoothed before
+the derivative, plus a new joint-angle "change of angles" instrument. Read §5
+first for the current numbers; §1–§4 stay as the original methodology
+write-up and are superseded only where §5 says so.
+
+This report backfills the standalone write-up for a test that previously lived only
 as a daily-log entry (TODO §0.5); the original narrative is
 [docs/logs/daily/2026-07-15.md](../logs/daily/2026-07-15.md) Part I.
 
@@ -161,12 +169,200 @@ the parameters.
 
 ## 4. Follow-ups
 
-- [ ] Global xy-only re-aggregation of the motion-energy summaries (z-noise
-  correction at full-dataset scale) — TODO §1.8.
+- [x] Global xy-only re-aggregation of the motion-energy summaries (z-noise
+  correction at full-dataset scale) — TODO §1.8. **Done in §5** (2026-09-21,
+  on the GISLR_Stratified npz rebuild — xy computed at the source, not as a
+  post-hoc decomposition).
 - [x] Within-class consistency + cross-class discriminability — delivered as
   [subset-comparison.md](subset-comparison.md).
-- [ ] Re-run motion energy on normalized coordinates once TODO §7.2
+- [~] Re-run motion energy on normalized coordinates once TODO §7.2
   normalization lands — un-normalized motion may be biased by signer scale
-  (TODO §7.7).
+  (TODO §7.7). **Partial in §5**: the new joint angles run on
+  `center_and_scale`-normalized positions (angles are scale-invariant anyway,
+  but this keeps them comparable to `feature-discriminability.md`'s numbers);
+  per-landmark RMS speed is still deliberately un-normalized (§5's title-cell
+  rationale — normalizing would conflate camera distance with actual motion).
 
-*Report backfilled 2026-07-22 from `docs/logs/daily/2026-07-15.md` (test executed 2026-07-15, seed 42).*
+*Report backfilled 2026-07-22 from `docs/logs/daily/2026-07-15.md` (test executed 2026-07-15, seed 42). §5 added 2026-09-21.*
+
+---
+
+## 5. v2 rerun — GISLR_Stratified npz, xy-native + joint-angle change (2026-09-21)
+
+**Instrument:** `experiments/recognition/gislr.0.dataset.motion-energy.ipynb`
+(rebuilt after the pre-npz version broke 2026-09-16 and was deleted
+2026-09-19). **Data:** GISLR_Stratified (`bracu23101281/gislr-stratified`):
+94,477 videos, 250 signs, 543 landmarks/frame — same landmark content as the
+2026-07-15 run, different storage (pre-converted npz vs raw parquet) and split
+(fixed 80/20 vs the dataset's internal ordering). **Method changes from §1–§4**
+(full rationale in the notebook's title cell):
+
+1. **z dropped before the speed computation**, not decomposed after — every
+   scope computes `rms_speed` directly on xy. §2.3's finding (92% of pose
+   "motion" was z-noise) motivated this; this run confirms it holds at full
+   scale (§5.1).
+2. **Savitzky-Golay smooths the position series before the frame-to-frame
+   difference** (same window=7, polyorder=2) — jitter is removed before the
+   derivative sees it, not filtered from the RMS output afterward.
+3. **New: 28 joint angles' rate of change** ("change of angles", RMS angular
+   speed in deg/frame) — reuses `sb.recognize.interp.kinematics.compute_angles`
+   (shoulder/elbow/wrist flex + 10 finger joints/hand + palm-facing), computed
+   on normalized (`center_and_scale`), jitter-smoothed positions.
+
+All three scopes completed with **0 failed units** (50 videos, 10 signs ≈
+3,662 videos, 189 chunks / 94,477 videos global).
+
+### 5.1 Global landmark motion energy (xy, all 94,477 videos)
+
+| type | n landmarks | mean RMS (xy) | detected in % of videos |
+|---|---|---|---|
+| right_hand | 21 | 0.0203 | 54.7% |
+| left_hand | 21 | 0.0198 | 41.4% |
+| pose | 33 | 0.0172 | 100.0% |
+| face | 468 | 0.0030 | 99.9% |
+
+Detection rates reproduce the 2026-07-15 numbers **exactly** (99.9% / 100% /
+54.7% / 41.4%) — the landmark *content* didn't change across the dataset
+migration, only its storage format, and the dominant-hand asymmetry
+(right-hand detected in more videos than left) holds on the new split too.
+
+Pose, broken out by the same subgroup the old report used — compared against
+that report's **50-video xy-only sample estimate** (§2.3):
+
+| pose subgroup | old sample (50 videos, xy) | new global (94,477 videos, xy) |
+|---|---|---|
+| hand pts (17-22) | 0.0412 | **0.0449** |
+| arms (11-16) | 0.0179 | **0.0185** |
+| legs (25-32) | 0.0150 | **0.0173** |
+| hips (23-24) | 0.0081 | **0.0084** |
+| head (0-10) | 0.0028 | **0.0029** |
+
+The 50-video sample tracked the global xy pattern closely on every subgroup
+(within ~15% everywhere, exact on head/hips/arms) — **independent
+confirmation, on a different dataset and a different codebase, that seeded
+samples reproduce the global landmark-motion ranking** (the same conclusion
+§2.2 reached with rank correlation; see also §5.2 below).
+
+Top movers globally: pose landmarks 504–511 (holistic rows = pose wrist +
+wrist-adjacent hand points, pose-local indices 15–22) — 0.033–0.050 RMS.
+Bottom: pose ear-region landmarks (496, 497) and face, 0.0024–0.0028 —
+consistent with §2 ("fingertips move most, face is nearly flat").
+
+![Global landmark motion energy (xy), 94,477 videos](assets/motion-energy/global_overview_landmarks_v2.png)
+
+**One new wrinkle, not resolved here:** at global xy scale, **legs (0.0173)
+sit almost as high as arms (0.0185)** — closer than the 50-video sample
+suggested (0.0150 vs 0.0179). The original keep/discard verdict (§3) discarded
+legs as "out of frame; apparent motion is jitter," reasoned from xyz being
+dominated by z-noise (95%, §2.3). This xy-native global number doesn't fully
+support "jitter" as the explanation on its own — there's real, non-trivial
+xy displacement even for landmarks that should be off-camera in seated
+signing, which could be actual signer movement (shifting in the chair),
+tracker drift when a landmark is unseen, or both. Motion energy alone can't
+tell those apart; resolving it needs the discriminability instrument (does
+leg motion correlate with sign identity, or is it noise-like and
+class-independent?), not another motion-energy pass. Filed as a follow-up
+(§5.5), not a revision of the ME-126 subset.
+
+### 5.2 Cross-scope comparison (landmarks)
+
+Spearman rank correlation of per-landmark mean RMS speed (xy) against the
+global run:
+
+| sample | rho vs global (n=543) |
+|---|---|
+| per-video (50 videos) | **0.951** |
+| per-category (10 signs, ≈3,662 videos) | **0.990** |
+
+Nearly identical to the pre-npz run's 0.954 / 0.996 (§2.2) — despite a
+different dataset, split, and formula (xyz→xy-after vs xy-native), seeded
+samples reproduce the global landmark ranking just as reliably on the rebuilt
+pipeline.
+
+![Cross-scope comparison — landmarks (xy)](assets/motion-energy/cross_scope_landmarks_v2.png)
+
+### 5.3 Joint-angle motion — "change of angles" (new)
+
+RMS angular speed (deg/frame), global, all 94,477 videos, highest and lowest
+5 of 28:
+
+| angle | RMS angular speed (deg/frame) |
+|---|---|
+| L_elbow_angle | 4.73 |
+| R_shoulder_angle | 4.48 |
+| R_elbow_angle | 4.12 |
+| L_shoulder_angle | 4.04 |
+| R_middle_pip_flex | 3.80 |
+| … | … |
+| L_thumb_pip_flex | 1.17 |
+| R_thumb_mcp_flex | 1.23 |
+| L_thumb_mcp_flex | **0.91** |
+
+**Shoulder and elbow angles change fastest** — the large-amplitude arm swings
+that carry most sign articulation — followed by finger PIP (middle-knuckle)
+flex angles. **Thumb joints change least** across every metric (MCP and PIP
+both bottom the ranking), consistent with the thumb's smaller range of motion
+relative to the four fingers. Wrist-orientation angles and palm-facing sit in
+the middle. **Right-hand angles exceed their left-hand counterparts in 13 of
+14 paired joints** — every finger joint, the wrist, palm-facing, and the
+shoulder (R 4.48 vs L 4.04) — the sole exception is the elbow, where **left**
+leads (L 4.73 vs R 4.12), the single largest RMS value in the whole table and
+not a near-tie. The same dominant-hand asymmetry §2.1 found in detection rate
+shows up in *how much the joints move*, not just whether the hand is
+visible; the elbow exception is a genuine oddity worth a closer look, not
+noise.
+
+![Global joint-angle change, 94,477 videos](assets/motion-energy/global_overview_angles_v2.png)
+
+Cross-scope rank correlation (per-angle mean RMS angular speed vs global):
+
+| sample | rho vs global (n=28) |
+|---|---|
+| per-video (50 videos) | 0.743 |
+| per-category (10 signs) | **0.991** |
+
+**New finding:** a single-video sample is a much noisier estimate of the
+global *angle* ranking (rho 0.743) than it is of the global *landmark*
+ranking (rho 0.951, §5.2) — one video's arm-swing amplitude is idiosyncratic
+to that sign/signer, while summing 543 landmarks' motion in one video already
+averages out a lot of that noise. The per-category sample (aggregating ~370
+videos per sign) recovers the same reliability as landmarks (0.991). Any
+future angle-motion analysis should sample at the category level or larger,
+not per-video.
+
+![Cross-scope comparison — joint angles](assets/motion-energy/cross_scope_angles_v2.png)
+
+### 5.4 What reproduced vs what's new
+
+**Reproduced exactly:** per-type detection rates (99.9% / 100% / 54.7% /
+41.4%), the fingertip-moves-most / face-is-flat pattern, dominant-hand
+asymmetry, and — closely — the pose-subgroup xy magnitudes the 2026-07-15
+50-video sample estimated. This is strong evidence the dataset migration
+(parquet → npz) didn't change the underlying landmark content, only its
+packaging.
+
+**New:** the joint-angle "change of angles" instrument didn't exist in the
+pre-npz run at all. **Not settled:** whether legs' comparatively high global
+xy motion (§5.1) is real signal or tracking noise — flagged, not resolved.
+
+### 5.5 Follow-ups (from this run)
+
+- [ ] Investigate the legs xy-motion anomaly (§5.1) — correlate leg landmark
+  motion with sign identity (a discriminability probe, not another
+  motion-energy pass) to tell real signer movement from tracker drift on an
+  off-camera landmark.
+- [ ] Cross-check joint-angle *rate of change* against
+  [feature-discriminability.md](feature-discriminability.md)'s finding that
+  static angle *value* (mean/std) is the most information-dense feature
+  type — is angular speed also discriminative, or mostly generic
+  "how active is this sign" activity that doesn't separate classes?
+- [ ] Re-run per-landmark motion energy on normalized (not just angle)
+  coordinates once wanted (TODO §7.7) — deliberately left un-normalized here;
+  see §5's rationale.
+- [ ] Explain the elbow left/right reversal (§5.3) — every other paired joint
+  favors the right (dominant) hand, but `L_elbow_angle` is the single highest
+  RMS value in the whole 28-angle table while `R_elbow_angle` sits mid-pack.
+  Worth checking whether it's a genuine bracing/counterbalance motion of the
+  non-dominant arm during signing, or an artifact of the elbow-angle
+  definition (shoulder-elbow-wrist) being more sensitive to pose-landmark
+  noise on one side.

@@ -27,7 +27,7 @@ stale, trust the sections.
 | 5 | **§7.2 normalization or §7.4 augmentation**, under §7.6's ablation protocol | §7.1 → §7.2/§7.4 | the diagnosis is complete: the plateau is a generalization gap (train confusion 0.012 vs val 0.273), and these are the two levers that attack one |
 | 6 | Re-run the evaluation notebook on the 42-run registry | §6.1 | it last ran against 18 runs; only 1 of 42 run folders has a confusion matrix |
 | 7 | **Run `gislr.1.models.landmark-importance.ipynb`** (built 2026-09-16, not yet executed) | §3.3 | custom DNN/LSTM/GRU + full-543 engineered features + rotating k-fold — the model-derived complement to the motion-energy/probe landmark rankings (§1/§3.0) |
-| 8 | **Run `gislr.0.dataset.motion-energy.ipynb`** (rebuilt 2026-09-21 for GISLR_Stratified npz, not yet executed) | §1 | old npz-broken version deleted 2026-09-19; rebuild adds xy-native RMS speed + joint-angle-change on top of the pre-npz findings — `docs/reports/motion-energy.md` can't be updated until this runs |
+| ~~8~~ | ~~Run `gislr.0.dataset.motion-energy.ipynb`~~ — **done 2026-09-21**: all three scopes, 0 failed units, results in `docs/reports/motion-energy.md` §5 | §1 | — |
 
 Decisions still owed by the user, blocking real work:
 
@@ -84,9 +84,11 @@ docs daily/weekly/reports split).
   derivative, and new per-joint-angle RMS angular speed ("change of angles", reusing
   `kinematics.compute_angles`'s 28 joints). Core math factored into
   `sb.recognize.interp.motion_energy` (`landmark_motion_energy`, `joint_angle_motion`)
-  + `reindex_interpolate`/`smooth_savgol` promoted to shared `geometry.py`. Old
-  findings (pre-npz run) stand in `docs/reports/motion-energy.md`; **built, not yet
-  executed** — the report needs updating once it's run.
+  + `reindex_interpolate`/`smooth_savgol` promoted to shared `geometry.py`. **Run
+  2026-09-21** (all three scopes, 0 failed units) — the xy-native global run
+  reproduces the old pre-npz 50-video sample almost exactly (detection rates match
+  to the decimal); results in `docs/reports/motion-energy.md` §5, which now covers
+  both runs.
 - [ ] **BROKEN (2026-09-16): `gislr.0.dataset.subset-comparison.ipynb` no longer
   runs** — same cause (reads raw parquet via DuckDB). Its findings
   (`docs/reports/subset-comparison.md`) stand as historical results. Retire or
@@ -263,12 +265,12 @@ Savitzky-Golay filtering) rather than re-deriving them.
 **Status: ✅ executed end-to-end 2026-07-15 (pre-npz, raw `asl-signs` parquet) — all
 three scopes complete, 0 failed units. Findings, stats, figures and the landmark
 keep/discard recommendation are written up in `docs/2026-07-15.md`.** That version
-broke 2026-09-16 (GISLR moved to npz) and was deleted 2026-09-19. **Rebuilt
-2026-09-21 against GISLR_Stratified npz** (§1.8/§7.7: xy-native RMS speed, jitter
-smoothed before the derivative, + new per-joint-angle "change of angles" scope) —
-**built, not yet executed**; §1.0–§1.7 below describe the original pre-npz build and
-are historical, kept for the design rationale (loading-layer decision aside — see
-§1.8).
+broke 2026-09-16 (GISLR moved to npz) and was deleted 2026-09-19. **Rebuilt and
+re-run 2026-09-21 against GISLR_Stratified npz** (§1.8/§7.7: xy-native RMS speed,
+jitter smoothed before the derivative, + new per-joint-angle "change of angles"
+scope) — all three scopes, 0 failed units, results in `docs/reports/motion-energy.md`
+§5. §1.0–§1.7 below describe the original pre-npz build and are historical, kept for
+the design rationale (loading-layer decision aside — see §1.8).
 
 ### 1.0 Decision to lock in
 
@@ -343,14 +345,35 @@ are historical, kept for the design rationale (loading-layer decision aside — 
   `cache/motion_analysis/xy_vs_xyz_sample50.parquet`, chart in the report.
 - [x] Re-run the **global** scope with xy-only RMS — **superseded rather than
   literally implemented as `rms_speed_xy` alongside `rms_speed`**: the rebuilt
-  notebook (2026-09-21) computes `rms_speed` directly on xy (z dropped before the
-  computation, no second xyz column to reconcile against), since the 2026-07-15
-  finding already established xyz is the misleading one for pose. **Built, not yet
-  executed** — the actual full-dataset numbers are still outstanding.
+  notebook computes `rms_speed` directly on xy (z dropped before the computation,
+  no second xyz column to reconcile against). **Run 2026-09-21, all 94,477
+  videos, 0 failed** — global xy pose-subgroup magnitudes land within ~15% of the
+  old 50-video sample estimate (exact on head/hips/arms); results in
+  `docs/reports/motion-energy.md` §5.1.
 - [x] Added the xy/xyz split at the source rather than as a second reduction —
   `sb.recognize.interp.motion_energy.landmark_motion_energy` takes whatever
   coordinate subspace its caller passes, so xy-only *is* the primary computation
   now, not a follow-up pass over `compute_motion_energy`'s output.
+
+### 1.9 Follow-ups from the 2026-09-21 rerun (report §5.5)
+
+- [ ] Legs (0.0173 xy RMS) sit almost as high as arms (0.0185) at global scale —
+  the old "out of frame, apparent motion is jitter" discard rationale for
+  pose-legs (§3) was reasoned from xyz z-noise, not xy magnitude, and this
+  doesn't fully support it. Needs the discriminability instrument (does leg
+  motion correlate with sign identity?), not another motion-energy pass —
+  explicitly not a revision of ME-126 on this evidence alone.
+- [ ] Cross-check joint-angle *rate of change* against
+  `feature-discriminability.md`'s finding that static angle *value* is the
+  most information-dense feature type — is angular speed also discriminative?
+- [ ] Explain the elbow L/R reversal — every other paired joint favors the
+  right (dominant) hand, but `L_elbow_angle` is the single highest RMS value
+  in the 28-angle table while `R_elbow_angle` sits mid-pack. Bracing/
+  counterbalance motion of the non-dominant arm, or an elbow-angle-definition
+  artifact (shoulder-elbow-wrist more sensitive to pose noise on one side)?
+- [ ] A single-video sample is a much noisier estimate of the global *angle*
+  ranking (rho 0.743) than the *landmark* ranking (rho 0.951) — any future
+  angle-motion sampling should go category-level or larger, not per-video.
 
 ### 1.7 Explicitly out of scope here
 

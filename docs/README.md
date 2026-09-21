@@ -51,6 +51,7 @@ Chronological. `logs/daily/<YYYY-MM-DD>.md`.
 | 2026-09-16 | [logs/daily/2026-09-16.md](logs/daily/2026-09-16.md) | **GISLR moves to GISLR_Stratified npz** — canonical split reset (fixed 80/20, 18,896 val) · landmark-order permutation fix · local test scoring replaces Kaggle submission |
 | 2026-09-18 | [logs/daily/2026-09-18.md](logs/daily/2026-09-18.md) | Landmark-importance run written up · per-axis saliency · interactive report |
 | 2026-09-19 | [logs/daily/2026-09-19.md](logs/daily/2026-09-19.md) | Feature-discriminability run and write-up · pair-similarity and curated-features notebooks · repo cleanup (motion-energy notebook and Kaggle-submit helpers deleted) |
+| 2026-09-21 | [logs/daily/2026-09-21.md](logs/daily/2026-09-21.md) | **Motion-energy notebook rebuilt for GISLR_Stratified npz, run, and written up** — xy-native RMS speed, jitter smoothed before the derivative, new per-joint-angle "change of angles" scope · all three scopes, 0 failed units · global run confirms the pre-npz 50-video sample almost exactly |
 
 ## Weekly logs
 
@@ -63,7 +64,8 @@ Chronological. `logs/weekly/<YYYY>-<WW>.md`.
 | 2026-35 | Aug 23 – Aug 29 | [logs/weekly/2026-35.md](logs/weekly/2026-35.md) | 1st-place port: recreated, ~35× faster, collapses at epoch 15 twice · weeks 31–34 had no dev work |
 | 2026-36 | Aug 30 – Sep 5 | [logs/weekly/2026-36.md](logs/weekly/2026-36.md) | reproducibility §9.1–§9.7 · uv-workspace restructure, rename to signbridge · 42 checkpoints on Kaggle · plateau = generalization gap · TS extractor cannot run on Deno |
 | 2026-37 | Sep 6 – Sep 12 | [logs/weekly/2026-37.md](logs/weekly/2026-37.md) | no dev work |
-| 2026-38 | Sep 13 – Sep 19 | [logs/weekly/2026-38.md](logs/weekly/2026-38.md) | *in progress*: staged POPSIGN extraction · GISLR_Stratified + canonical split reset · local test scoring · discriminability / pair-similarity / curated-features notebooks |
+| 2026-38 | Sep 13 – Sep 19 | [logs/weekly/2026-38.md](logs/weekly/2026-38.md) | staged POPSIGN extraction · GISLR_Stratified + canonical split reset · local test scoring · discriminability / pair-similarity / curated-features notebooks |
+| 2026-39 | Sep 20 – Sep 26 | [logs/weekly/2026-39.md](logs/weekly/2026-39.md) | *in progress*: motion-energy notebook rebuilt for GISLR_Stratified npz, run end to end (0 failed units) · new joint-angle "change of angles" instrument |
 
 ## Reports
 
@@ -71,6 +73,6 @@ Standalone; not date-ordered — findable by topic.
 
 | report | contents |
 |---|---|
-| [reports/motion-energy.md](reports/motion-energy.md) | GISLR per-landmark motion analysis (three scopes, 94,477 videos): **~92% of pose "motion" is z-axis noise** · seeded 50-video samples reproduce the global ranking (rho 0.95+) · ME-126 keep/discard recommendation, cross-checked against the Kaggle 1st-place subset |
+| [reports/motion-energy.md](reports/motion-energy.md) | GISLR per-landmark motion analysis, two runs. 2026-07-15 (pre-npz, xyz): ~92% of pose "motion" is z-axis noise · seeded 50-video samples reproduce the global ranking (rho 0.95+) · ME-126 keep/discard recommendation. **2026-09-21 rerun** (GISLR_Stratified npz, §5): xy-native global run confirms the old sample almost exactly · new joint-angle-change instrument (dominant-hand asymmetry, one elbow reversal) · legs' xy motion vs arms flagged as an open question |
 | [reports/subset-comparison.md](reports/subset-comparison.md) | Landmark-subset discriminability (F-ratio / MI / probe classifier, 3 scopes): **ME-126 wins** the 6-subset leaderboard (49.9% global probe) · discriminability ≈ uncorrelated with motion energy (rho −0.12) · probe difficulty profile tracks the trained GRU's (rho 0.640) |
 | [reports/confidence-tuning.md](reports/confidence-tuning.md) | POPSIGN extraction-quality threshold sweep (**partial — 2 of 7 arms**): `min_hand_landmarks_confidence` is inert and the *pose* thresholds gate the hands · thresholds move hand detection by only ~0.02 · **the quality proxies are dominated by clip padding** — ~half of every clip is non-signing lead-in/lead-out, and detection is 0.85–0.94 within the signing span |
