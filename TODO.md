@@ -27,6 +27,7 @@ stale, trust the sections.
 | 5 | **§7.2 normalization or §7.4 augmentation**, under §7.6's ablation protocol | §7.1 → §7.2/§7.4 | the diagnosis is complete: the plateau is a generalization gap (train confusion 0.012 vs val 0.273), and these are the two levers that attack one |
 | 6 | Re-run the evaluation notebook on the 42-run registry | §6.1 | it last ran against 18 runs; only 1 of 42 run folders has a confusion matrix |
 | 7 | **Run `gislr.1.models.landmark-importance.ipynb`** (built 2026-09-16, not yet executed) | §3.3 | custom DNN/LSTM/GRU + full-543 engineered features + rotating k-fold — the model-derived complement to the motion-energy/probe landmark rankings (§1/§3.0) |
+| 8 | **Run `gislr.0.dataset.motion-energy.ipynb`** (rebuilt 2026-09-21 for GISLR_Stratified npz, not yet executed) | §1 | old npz-broken version deleted 2026-09-19; rebuild adds xy-native RMS speed + joint-angle-change on top of the pre-npz findings — `docs/reports/motion-energy.md` can't be updated until this runs |
 
 Decisions still owed by the user, blocking real work:
 
@@ -77,9 +78,15 @@ docs daily/weekly/reports split).
   `gislr.0.dataset.motion-energy.ipynb`) and rebuild the notebook as the extraction
   driver (§2).
 - [x] `gislr.0.dataset.motion-energy.ipynb` — **deleted 2026-09-19** (it broke on
-  2026-09-16 when GISLR moved to npz; retired rather than rebuilt). Its findings
-  stand in `docs/reports/motion-energy.md`; the notebook is in git history
-  (≤ `e52dd6e`). The global xy-only re-run (§1.8) would need a new npz-based notebook.
+  2026-09-16 when GISLR moved to npz), **rebuilt 2026-09-21** against GISLR_Stratified
+  npz (TODO §1.8/§7.7): xy-native per-landmark RMS speed (z dropped before the speed
+  computation, not decomposed after), Savitzky-Golay jitter removal before the
+  derivative, and new per-joint-angle RMS angular speed ("change of angles", reusing
+  `kinematics.compute_angles`'s 28 joints). Core math factored into
+  `sb.recognize.interp.motion_energy` (`landmark_motion_energy`, `joint_angle_motion`)
+  + `reindex_interpolate`/`smooth_savgol` promoted to shared `geometry.py`. Old
+  findings (pre-npz run) stand in `docs/reports/motion-energy.md`; **built, not yet
+  executed** — the report needs updating once it's run.
 - [ ] **BROKEN (2026-09-16): `gislr.0.dataset.subset-comparison.ipynb` no longer
   runs** — same cause (reads raw parquet via DuckDB). Its findings
   (`docs/reports/subset-comparison.md`) stand as historical results. Retire or
@@ -253,9 +260,15 @@ Savitzky-Golay filtering) rather than re-deriving them.
 
 **Location:** `experiments/recognition/gislr.0.dataset.motion-energy.ipynb`
 
-**Status: ✅ executed end-to-end 2026-07-15 — all three scopes complete, 0 failed
-units. Findings, stats, figures and the landmark keep/discard recommendation are
-written up in `docs/2026-07-15.md`.** Remaining work moved to §1.8.
+**Status: ✅ executed end-to-end 2026-07-15 (pre-npz, raw `asl-signs` parquet) — all
+three scopes complete, 0 failed units. Findings, stats, figures and the landmark
+keep/discard recommendation are written up in `docs/2026-07-15.md`.** That version
+broke 2026-09-16 (GISLR moved to npz) and was deleted 2026-09-19. **Rebuilt
+2026-09-21 against GISLR_Stratified npz** (§1.8/§7.7: xy-native RMS speed, jitter
+smoothed before the derivative, + new per-joint-angle "change of angles" scope) —
+**built, not yet executed**; §1.0–§1.7 below describe the original pre-npz build and
+are historical, kept for the design rationale (loading-layer decision aside — see
+§1.8).
 
 ### 1.0 Decision to lock in
 
@@ -328,11 +341,16 @@ written up in `docs/2026-07-15.md`.** Remaining work moved to §1.8.
 - [x] xy-vs-xyz decomposition on the 50-video sample — **~92% of pose "motion" is
   z-axis noise** (pose-head 99%, legs 95%; hands only 24%, face 14%). Cached at
   `cache/motion_analysis/xy_vs_xyz_sample50.parquet`, chart in the report.
-- [ ] Re-run the **global** scope with xy-only RMS (store `rms_speed_xy` alongside
-  `rms_speed` in the chunk schema) so landmark-importance numbers at full-dataset
-  scale aren't z-contaminated.
-- [ ] Consider adding the xy/xyz split to `compute_motion_energy` itself (cheap —
-  same smoothed array, second reduction) before any re-run.
+- [x] Re-run the **global** scope with xy-only RMS — **superseded rather than
+  literally implemented as `rms_speed_xy` alongside `rms_speed`**: the rebuilt
+  notebook (2026-09-21) computes `rms_speed` directly on xy (z dropped before the
+  computation, no second xyz column to reconcile against), since the 2026-07-15
+  finding already established xyz is the misleading one for pose. **Built, not yet
+  executed** — the actual full-dataset numbers are still outstanding.
+- [x] Added the xy/xyz split at the source rather than as a second reduction —
+  `sb.recognize.interp.motion_energy.landmark_motion_energy` takes whatever
+  coordinate subspace its caller passes, so xy-only *is* the primary computation
+  now, not a follow-up pass over `compute_motion_energy`'s output.
 
 ### 1.7 Explicitly out of scope here
 
@@ -1891,7 +1909,15 @@ an unattributable result.
   single-reference-point normalization — match the validated approach rather than
   a variant of it.
 - [ ] Revisit ME-126 / motion-energy using normalized coordinates: motion energy
-  computed on un-normalized data may have been biased by signer scale.
+  computed on un-normalized data may have been biased by signer scale. **Partial:**
+  the rebuilt motion-energy notebook (2026-09-21) deliberately keeps per-landmark
+  motion energy un-normalized (see its title cell's rationale — normalizing would
+  conflate camera distance with actual motion, a legitimate question for
+  discriminability but not for "how much does this landmark move"); its new joint
+  angles are computed on `center_and_scale`-normalized positions, since angles are
+  already scale-invariant and this keeps them comparable to
+  `feature-discriminability.ipynb`'s numbers. A normalized-coordinates re-run of
+  the *landmark* RMS speed itself, if wanted, is still open.
 - [ ] Resolve the long-open ME-126 vs Kaggle-suggested-subset cross-validation
   (§1.6, §3) — landmark importance rankings may shift once normalization is fixed.
 - [ ] Plain-language write-up for supervisor progress reporting in

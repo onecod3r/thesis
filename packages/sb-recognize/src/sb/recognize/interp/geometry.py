@@ -9,6 +9,8 @@ policy.
 """
 
 import numpy as np
+import pandas as pd
+from scipy.signal import savgol_filter
 
 from sb.core.subsets import EYES_NOSE_36, LIPS_40, pose_rows
 
@@ -46,6 +48,49 @@ def center_and_scale(raw: np.ndarray) -> np.ndarray:
     scale = np.where(valid, shoulder_dist, fallback)
     normed = local / scale[:, None, None]
     return np.nan_to_num(normed, nan=0.0, posinf=0.0, neginf=0.0)
+
+
+def reindex_interpolate(raw: np.ndarray) -> tuple[np.ndarray, np.ndarray, int]:
+    """(T, L, C) raw, NaN where undetected -> (filled, frame_valid, n_valid_frames).
+
+    Every gap (a single undetected landmark or a fully-undetected frame) is
+    linearly interpolated over the frame axis, ``limit_direction="both"`` so
+    leading/trailing gaps extrapolate flat. A landmark never detected in the
+    whole sequence stays NaN here — callers' own NaN policy (``center_and_scale``'s
+    zero-fill, or a per-landmark validity mask) handles it downstream.
+    ``frame_valid`` flags frames with at least one detected landmark (raw,
+    pre-interpolation, dimension-agnostic in the trailing axes);
+    ``n_valid_frames`` is its sum.
+
+    Shared by ``kinematics.py`` (per-video descriptor reduction) and
+    ``motion_energy.py`` (per-landmark/per-angle RMS speed) so the two
+    pipelines can't drift on what "filled" means.
+    """
+    T = raw.shape[0]
+    frame_valid = ~np.isnan(raw).all(axis=tuple(range(1, raw.ndim)))
+    flat = pd.DataFrame(raw.reshape(T, -1))
+    filled = flat.interpolate(method="linear", limit_direction="both", axis=0).to_numpy()
+    return filled.reshape(raw.shape), frame_valid, int(frame_valid.sum())
+
+
+def smooth_savgol(pos: np.ndarray, window: int, polyorder: int) -> np.ndarray:
+    """Savitzky-Golay smoothing along the frame axis — the shared jitter
+    filter every downstream velocity/speed/angle computation runs on, so a
+    landmark that quivers around a fixed point smooths flat instead of
+    scoring the raw per-frame noise as motion. No-op below 3 frames.
+    Dimension-agnostic in the trailing axes (works on (T, L, C) positions or
+    (T, N) angle series alike)."""
+    T = pos.shape[0]
+    if T < 3:
+        return pos.copy()
+    w = min(window, T if T % 2 == 1 else T - 1)
+    po = min(polyorder, w - 1)
+    flat = pos.reshape(T, -1)
+    allnan = np.isnan(flat).all(axis=0)
+    sm = flat.copy()
+    if (~allnan).any():
+        sm[:, ~allnan] = savgol_filter(flat[:, ~allnan], w, po, axis=0)
+    return sm.reshape(pos.shape)
 
 
 def derivatives(pos: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:

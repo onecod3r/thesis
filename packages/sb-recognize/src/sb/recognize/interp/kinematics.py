@@ -42,7 +42,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy.signal import savgol_filter
 
 from sb.core.schema import GROUPS, N_LANDMARKS
 from sb.core.subsets import SUBSETS, pose_rows
@@ -52,7 +51,9 @@ from sb.recognize.interp.geometry import (
     RIGHT_HAND_OFFSET,
     RELATIONAL_NAMES,
     center_and_scale,
+    reindex_interpolate,
     relational_block,
+    smooth_savgol,
 )
 
 PIPELINE = "landmark_kinematics_v1"
@@ -139,38 +140,6 @@ def compute_angles(pos: np.ndarray) -> np.ndarray:
     return np.stack(cols, axis=-1)
 
 
-def _reindex_interpolate(raw: np.ndarray) -> tuple[np.ndarray, int]:
-    """(T, 543, 3) raw, NaN where undetected -> (filled, n_valid_frames).
-
-    Every gap (a single undetected landmark or a fully-undetected frame) is
-    linearly interpolated over the frame axis, `limit_direction="both"` so
-    leading/trailing gaps extrapolate flat. A landmark never detected in the
-    whole video stays NaN here — `center_and_scale`'s own NaN->0 handles it.
-    `n_valid_frames` counts frames with at least one detected landmark,
-    measured on the raw (pre-interpolation) data.
-    """
-    T = raw.shape[0]
-    frame_valid = ~np.isnan(raw).all(axis=(1, 2))
-    flat = pd.DataFrame(raw.reshape(T, -1))
-    filled = flat.interpolate(method="linear", limit_direction="both", axis=0).to_numpy()
-    return filled.reshape(raw.shape), int(frame_valid.sum())
-
-
-def _smooth(pos: np.ndarray, window: int, polyorder: int) -> np.ndarray:
-    """Savitzky-Golay smoothing along the frame axis; no-op below 3 frames."""
-    T = pos.shape[0]
-    if T < 3:
-        return pos.copy()
-    w = min(window, T if T % 2 == 1 else T - 1)
-    po = min(polyorder, w - 1)
-    flat = pos.reshape(T, -1)
-    allnan = np.isnan(flat).all(axis=0)
-    sm = flat.copy()
-    if (~allnan).any():
-        sm[:, ~allnan] = savgol_filter(flat[:, ~allnan], w, po, axis=0)
-    return sm.reshape(pos.shape)
-
-
 def _derivatives(pos: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """smoothed position (T,543,3) -> (velocity, speed); dt=1 (contiguous frames)."""
     vel = np.zeros_like(pos)
@@ -199,9 +168,9 @@ def video_descriptors(
     T = raw.shape[0]
     detection_rate = (~np.isnan(raw[:, :, 0])).mean(axis=0)  # (543,), pre-interpolation
 
-    filled, n_valid_frames = _reindex_interpolate(raw)
+    filled, _frame_valid, n_valid_frames = reindex_interpolate(raw)
     pos = center_and_scale(filled)
-    smoothed = _smooth(pos, savgol_window, savgol_polyorder)
+    smoothed = smooth_savgol(pos, savgol_window, savgol_polyorder)
     jitter_rms = np.sqrt(np.mean((pos - smoothed) ** 2, axis=0))  # (543, 3) -> per-landmark
 
     vel, speed = _derivatives(smoothed)
