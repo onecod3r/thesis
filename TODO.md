@@ -1171,7 +1171,7 @@ below.
   (`StreamingGRU`/`StreamingLSTM`, not the interp track's `LandmarkRNN`) if
   the smaller feature space is worth pursuing as a deployment candidate.
 
-### 3.6 BiLSTM on the current split: exact replica vs curated-feature variant (2026-09-19, built — not yet run)
+### 3.6 BiLSTM on the current split: exact replica vs curated-feature variant (2026-09-19, run + ablation 2026-09-21)
 
 Every registry `bilstm` run predates the 2026-09-16 canonical-split reset
 (`registry/index.csv`: all 7 have `split.n_val=9448`) — there is no BiLSTM
@@ -1271,8 +1271,18 @@ notebook, same training regime:
   reuse the already-built curated feature cache (no new cache build).
   Smoke-tested (model construction + forward pass, all 4 arms, correct
   per-arm batch_size and output shape) — not full training, per convention.
-- [ ] **Run the ablation** (user); write up `docs/reports/bilstm-curated.md`
-  (all four arms + the decomposition) after.
+- [x] **Run the ablation** (user, 2026-09-21) — all four arms, clean runs, 0
+  errors. **Verdict: the curated feature set is the dominant cause, not the
+  architecture.** Decomposition of the −15.90pp `bilstm_curated` −
+  `bilstm_base` gap: feature set **−17.37pp**, architecture (attention gate +
+  projection) **+10.55pp** (recovers >60% of the feature-set loss — not the
+  problem), batch size **−9.08pp** (real, secondary, with a mechanistic hint
+  it's under-training from ~4x fewer gradient steps per epoch at batch 4096,
+  not proven). Even the best curated arm (`b1024`) still loses to
+  `bilstm_base` by 6.8pp — not a tunable config bug. Also: `bilstm_base`
+  (0.7371) sits *below* every current-split `gru` run — bidirectionality
+  buys nothing here once measured on the same split. Full write-up:
+  `docs/reports/bilstm-curated.md`.
 - [ ] If `bilstm_base`'s single-final-fit number is wanted as a literal new
   registry entry (this notebook's regime matches `gislr.training.json`'s
   hyperparameters but not its k-fold-free driver/registry-writing path),
