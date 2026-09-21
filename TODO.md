@@ -1247,8 +1247,31 @@ notebook, same training regime:
   `bilstm_base` is unaffected (never had an `lr` override). A `CAUTION` note
   in the config's `notes` field warns against re-adding an `lr` override
   without a warmup + a repeated real-data check.
-- [ ] **Re-run `bilstm_curated`** (user) with the fixed config; write up
-  `docs/reports/bilstm-curated.md` (both arms) after.
+- [x] **Re-run `bilstm_curated`** (user) with the fixed config — the collapse
+  is gone (train_loss/val_acc both move normally, no epoch-1 plateau), but
+  `bilstm_curated` still loses to `bilstm_base` by **~16pp top-1** (0.578 vs
+  0.737) and overfits *more* despite 3.6x the raw feature dimensionality:
+  internal-val peaks epoch ~80/96 then drifts down, `val_loss` rises from
+  epoch ~48 while `train_loss` keeps falling — `bilstm_base`'s late-training
+  curve is much flatter by comparison. Two things differ between the arms at
+  once (attention-gate + projection architecture, and a 4x batch size at the
+  same unscaled lr), so this result alone can't say which one is responsible.
+- [x] **Ablation added (2026-09-2x)** to isolate the two confounded variables
+  from the finding above: `bilstm_curated_plainarch` (same plain `BiLSTM`
+  class as `bilstm_base`, fed the 922-dim curated features directly, at
+  `bilstm_base`'s batch_size=1024 — isolates the feature set alone) and
+  `bilstm_curated_b1024` (same `LandmarkBiLSTM` attention+projection
+  architecture as `bilstm_curated`, but batch_size=1024 — isolates batch
+  size alone). New notebook §6b sums the three deltas (feature set,
+  architecture, batch size) back to the original gap as a sanity check.
+  Config (`gislr.bilstm-curated.json`) updated with both arms' entries;
+  `make_model`/`ARM_FEATURE_DIM`/`ARM_TRAIN_CACHE`/`ARM_TEST_CACHE` in the
+  notebook generalized from a 2-arm dict to loop over `ARMS`. Both new arms
+  reuse the already-built curated feature cache (no new cache build).
+  Smoke-tested (model construction + forward pass, all 4 arms, correct
+  per-arm batch_size and output shape) — not full training, per convention.
+- [ ] **Run the ablation** (user); write up `docs/reports/bilstm-curated.md`
+  (all four arms + the decomposition) after.
 - [ ] If `bilstm_base`'s single-final-fit number is wanted as a literal new
   registry entry (this notebook's regime matches `gislr.training.json`'s
   hyperparameters but not its k-fold-free driver/registry-writing path),
