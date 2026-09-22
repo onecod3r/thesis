@@ -54,6 +54,22 @@ class StreamingGRU(nn.Module):
         out, _ = self.gru(self.input_norm(x))
         return self.head(out[:, -1])
 
+    def forward_all(self, x):
+        """Per-frame logits (B, T, num_classes) -- the same trained head
+        applied to every timestep's hidden state, not just the last one.
+
+        Purely a read-out choice: this model is still trained with a loss at
+        the last valid frame only (`forward`), so frames before the sign is
+        mostly complete were never supervised to have a meaningful confidence
+        vector. Use this for inspecting how confidence evolves frame-by-frame
+        (TODO's streaming-confidence-eval notebook), not as a claim that
+        early-frame confidence is reliable -- same caveat as
+        `sb.recognize.interp.models.LandmarkRNN.forward_all`. Unpadded input
+        only (no `lengths`): this is an analysis readout, not the
+        training/export contract."""
+        out, _ = self.gru(self.input_norm(x))
+        return self.head(out)
+
 
 class StreamingLSTM(nn.Module):
     """Unidirectional (causal) LSTM — streaming-viable. The direct LSTM-vs-GRU
@@ -91,6 +107,13 @@ class StreamingLSTM(nn.Module):
         out, _ = self.lstm(self.input_norm(x))
         return self.head(out[:, -1])
 
+    def forward_all(self, x):
+        """Per-frame logits (B, T, num_classes) -- see
+        `StreamingGRU.forward_all`'s docstring for the same
+        last-frame-only-supervision caveat and intended use."""
+        out, _ = self.lstm(self.input_norm(x))
+        return self.head(out)
+
 
 class BiLSTM(nn.Module):
     """Bidirectional LSTM — OFFLINE-ONLY accuracy reference: the backward pass
@@ -99,7 +122,13 @@ class BiLSTM(nn.Module):
     costs vs the unidirectional models.
 
     Readout: forward direction at the last valid frame + backward direction at
-    t=0 (which has seen the whole sequence), concatenated -> 2*hidden head."""
+    t=0 (which has seen the whole sequence), concatenated -> 2*hidden head.
+
+    Deliberately has no `forward_all`: every per-frame position's backward
+    half has already read the entire future of the sequence, so a "per-frame
+    confidence" read off it would not describe what a live streaming reader
+    could actually know at that frame -- there is no causal per-frame
+    readout to expose."""
 
     def __init__(self, input_size, hidden_size, num_layers, num_classes, dropout=0.3):
         super().__init__()
@@ -201,6 +230,19 @@ class CausalConv1D(nn.Module):
             x = conv(x).transpose(1, 2)
             x = self.drop(self.act(norm(x))).transpose(1, 2)
         return self.head(x.transpose(1, 2)[:, -1])
+
+    def forward_all(self, x):
+        """Per-frame logits (B, T, num_classes) -- see
+        `StreamingGRU.forward_all`'s docstring for the same
+        last-frame-only-supervision caveat. Unlike the recurrent models this
+        IS bounded by a finite receptive field (125 frames at the default
+        kernel/depth, see the class docstring), not unbounded history -- a
+        frame's confidence here can only reflect its own trailing window."""
+        x = self.input_norm(x).transpose(1, 2)
+        for conv, norm in zip(self.convs, self.norms):
+            x = conv(x).transpose(1, 2)
+            x = self.drop(self.act(norm(x))).transpose(1, 2)
+        return self.head(x.transpose(1, 2))
 
 
 # ============================================================

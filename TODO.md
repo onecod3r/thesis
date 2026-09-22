@@ -30,6 +30,7 @@ stale, trust the sections.
 | ~~8~~ | ~~Run `gislr.0.dataset.motion-energy.ipynb`~~ — **done 2026-09-21**: all three scopes, 0 failed units, results in `docs/reports/motion-energy.md` §5 | §1 | — |
 | 9 | **Run `gislr.1.models.training.ipynb` §§5b/6/7/8** (`gru_deep`/`lstm`/`bilstm`/`cnn1d` × 3 subsets, 12 runs) | §4.3 | closes the current-split benchmark gap — 52 of 55 registry runs are on the retired split, only `gru` has been re-run since the reset; no porting needed, the cells are already correct, just never executed |
 | ~~10~~ | ~~Run `gislr.1.models.five-arch-benchmark.ipynb`~~ — **done 2026-09-21**: `bilstm` 0.7392 (offline) > `gru` 0.7380 > `lstm` 0.7286 > `cnn` 0.6696 > `dnn` 0.6485; `dnn`'s mean true-class confidence (0.24) a quarter of the rest — results in `docs/reports/five-arch-benchmark.md` | §3.7 | — |
+| 11 | **Run `gislr.3.streaming.confidence-eval.ipynb`** (built 2026-09-22, not yet executed) — reuses the five-arch-benchmark checkpoints, no training | §11.1 | answers whether mid-sequence streaming confidence is usable as-is or needs a per-frame-supervised retrain (§11.2) before the reset-signal architecture (§11) can trust it |
 
 Decisions still owed by the user, blocking real work:
 
@@ -2150,6 +2151,15 @@ an unattributable result.
 
 ## 8. Post-Processing: Context-Aware Correction Layer (2026-07-22 remark, new)
 
+**Cross-reference (2026-09-22):** §11 ("Streaming Confidence & Reset") now
+also wants an LLM in this pipeline, in a different role than this section
+originally scoped — reading per-frame confidence scores and deciding when to
+reset a streaming model's state (matching a "next-word suggestion"), not
+correcting/reranking a finished prediction among near-synonyms. Both readings
+hit the same open gap below: neither GISLR nor POPSIGN has sentence-level
+data to build any next-word/context model from. Resolve that gap once, not
+twice — §11.3 is explicitly blocked on it.
+
 **The idea:** instead of (or alongside) improving raw model accuracy on
 semantically-confused pairs (§7.1/§3.0.1), feed predictions through a
 correction LLM that uses sentence-level context to pick the right word among
@@ -2810,25 +2820,110 @@ long-running frame loop.
 
 ---
 
+## 11. Streaming Confidence & Reset (live per-frame prediction, "Plan 2")
+
+**Promoted from Backlog (2026-09-22)**, where it sat as an unscoped remark
+since 2026-09-19. The user's own live-inference architecture (MediaPipe →
+streaming model with per-frame updates and a reset signal → periodic
+LLM reader) supplies the missing pieces (a concrete reset trigger, a UX
+framing) the original remark lacked; this section replaces that stub with a
+phased plan, ordered so the untested assumption gets checked before anything
+is retrained.
+
+**Original problem, unchanged.** `sb.recognize.architectures.StreamingGRU`/
+`StreamingLSTM` (and `sb.recognize.interp.models.LandmarkRNN`) are trained
+with a loss at the **last valid frame only** — they can technically run
+frame-by-frame at inference (the recurrent state is causal), but nothing
+supervises the running prediction to be meaningful mid-sequence.
+
+**Scope decisions made when this was promoted:**
+- **`bilstm` is excluded entirely, permanently** — a bidirectional model's
+  backward pass has already read the whole future sequence at every
+  position, so there is no causal per-frame readout to expose (see
+  `sb.recognize.architectures.BiLSTM`'s docstring). Reference-only, same as
+  §4.1. `cnn`/`dnn` stay in as **no-memory controls** (`cnn`: finite
+  receptive field, not unbounded state; `dnn`: exactly memory-free per
+  frame) — useful baselines, not reset candidates.
+- **"Confidence reset" and "hidden-state reset" are two different things.**
+  For `gru`/`lstm`, reset means clearing the model's own carried recurrent
+  state (`sb.recognize.streaming.RecurrentSession.reset`). For `cnn`/`dnn`
+  there is no persistent state to reset — an external accumulator would be
+  needed if either is ever used as a live "running confidence", which is not
+  built here.
+- **The reset MECHANISM and the reset DECISION-MAKER are developed and
+  validated separately.** `AcceptTrigger` (rule-based: threshold + hold
+  duration) proves the mechanism works before an LLM (the user's Plan 2 §3,
+  reading confidence scores and matching a next-word suggestion) becomes the
+  thing that decides when to pull it — see the cross-reference to §8 below.
+
+### 11.1 Phase A/B — built 2026-09-22, not yet run
+
+`experiments/recognition/gislr.3.streaming.confidence-eval.ipynb` (new) +
+`sb.recognize.streaming` (new module: `per_frame_probs`, `RecurrentSession`,
+`build_synthetic_stream`, `AcceptTrigger`) + `forward_all` added to
+`StreamingGRU`/`StreamingLSTM`/`CausalConv1D` in `architectures.py` (mirrors
+the existing `LandmarkRNN.forward_all` convention and its same
+last-frame-only-supervision caveat).
+
+- [x] **Phase A build**: per-frame true-class confidence, binned by relative
+  position within a clip (early/mid/late), for `gru`/`lstm`/`cnn`/`dnn` —
+  answers whether mid-sequence confidence is already usable evidence or
+  needs Phase C's retrain, using the existing `gislr.1.models.five-arch-benchmark.ipynb`
+  checkpoints (no training).
+- [x] **Phase B build**: synthetic continuous streams (concatenated isolated
+  clips, manifest-resumable, same pattern as §1's motion-energy notebook —
+  neither dataset has real multi-sign sequences, the same gap §8 flags) +
+  boundary-effect measurement (bleed-through frames, re-acquisition latency)
+  comparing no-reset vs. oracle-reset (`RecurrentSession.reset()` called at
+  the true boundary).
+- [x] **Mechanism verified before use**: `RecurrentSession.step` (the true
+  incremental, one-frame-at-a-time API) reproduces `per_frame_probs`'s batch
+  computation to float precision (8.9e-08 max abs diff on a synthetic check)
+  — the parity cell in the notebook re-asserts this on real data.
+- [ ] **Not yet run** — needs the five-arch-benchmark checkpoints on this
+  machine (`data/cache/gislr/five_arch_benchmark_runs/`, present as of
+  2026-09-22) and a few minutes of GPU inference, no training. Run it and
+  read the verdict cell (§8 of the notebook) before deciding on Phase C.
+- [ ] **Phase D scaffold included but unevaluated**: `AcceptTrigger`
+  (tau × hold_frames sweep) over oracle-reset streams — a fixed-rule
+  baseline to compare an eventual LLM decision-maker against, not a finished
+  answer.
+
+### 11.2 Phase C — per-frame-supervised retrain (gated on 11.1's results)
+
+- [ ] **Do not start this until Phase A's verdict is read.** If mid-sequence
+  confidence already rises usefully from early → late within a clip, this
+  phase may be unnecessary. If it's flat or noisy, add an auxiliary
+  per-frame loss term (target = the video's static label at every frame,
+  weight ramped from 0 over the first ~15-20% of the sequence, small
+  coefficient e.g. 0.1-0.3) alongside the existing last-frame loss — never
+  replacing it, to avoid regressing the canonical `gru`/`lstm` accuracy
+  numbers. New config keys in a `gislr.streaming-confidence.json`-style file
+  (never hyperparameters hardcoded in a cell, per this repo's convention),
+  `gru`/`lstm` only.
+
+### 11.3 Phase E — LLM as reset decision-maker (blocked on §8)
+
+- [ ] **Blocked on §8's still-open scope question and its own open item**:
+  where does "next-word suggestion" data come from? Neither GISLR nor
+  POPSIGN has sentence-level transcripts. Do not start building this against
+  an undefined vocabulary/language-model source.
+- [ ] Once unblocked: swap `AcceptTrigger` for an LLM reading the same
+  confidence stream this notebook produces — decoupled from Phase A-D by
+  construction, since the reset mechanism is already validated independently
+  of who decides to pull it.
+
+Related: §4.1 (BiLSTM accuracy-vs-streaming-viability decision, same
+exclusion rule applied here), §8 (LLM scope + the missing sentence-level
+data source, now shared by both), §10.2 (livestream mode — this stays a
+notebook-based simulation until that's built).
+
+---
+
 ## Backlog / Someday
 
 - [ ] (add unscoped ideas here as they come up, promote to a numbered section once
   they have a concrete plan)
-- [ ] **Live, per-frame-updating streaming prediction with reset-on-accept**
-  (2026-09-19 remark). Today's causal RNNs (`sb.recognize.architectures.StreamingGRU`/
-  `StreamingLSTM`, and `sb.recognize.interp.models.LandmarkRNN`) are *trained*
-  with one loss at the **last valid frame only** — they can technically run
-  frame-by-frame at inference (the recurrent state is causal), but nothing
-  supervises the running prediction to be meaningful mid-sequence, only at the
-  end. The idea: a model explicitly trained so its confidence vector is
-  correct *at every frame* as evidence accumulates, plus a UX-facing feature
-  to reset/clear the running state once a sign is accepted (so it starts
-  fresh for the next sign in a continuous stream, rather than one video-length
-  clip at a time). Needs: a training scheme with per-frame supervision (not
-  just a final-frame loss), a definition of "accepted" (confidence threshold?
-  hold duration?) and what "reset" does to hidden state, and a live/streaming
-  evaluation protocol (this repo currently only evaluates one full clip in,
-  one label out). Not scoped yet — no notebook, no architecture change.
 
 ---
 
