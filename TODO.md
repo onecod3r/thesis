@@ -30,7 +30,7 @@ stale, trust the sections.
 | ~~8~~ | ~~Run `gislr.0.dataset.motion-energy.ipynb`~~ — **done 2026-09-21**: all three scopes, 0 failed units, results in `docs/reports/motion-energy.md` §5 | §1 | — |
 | 9 | **Run `gislr.1.models.training.ipynb` §§5b/6/7/8** (`gru_deep`/`lstm`/`bilstm`/`cnn1d` × 3 subsets, 12 runs) | §4.3 | closes the current-split benchmark gap — 52 of 55 registry runs are on the retired split, only `gru` has been re-run since the reset; no porting needed, the cells are already correct, just never executed |
 | ~~10~~ | ~~Run `gislr.1.models.five-arch-benchmark.ipynb`~~ — **done 2026-09-21**: `bilstm` 0.7392 (offline) > `gru` 0.7380 > `lstm` 0.7286 > `cnn` 0.6696 > `dnn` 0.6485; `dnn`'s mean true-class confidence (0.24) a quarter of the rest — results in `docs/reports/five-arch-benchmark.md` | §3.7 | — |
-| 11 | **Run `gislr.3.streaming.confidence-eval.ipynb`** (built 2026-09-22, not yet executed) — reuses the five-arch-benchmark checkpoints, no training | §11.1 | answers whether mid-sequence streaming confidence is usable as-is or needs a per-frame-supervised retrain (§11.2) before the reset-signal architecture (§11) can trust it |
+| ~~11~~ | ~~Run `gislr.3.streaming.confidence-eval.ipynb`~~ — **done 2026-09-22**: fresh-start confidence is already well-calibrated (`gru` late-third 0.58); the blocker is un-reset state (bleed-through cut 96-98% by resetting), not the training objective — §11.2's retrain downgraded to optional. `docs/reports/streaming-confidence.md` | §11.1 | — |
 
 Decisions still owed by the user, blocking real work:
 
@@ -2856,51 +2856,63 @@ supervises the running prediction to be meaningful mid-sequence.
   reading confidence scores and matching a next-word suggestion) becomes the
   thing that decides when to pull it — see the cross-reference to §8 below.
 
-### 11.1 Phase A/B — built 2026-09-22, not yet run
+### 11.1 Phase A/B/D — run 2026-09-22, 0 failures
 
 `experiments/recognition/gislr.3.streaming.confidence-eval.ipynb` (new) +
 `sb.recognize.streaming` (new module: `per_frame_probs`, `RecurrentSession`,
 `build_synthetic_stream`, `AcceptTrigger`) + `forward_all` added to
 `StreamingGRU`/`StreamingLSTM`/`CausalConv1D` in `architectures.py` (mirrors
 the existing `LandmarkRNN.forward_all` convention and its same
-last-frame-only-supervision caveat).
+last-frame-only-supervision caveat). Full results:
+`docs/reports/streaming-confidence.md`.
 
-- [x] **Phase A build**: per-frame true-class confidence, binned by relative
-  position within a clip (early/mid/late), for `gru`/`lstm`/`cnn`/`dnn` —
-  answers whether mid-sequence confidence is already usable evidence or
-  needs Phase C's retrain, using the existing `gislr.1.models.five-arch-benchmark.ipynb`
-  checkpoints (no training).
-- [x] **Phase B build**: synthetic continuous streams (concatenated isolated
-  clips, manifest-resumable, same pattern as §1's motion-energy notebook —
-  neither dataset has real multi-sign sequences, the same gap §8 flags) +
-  boundary-effect measurement (bleed-through frames, re-acquisition latency)
-  comparing no-reset vs. oracle-reset (`RecurrentSession.reset()` called at
-  the true boundary).
-- [x] **Mechanism verified before use**: `RecurrentSession.step` (the true
-  incremental, one-frame-at-a-time API) reproduces `per_frame_probs`'s batch
-  computation to float precision (8.9e-08 max abs diff on a synthetic check)
-  — the parity cell in the notebook re-asserts this on real data.
-- [ ] **Not yet run** — needs the five-arch-benchmark checkpoints on this
-  machine (`data/cache/gislr/five_arch_benchmark_runs/`, present as of
-  2026-09-22) and a few minutes of GPU inference, no training. Run it and
-  read the verdict cell (§8 of the notebook) before deciding on Phase C.
-- [ ] **Phase D scaffold included but unevaluated**: `AcceptTrigger`
-  (tau × hold_frames sweep) over oracle-reset streams — a fixed-rule
-  baseline to compare an eventual LLM decision-maker against, not a finished
-  answer.
+- [x] **Phase A, run**: per-frame true-class confidence binned by relative
+  position within a clip (early/mid/late). The naive aggregate looked weak
+  (`gru` 0.05/0.14/0.21) but conflated two regimes — splitting by whether a
+  segment starts fresh or carries a prior sign's un-reset state (§3b, added
+  after the first run) shows a **fresh** start already accumulates strong
+  evidence (`gru` 0.16 → 0.42 → **0.58**, matching the whole-video confidence
+  numbers in `five-arch-benchmark.md`), while a **contaminated** one stays
+  near-zero throughout (`gru` 0.01 → 0.05 → 0.09). The last-frame-only-
+  supervision concern that motivated this phase is real in principle but is
+  **not** the dominant effect measured here.
+- [x] **Phase B, run**: oracle reset (at the true boundary) vs. no reset —
+  bleed-through drops **19.6→0.8 frames** (`gru`) / **16.1→0.4** (`lstm`);
+  re-acquisition latency drops **41.4→23.3** (`gru`) / **36.6→21.5** (`lstm`).
+  Reset is not a marginal improvement, it removes most of the effect.
+- [x] **Mechanism verified on real data, not just synthetically**:
+  `RecurrentSession.step` reproduces `per_frame_probs`'s batch computation to
+  **1.7e-06** (`gru`) / **1.0e-06** (`lstm`) max abs diff (checked on CPU —
+  GPU cuDNN dispatches a different kernel for single-step vs whole-sequence
+  calls, producing ~5e-4 divergence that is a numerics artifact, not a
+  correctness question).
+- [x] **Phase D, run**: `AcceptTrigger` sweep over oracle-reset streams.
+  `gru` dominates `lstm` at every `(tau, hold_frames)` setting. Real
+  precision/coverage trade, no single winner — `tau=0.7, hold=5` is a
+  reasonable middle ground for `gru` (0.858 precision, 51/120 segments
+  missed). See the report §2.3 for the full sweep.
+- [ ] **Caveat carried forward, not yet addressed**: clips are fed at native
+  length, not subsampled to `MAX_SEQ_LEN=128` like training (10/120 sampled
+  clips, 8.3%, exceed it). Confirmed not the explanation for the
+  fresh/contaminated gap (`dnn` is equally exposed and shows almost none of
+  it), but still an open mismatch worth closing before trusting absolute
+  confidence numbers.
 
-### 11.2 Phase C — per-frame-supervised retrain (gated on 11.1's results)
+### 11.2 Phase C — per-frame-supervised retrain (downgraded, 2026-09-22)
 
-- [ ] **Do not start this until Phase A's verdict is read.** If mid-sequence
-  confidence already rises usefully from early → late within a clip, this
-  phase may be unnecessary. If it's flat or noisy, add an auxiliary
-  per-frame loss term (target = the video's static label at every frame,
-  weight ramped from 0 over the first ~15-20% of the sequence, small
-  coefficient e.g. 0.1-0.3) alongside the existing last-frame loss — never
-  replacing it, to avoid regressing the canonical `gru`/`lstm` accuracy
-  numbers. New config keys in a `gislr.streaming-confidence.json`-style file
-  (never hyperparameters hardcoded in a cell, per this repo's convention),
-  `gru`/`lstm` only.
+- [ ] **No longer the assumed prerequisite.** §11.1's freshness split showed
+  clean per-frame confidence is already well-calibrated and accumulates
+  sensibly on its own — the blocker was carried-over state, not the
+  training objective. Downgraded from "next step" to **optional refinement,
+  revisit only if a live reset-wired system still under-performs** after
+  §11.2's actual lever (reset, not retraining) is in place.
+- [ ] If revisited anyway: add an auxiliary per-frame loss term (target =
+  the video's static label at every frame, weight ramped from 0 over the
+  first ~15-20% of the sequence, small coefficient e.g. 0.1-0.3) alongside
+  the existing last-frame loss — never replacing it, to avoid regressing the
+  canonical `gru`/`lstm` accuracy numbers. New config keys in a
+  `gislr.streaming-confidence.json`-style file (never hyperparameters
+  hardcoded in a cell, per this repo's convention), `gru`/`lstm` only.
 
 ### 11.3 Phase E — LLM as reset decision-maker (blocked on §8)
 
