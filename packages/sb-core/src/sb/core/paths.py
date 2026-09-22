@@ -125,6 +125,11 @@ type DatasetIds = DatasetMap[str]
 type Datasets = DatasetMap[Path]
 
 
+# PAUSED (2026-09-22): every POPSIGN entry/resolver below (TRAIN/TEST,
+# train_dir/train_dirs/test_dir, ENABLED_TRAIN_INDICES) is deprecated along
+# with the POPSIGN workstream (TODO §2) -- kept working, not removed, in case
+# a future raw-video dataset reuses the same resolution pattern, but nothing
+# should call these for new work. GISLR is the only active dataset.
 DATASET_IDS: DatasetIds = {
     "TRAIN": [
         "mrgeislinger/popsign-asl-v1-0-game-train-a-e-signs",
@@ -234,9 +239,10 @@ def clear_dataset_cache(handle: str) -> None:
 
 
 def resolve_datasets() -> Datasets:
-    """Download/resolve every enabled dataset (POPSIGN included — ~220GB for
-    the one enabled train part alone). Only 1 of 4 POPSIGN train datasets is
-    enabled so far (TODO §2.2); uncomment the rest to download them."""
+    """Download/resolve every enabled dataset. **POPSIGN is deprecated
+    (2026-09-22, TODO §2)** -- calling this now downloads hundreds of GB for
+    a paused workstream; use `gislr_dir()` alone for anything GISLR-only,
+    which is everything active in this repo today."""
     return {
         "TRAIN": train_dirs(),
         "TEST": test_dir(),

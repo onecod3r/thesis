@@ -3,6 +3,12 @@
 Stage 1 (video → landmarks) in TypeScript, as an alternative to
 `packages/sb-extract` (Python + MediaPipe Tasks).
 
+> **PAUSED (2026-09-22): POPSIGN, the only dataset this was ever built or
+> measured against, is deprecated** (`TODO.md` §2). Independent of the WebGL
+> blocker below, there is currently no raw-video workload to run this
+> against. Kept for a future raw-video dataset or a live-camera deployment
+> path (`TODO.md` §10.2), not being maintained until one exists.
+
 > **This does not run. Do not reach for it.**
 > `@mediapipe/tasks-vision` creates a **WebGL** context during graph
 > construction — before any frame is submitted, and regardless of

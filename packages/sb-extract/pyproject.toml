@@ -1,7 +1,7 @@
 [project]
     name = "sb-extract"
     version = "0.1.0"
-    description = "Stage 1: video -> MediaPipe Holistic landmark tensors (resumable, resource-capped, CPU worker pool)"
+    description = "[PAUSED 2026-09-22, POPSIGN deprecated] Stage 1: video -> MediaPipe Holistic landmark tensors (resumable, resource-capped, CPU worker pool)"
     requires-python = ">=3.12"
     dependencies = [
         "sb-core",

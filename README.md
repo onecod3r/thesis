@@ -8,14 +8,12 @@ A sign language recognition system focused on **streaming, real-time inference**
 
 | Dataset | Role | Source (via `kagglehub`) | Status |
 |---|---|---|---|
-| **GISLR** | Fast-iteration dataset — landmarks are pre-extracted | Kaggle dataset `bracu23101281/gislr-stratified` (**GISLR_Stratified**, self-produced from `asl-signs`, 2026-09-16) | Ready to preprocess/train immediately |
-| **POPSIGN** | Primary dataset (~870GB raw video) | `mrgeislinger/popsign-asl-v1-0-game-train-{a-e,f-m,n-s,t-z}-signs` + `...-game-test` | All 4 train parts + test now downloaded (2026-07-21); test-split landmarks extracted (33,599/33,600), train extraction pending manifest regeneration |
+| **GISLR** | Sole active dataset — landmarks are pre-extracted | Kaggle dataset `bracu23101281/gislr-stratified` (**GISLR_Stratified**, self-produced from `asl-signs`, 2026-09-16) | Ready to preprocess/train immediately |
+| ~~POPSIGN~~ | **Deprecated 2026-09-22** (see `TODO.md` §2) | `mrgeislinger/popsign-asl-v1-0-game-train-{a-e,f-m,n-s,t-z}-signs` + `...-game-test` | Extracted data deleted from disk (`data/raw/popsign/`, `data/cache/popsign/`); no further extraction or training planned |
 
-Raw data is **not stored in this repository**. It's downloaded on demand via `kagglehub` into its default cache (`~/.cache/kagglehub/`), resolved lazily by `sb.core.paths` (`gislr_dir()` / `resolve_datasets()` — importing the module never downloads anything).
+Raw data is **not stored in this repository**. It's downloaded on demand via `kagglehub` into its default cache (`~/.cache/kagglehub/`), resolved lazily by `sb.core.paths` (`gislr_dir()` — importing the module never downloads anything).
 
-**GISLR moved off the live `asl-signs` competition download (2026-09-16)** to **GISLR_Stratified**: a self-produced Kaggle *dataset* of pre-converted `(T,543,3)` npz files (one per sequence, same landmark-tensor shape as POPSIGN) plus its own `train.csv`/`test.csv` — a **fixed 80/20 split, stratified on `sign` only** (not participant-disjoint), built by the notebook recorded in `docs/logs/daily/2026-09-16.md`. `gislr_dir()` now does a regular `kagglehub.dataset_download` and derives `sign_to_prediction_index_map.json` on first use (the new dataset doesn't ship the competition's official one). **This is a canonical-split reset**, same shape as the 2026-07-18 registry reset: runs canonically evaluated on the old self-computed 90/10 split (9,448-video val set) are historical references only — see "Canonical evaluation" below. Declared obsolete via a **derived** `legacy_split` flag (`sb.mlops.registry.is_legacy_gislr_split`, `dataset=="gislr" and split.n_val==9448`), not a schema migration — `index.csv`'s `legacy_split` column, `sb.mlops.query.query_runs`/`leaderboard(include_legacy=False)` and `sb.mlops.promote.check()` (refuses to promote one) all derive it the same way; this README's own leaderboard below excludes legacy runs by default, but `leaderboard()`'s own default is unchanged (`include_legacy=True`) so it doesn't silently change what `gislr.2.models.evaluation.ipynb` picks for TFLite export. **52 of 55 registry runs are still on the retired split** as of 2026-09-2x — only `gru` has been re-run on the current one; TODO §4.3 tracks re-running the rest (no code porting needed, every training notebook already targets the current split).
-
-POPSIGN's extracted landmarks (the large intermediate artifact, pre-feature-caching) are written to a separate drive configured via `.env` — see [Environment setup](#environment-setup).
+**GISLR moved off the live `asl-signs` competition download (2026-09-16)** to **GISLR_Stratified**: a self-produced Kaggle *dataset* of pre-converted `(T,543,3)` npz files (one per sequence) plus its own `train.csv`/`test.csv` — a **fixed 80/20 split, stratified on `sign` only** (not participant-disjoint), built by the notebook recorded in `docs/logs/daily/2026-09-16.md`. `gislr_dir()` now does a regular `kagglehub.dataset_download` and derives `sign_to_prediction_index_map.json` on first use (the new dataset doesn't ship the competition's official one). **This is a canonical-split reset**, same shape as the 2026-07-18 registry reset: runs canonically evaluated on the old self-computed 90/10 split (9,448-video val set) are historical references only — see "Canonical evaluation" below. Declared obsolete via a **derived** `legacy_split` flag (`sb.mlops.registry.is_legacy_gislr_split`, `dataset=="gislr" and split.n_val==9448`), not a schema migration — `index.csv`'s `legacy_split` column, `sb.mlops.query.query_runs`/`leaderboard(include_legacy=False)` and `sb.mlops.promote.check()` (refuses to promote one) all derive it the same way; this README's own leaderboard below excludes legacy runs by default, but `leaderboard()`'s own default is unchanged (`include_legacy=True`) so it doesn't silently change what `gislr.2.models.evaluation.ipynb` picks for TFLite export. **52 of 55 registry runs are still on the retired split** as of 2026-09-2x — only `gru` has been re-run on the current one; TODO §4.3 tracks re-running the rest (no code porting needed, every training notebook already targets the current split).
 
 ## Models
 
@@ -82,7 +80,7 @@ Derived from each run's `meta.json`, never typed by hand:
 
 | segment | rule |
 |---|---|
-| **model** | the family. GISLR recognizers are `signbridge-gislr`; a POPSIGN model becomes `signbridge-popsign` rather than a variation, because a different label space is a different model |
+| **model** | the family. GISLR recognizers are `signbridge-gislr`; a second dataset's model would become its own `signbridge-<dataset>` rather than a variation, because a different label space is a different model (hypothetical — POPSIGN, the only other dataset considered, is deprecated) |
 | **framework** | `pyTorch` — these are `.pt` state dicts. A TFLite export (§6.2) goes under the *same* model as `tfLite`, which is what the segment is for |
 | **variation** | the **architecture** alone — `gru`, `bilstm`, `conv1d-transformer` |
 | **version** | any run of that architecture, in chronological run-id order |
@@ -251,7 +249,7 @@ See [docs/README.md](docs/README.md): day-by-day logs in `docs/logs/daily/<YYYY-
 | 2026-09-18 | [docs/logs/daily/2026-09-18.md](docs/logs/daily/2026-09-18.md) | Landmark-importance run written up · per-axis saliency · interactive report |
 | 2026-09-19 | [docs/logs/daily/2026-09-19.md](docs/logs/daily/2026-09-19.md) | Feature-discriminability run and write-up · pair-similarity and curated-features notebooks · repo cleanup (motion-energy notebook and Kaggle-submit helpers deleted) |
 | 2026-09-21 | [docs/logs/daily/2026-09-21.md](docs/logs/daily/2026-09-21.md) | **Motion-energy notebook rebuilt for GISLR_Stratified npz, run, and written up** — xy-native RMS speed (z dropped at the source), jitter smoothed before the derivative, new per-joint-angle "change of angles" scope · all three scopes, 0 failed units · global run confirms the pre-npz 50-video sample almost exactly · new open question (legs' xy motion vs the old z-noise discard rationale) · registry audit finds nothing needs porting to the current split, 52 legacy-split runs declared obsolete · **BiLSTM re-baseline + curated-feature ablation** run: `bilstm_base` 73.71% (below every current-split `gru`) · curated feature set is the dominant cause of `bilstm_curated`'s ~16pp loss (−17.4pp on its own; architecture recovers +10.6pp, batch size costs a further −9.1pp) · **five-architecture benchmark** run: `bilstm` 73.92% (offline) > `gru` 73.80% > `lstm` 72.86% > `cnn` 66.96% > `dnn` 64.85% top-1 · `dnn`'s mean true-class confidence (0.24) a quarter of every other arm's despite comparable top-3/5 |
-| 2026-09-22 | [docs/logs/daily/2026-09-22.md](docs/logs/daily/2026-09-22.md) | **Live streaming confidence/reset architecture scoped and run** — BiLSTM flagged as structurally unable to run frame-by-frame, DNN as having no state to reset; built and ran `gislr.3.streaming.confidence-eval.ipynb` (Phase A/B/D, 0 failures): fresh-start confidence is already well-calibrated (`gru` late-third 0.58, matching whole-video numbers) — the weak-looking naive aggregate was actually measuring un-reset state contamination, not poor calibration · reset cuts bleed-through 96–98% and roughly halves re-acquisition latency · `RecurrentSession`'s incremental step API verified to 1e-6 against the batch readout on real data · the assumed per-frame-supervised retrain downgraded from prerequisite to optional refinement |
+| 2026-09-22 | [docs/logs/daily/2026-09-22.md](docs/logs/daily/2026-09-22.md) | **Live streaming confidence/reset architecture scoped and run** — BiLSTM flagged as structurally unable to run frame-by-frame, DNN as having no state to reset; built and ran `gislr.3.streaming.confidence-eval.ipynb` (Phase A/B/D, 0 failures): fresh-start confidence is already well-calibrated (`gru` late-third 0.58, matching whole-video numbers) — the weak-looking naive aggregate was actually measuring un-reset state contamination, not poor calibration · reset cuts bleed-through 96–98% and roughly halves re-acquisition latency · `RecurrentSession`'s incremental step API verified to 1e-6 against the batch readout on real data · the assumed per-frame-supervised retrain downgraded from prerequisite to optional refinement · **repo cleanup: POPSIGN deprecated**, ~6.2GB of extracted data deleted (the ~870GB raw-video figure was already gone from this machine), extraction packages/notebooks marked paused not deleted |
 
 ## Project structure
 
@@ -262,7 +260,7 @@ under `experiments/`, and the two data trees — one committed, one never — at
 signbridge/
 ├── pyproject.toml            # workspace root (virtual: owns no code), uv members + the cu130 torch index
 ├── uv.lock
-├── .env                      # machine-specific config (POPSIGN drive, artifact backend) — not committed
+├── .env                      # machine-specific config (artifact backend; POPSIGN_LANDMARKS_DRIVE vestigial) — not committed
 ├── packages/                 # ALL library code. PEP 420 namespace: no `sb/__init__.py` anywhere,
 │   │                         # so each distribution ships part of the same `sb` namespace
 │   ├── sb-core/              # THE SEAM — imports no torch/mediapipe/tensorflow, so anything may depend on it
@@ -272,20 +270,21 @@ signbridge/
 │   │       ├── vocab.py      #   sign name ↔ class index
 │   │       ├── io.py         #   atomic landmark-npz read/write, schema-checked both ways
 │   │       └── paths.py      #   the repo tree (found by walking up) + lazy dataset resolution
-│   ├── sb-extract-ts/        # STAGE 1 in Deno/TypeScript — MediaPipe WASM. DOES NOT RUN: the web
-│   │                         # build needs WebGL (any delegate) and Deno has none. See
-│   │                         # docs/reports/extractor-parity.md. Use sb-extract for extraction.
-│   ├── sb-extract/           # STAGE 1 — video → landmarks (Python; produced the 33,599 test clips)
+│   ├── sb-extract-ts/        # STAGE 1 in Deno/TypeScript — PAUSED (POPSIGN, its only workload,
+│   │                         # is deprecated; also DOES NOT RUN — the web build needs WebGL and
+│   │                         # Deno has none, see docs/reports/extractor-parity.md)
+│   ├── sb-extract/           # STAGE 1 — video → landmarks (Python). PAUSED 2026-09-22: POPSIGN,
+│   │   │                     # its only consumer, is deprecated (produced the 33,599 test clips
+│   │   │                     # before that; kept for a future raw-video dataset or live-camera path)
 │   │   └── src/sb/extract/
 │   │       ├── holistic.py   #   MediaPipe worker pool, manifest-resumable, resource-capped
 │   │       ├── sources/      #   per-dataset adapters (popsign.py) — adapters, not branches
 │   │       ├── quality.py    #   extraction-quality proxies + composite score
 │   │       ├── overlay.py    #   landmark-on-video rendering (the visual quality test)
 │   │       ├── cli.py        #   `sb-extract`: pilot benchmark + resumable bulk run
-│   │       ├── popsign_cycle.py # download one part → extract → VERIFY → delete (~870 GB won't fit)
-│   │       ├── parity.py     #   do the Python and TypeScript extractors agree? gate the switch on this
-│   │       ├── parity_run.py #   `python -m sb.extract.parity_run` — runs both extractors over the
-│   │       │                 #   same seeded clips and hands the two trees to parity.py
+│   │       ├── popsign_cycle.py # download one part → extract → VERIFY → delete — DEPRECATED
+│   │       ├── parity.py     #   do the Python and TypeScript extractors agree? — DEPRECATED
+│   │       ├── parity_run.py #   `python -m sb.extract.parity_run` — DEPRECATED
 │   │       └── tune.py       #   detector-threshold sweep
 │   ├── sb-recognize/         # STAGE 2 — landmarks → gloss
 │   │   └── src/sb/recognize/
@@ -319,7 +318,7 @@ signbridge/
 │   │   └── src/sb/rescore/   #   prompts/v1/ (versioned, hashed into the run record) · evalset/ (frozen)
 │   └── sb-synthesize/        # speech → sign (future) — emits the SAME tensor sb.core.schema defines
 ├── experiments/              # notebooks are thin drivers; CWD does not matter any more
-│   ├── extraction/           #   POPSIGN extraction + its diagnostics
+│   ├── extraction/           #   POPSIGN extraction + its diagnostics — DEPRECATED, kept for history
 │   ├── recognition/          #   GISLR analysis, training, evaluation
 │   │   └── configs/          #   gislr.training.json · gislr.firstplace.json · gislr.landmark-importance.json (hyperparameters, never in a cell)
 │   └── synthesis/            #   (empty)
@@ -329,7 +328,7 @@ signbridge/
 │   ├── aliases.json          #   generated: champion/candidate → run id
 │   └── checkpoints.manifest.json  # what is backed up, with sha256s (written by sb-sync)
 ├── data/                     # GITIGNORED ABSOLUTELY — no negation rules, nothing committed
-│   ├── raw/                  #   extracted-from-source (POPSIGN landmark npz)
+│   ├── raw/                  #   extracted-from-source data (empty since POPSIGN's landmarks were deleted)
 │   ├── cache/<dataset>/      #   derived artifacts; features/<pipeline>/<key>/ is content-addressed
 │   ├── temp/                 #   throwaway scratch — deleted after use (cleanup_temp())
 │   └── external/             #   third-party assets (MediaPipe .task model)
@@ -339,7 +338,7 @@ signbridge/
 │   └── meta.v4.json          #   JSON Schema for a run record, rendered from sb.mlops.registry::FIELDS
 ├── ops/                      # housekeeping (PowerShell etc.), no project Python
 │   ├── envs.ps1              #   per-stage venvs: uv sync --package <member> into .venvs/<stage>
-│   └── sys_disk_usage.ps1    #   disk-usage helper (POPSIGN raw video is ~870GB)
+│   └── sys_disk_usage.ps1    #   disk-usage helper (POPSIGN's ~870GB was the reason it exists; POPSIGN is deprecated)
 └── docs/
     ├── logs/{daily,weekly}/  # time-ordered: what happened when
     └── reports/<topic>.md    # standalone test/analysis findings
@@ -351,8 +350,7 @@ signbridge/
 - **Library code lives in `packages/sb-*/`, not in notebooks; shared *parameters* live in a config file, not in cells.** All GISLR training is one notebook (`gislr.1.models.training.ipynb`) with a section per architecture, and every hyperparameter comes from **[`experiments/recognition/configs/gislr.training.json`](experiments/recognition/configs/gislr.training.json)** via `sb.recognize.config`. Architectures inherit the `shared` block; a deviation must be declared as an explicit `overrides` entry, which the notebook prints — so "all else identical" is enforced rather than maintained by hand. Project Python CLIs live in **`packages/scripts/`**; the root `scripts/` folder holds housekeeping/misc scripts only.
 - **One flat registry folder per training run** at `registry/runs/<epoch-seconds>/` holding `meta.json` + `best.pt`/`last.pt` + `assets/`. A run's artifacts are never split across parallel trees; `index.csv` is the queryable view.
 - **Docs**: daily logs in `docs/logs/daily/`, weekly summaries in `docs/logs/weekly/` (`<YYYY>-<WW>.md`, weeks Sunday → Saturday), standalone topic reports in `docs/reports/` — see `docs/README.md`.
-- **Data placement policy**: extracted-from-source data → `data/raw/<dataset>/…`; reusable derived artifacts → `data/cache/<dataset>/…`; throwaway output → `data/temp/`, **deleted after use** (`modules.paths.cleanup_temp()`); third-party assets → `data/external/`. Raw kagglehub downloads never enter the repo — `sb.core.paths` resolves them lazily at call time (`gislr_dir()`, `resolve_datasets()`), never at import time.
-- **POPSIGN's extracted landmarks go to `data/raw/popsign/{train,test}`**, rooted at the drive configured via `POPSIGN_LANDMARKS_DRIVE` in `.env` when set (falling back to `data/raw/`, gitignored). The extraction module (`sb.extract.holistic`) resolves this in one place.
+- **Data placement policy**: extracted-from-source data → `data/raw/<dataset>/…`; reusable derived artifacts → `data/cache/<dataset>/…`; throwaway output → `data/temp/`, **deleted after use** (`modules.paths.cleanup_temp()`); third-party assets → `data/external/`. Raw kagglehub downloads never enter the repo — `sb.core.paths` resolves them lazily at call time (`gislr_dir()`), never at import time.
 - **Paths are CWD-independent, and so are imports.** The packages are installed as editable workspace members, so `import sb...` works from anywhere; `sb.core.paths` finds the repo root by walking up for the workspace marker, so a notebook and an installed console script resolve the same tree. `SIGNBRIDGE_ROOT` overrides it.
 - **Canonical evaluation** (all GISLR runs must match to be comparable): GISLR_Stratified's fixed 80/20 split (an 18,896-video val set, stratified on `sign` only, upstream seed 42), per-class accuracy from the raw npz files — exactly what `sb.recognize.evaluate` reproduces. A new run displaces a leaderboard entry only on this same split/metric. **Reset 2026-09-16** from the old self-computed stratified 90/10 split (9,448-video val) when GISLR moved off the live `asl-signs` parquet download — see "Datasets" above; runs evaluated on that split are historical references only, not comparable to anything evaluated on this one, and machine-flagged as such (`legacy_split`, see "Datasets" above) rather than left for a human to remember. TODO §4.3 tracks re-running every architecture on the current split.
 
@@ -377,7 +375,7 @@ The six console scripts it puts on `.venv/Scripts/`:
 
 | command | what it does |
 |---|---|
-| `sb-extract` | POPSIGN landmark extraction: pilot benchmark + resumable bulk run |
+| `sb-extract` | landmark extraction: pilot benchmark + resumable bulk run — **paused**, POPSIGN was its only consumer |
 | `sb-evaluate <run_dir>` | the canonical per-class evaluation of one run |
 | `sb-index` | rebuild `registry/index.csv` + answer filter queries |
 | `sb-sync` | off-machine checkpoint copy (status / push / pull) |
@@ -387,7 +385,7 @@ The six console scripts it puts on `.venv/Scripts/`:
 Create a `.env` file at the project root (not committed) with:
 
 ```
-POPSIGN_LANDMARKS_DRIVE=D:/    # or wherever the extraction-output drive is mounted
+# POPSIGN_LANDMARKS_DRIVE=D:/  # vestigial — POPSIGN is deprecated (TODO §2)
 
 # Checkpoint backup (sb-sync): kaggle | local | s3
 SB_ARTIFACT_BACKEND=kaggle
@@ -423,17 +421,16 @@ The Jupyter kernel must use this project's `uv`-managed virtual environment (`.v
 11. `experiments/recognition/gislr.2.models.evaluation.ipynb` — **everything after training** (TODO §6): DuckDB leaderboard over all `meta.json` files, canonical-eval backfill (which also marks `submission.tested` — GISLR's canonical split *is* its held-out test set, scored locally, since 2026-09-16), top-5 learning-curve overlay, per-run and aggregate confusion matrices + most-confused pairs, and arch-generic TFLite export. All GISLR evaluation lives here and nowhere else; there is no separate submission step.
 12. `experiments/recognition/gislr.3.streaming.confidence-eval.ipynb` — *diagnostic, run 2026-09-22* (TODO §11): reuses the five-arch-benchmark checkpoints (no training) to test whether per-frame streaming confidence is usable evidence and whether resetting hidden state at a sign boundary helps, on 30 synthetic continuous streams (isolated clips concatenated with known boundaries — neither dataset has real multi-sign sequences). **Fresh-start confidence is already well-calibrated** (`gru` late-third mean true-class confidence 0.584, matching the whole-video numbers in `five-arch-benchmark.md`) — the naive aggregate looked weak only because it conflated fresh starts with segments still carrying a prior sign's un-reset state (near-zero confidence throughout, 0.01→0.05→0.09). **Reset removes most of that**: bleed-through cut 96–98%, re-acquisition latency roughly halved. New `sb.recognize.streaming` module (`per_frame_probs`, `RecurrentSession` — verified to 1e-6 against the batch computation on real data, `AcceptTrigger`); `gru`/`lstm`/`cnn1d` gained a `forward_all` per-frame readout in `architectures.py`. `bilstm` excluded everywhere — no causal per-frame readout exists to expose. Full results: `docs/reports/streaming-confidence.md`.
 
-**POPSIGN** (raw video, requires extraction first — in progress):
-
-1. `experiments/extraction/popsign.0.dataset.confidence-tuning.ipynb` — *diagnostic, run before bulk extraction* (TODO §2.3): sweeps `HolisticLandmarker` thresholds over a seeded 50-video sample (5 classes × 10), scores each config with quality proxies (detection rates, jitter, gaps, rigid-bone variance) **and** renders 100 landmark-overlay frames weighted toward the worst detections. Establishes which thresholds actually matter — measured: `min_hand_landmarks_confidence` is inert; the *pose* thresholds gate the hands.
-2. `experiments/extraction/popsign.0.dataset.extraction.ipynb` — the extraction driver, and where extraction actually runs: manifest generation + verification (`data/cache/popsign/dataframes/{train,test}.csv` — regenerated from the raw video tree, 30,867 train / 33,600 test), a **pilot batch (≤100 videos)** writing throwaway npz to `data/temp/popsign_pilot/` (auto-cleaned), then the resumable bulk run to `data/raw/popsign/{train,test}`. The worker pool runs in the kernel; MediaPipe's C++ logs are redirected per worker to `<out_dir>/<split>/_worker_stderr.log` so they never reach cell output. `modules/scripts/extract_popsign.py` (`pilot` / `run <split>`) is an optional CLI for unattended runs — same module, same manifests, resumable either way. See `TODO.md` §2.
-3. `experiments/extraction/popsign.0.dataset.output-inspection.ipynb` — *diagnostic, safe to run **during** an extraction*: opens one completed npz and shows the saved format — keys/shapes/dtypes, the 543-row holistic group layout, per-group detection rates, a frame plot, and the reference npz→model-input loader. Read-only by construction: no writes to the landmarks tree, no worker pool, no MediaPipe import, `.tmp.npz` staging files excluded so a half-written video is never opened.
-
-   **Saved format** — the stage-1 → stage-2 contract. Its definition is **[`packages/sb-core/src/sb/core/schema.py`](packages/sb-core/src/sb/core/schema.py)** (`LANDMARK_TENSOR` v1), not this paragraph: `schema.GROUPS` is the single row layout that `holistic.py`, `quality.py` and `subsets.py` all derive from, and `validate_tensor` / `validate_npz` enforce it. One `np.savez_compressed` per video at `<root>/data/raw/popsign/<split>/<label>/<video_id>.npz`, the label carried by the path rather than stored inside: `landmarks` `(T, 543, 3)` float16 (NaN where undetected), `fps` float32, `num_frames` int32. Row order is GISLR holistic order (face 0–467, left hand 468–488, pose 489–521, right hand 522–542) — that is what makes the `subsets.py` indices apply to POPSIGN unchanged, so extraction validates it before every write. ~165 KB/video → **~5.4 GB** for the full test split.
-4. `experiments/recognition/popsign.2.model.ipynb` — label-distribution analysis, stratified split, earlier TensorFlow experiments.
-5. `experiments/recognition/popsign.3.pipeline.ipynb` — end-to-end pipeline (stub).
-
-(`experiments/extraction/popsign.1.mediapipe.ipynb` is stale — slated for retirement per `TODO.md` §0.1.)
+**POPSIGN — DEPRECATED (2026-09-22).** This was a second, raw-video dataset
+(pre-extraction pipeline: confidence-tuning → extraction driver →
+output-inspection, plus early `popsign.2.model.ipynb`/`popsign.3.pipeline.ipynb`
+stubs). See `TODO.md` §2 for the decision. All four `popsign.0.dataset.*.ipynb`
+notebooks and both recognition stubs carry a deprecation banner and are kept
+for historical reference only — not maintained, not run. Extracted landmarks
+(`data/raw/popsign/`, `data/cache/popsign/`, ~6.2 GB) have been deleted from
+disk. The stage-1 → stage-2 npz contract they used
+(`packages/sb-core/src/sb/core/schema.py`, `LANDMARK_TENSOR` v1) remains
+GISLR's contract too and is unaffected.
 
 ## Constraints & known limitations
 

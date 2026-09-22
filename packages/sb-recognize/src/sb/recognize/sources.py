@@ -19,11 +19,16 @@ needs from a dataset:
 plus the identity used for cache addressing and provenance (name, upstream ref,
 manifest filename).
 
-Adding POPSIGN is then a second entry in :data:`SOURCES`, not a second copy of
-the training driver. What it will need before any POPSIGN number is comparable
-to anything: a split function with a fixed seed **and an asserted val size**,
-exactly as GISLR's has (``data.get_canonical_split`` asserts ``N_VAL``) — a
-split that can silently drift is not a benchmark.
+Adding a second dataset is then a new entry in :data:`SOURCES`, not a second
+copy of the training driver. What it will need before its numbers are
+comparable to anything: a split function with a fixed seed **and an asserted
+val size**, exactly as GISLR's has (``data.get_canonical_split`` asserts
+``N_VAL``) — a split that can silently drift is not a benchmark.
+
+**POPSIGN is deprecated (2026-09-22, TODO §2)** and was never actually added
+here — ``get_source("popsign")`` still fails; GISLR remains the only
+registered source. This seam is kept general on principle, not because a
+second dataset is imminent.
 """
 
 from dataclasses import dataclass

@@ -2,7 +2,7 @@
 
 ## What this repo is
 
-Notebook-driven ML research: streaming (causal, frame-by-frame) sign language recognition on MediaPipe landmarks. Two datasets — **GISLR** (Kaggle dataset `bracu23101281/gislr-stratified`, pre-converted npz landmarks derived from `asl-signs`) and **POPSIGN** (~870GB raw video, extraction in progress). No app, no test suite, no CI. `experiments/` notebooks are the dev surface, driving `packages/sb-*/`; `README.md` / `TODO.md` / `docs/` are the committed record of results.
+Notebook-driven ML research: streaming (causal, frame-by-frame) sign language recognition on MediaPipe landmarks. **GISLR** (Kaggle dataset `bracu23101281/gislr-stratified`, pre-converted npz landmarks derived from `asl-signs`) is the sole active dataset. **POPSIGN is deprecated (2026-09-22)** — its extracted data (`data/raw/popsign/`, `data/cache/popsign/`) was deleted; `sb-extract`/`sb-extract-ts` and `popsign.*.ipynb` notebooks are paused, not removed (`TODO.md` §2). No app, no test suite, no CI. `experiments/` notebooks are the dev surface, driving `packages/sb-*/`; `README.md` / `TODO.md` / `docs/` are the committed record of results.
 
 **Never run model training yourself.** Build the notebook, hand it to the user to execute, analyze results after.
 
@@ -12,7 +12,7 @@ Notebook-driven ML research: streaming (causal, frame-by-frame) sign language re
 
 - `uv sync` installs deps. **Never `uv pip install` ad-hoc** — it removes anything undeclared in `pyproject.toml` (torch was lost this way once). Declare new deps there.
 - `./ops/envs.ps1 -Stage train|mlops|extract` builds `.venvs/<stage>` from one workspace member's dependency closure — exists to make "`sb-mlops` must not import `sb-recognize`" checkable (an mlops-only env has no torch/tensorflow/mediapipe/opencv). Default `.venv` has everything and is what notebooks use.
-- `packages/sb-extract-ts` is Deno, excluded from the uv workspace (no `pyproject.toml`).
+- `packages/sb-extract-ts` is Deno, excluded from the uv workspace (no `pyproject.toml`). **Paused** along with POPSIGN, its only consumer (`TODO.md` §2).
 - Run Python via `.venv/Scripts/python.exe`. **CWD doesn't matter** — packages are editable-installed workspace members; `sb.core.paths` finds repo root by walking up for a workspace marker (`SIGNBRIDGE_ROOT` overrides).
 - Console scripts (`.venv/Scripts/`, any CWD, no interpreter prefix):
   ```bash
@@ -21,11 +21,11 @@ Notebook-driven ML research: streaming (causal, frame-by-frame) sign language re
   sb-sync.exe status          # checkpoint backup: status / push / pull / prune / rescheme
   sb-promote.exe list         # aliases: which run is champion
   sb-docs.exe                 # regenerate index.csv + schemas/ + README generated blocks
-  sb-extract.exe --help       # POPSIGN extraction
+  sb-extract.exe --help       # POPSIGN extraction — PAUSED, POPSIGN deprecated
   ```
   `ops/` is housekeeping only (PowerShell etc.), no project Python.
-- Dataset resolution is **lazy** — importing `sb.core.paths` downloads nothing. `gislr_dir()` for GISLR only (a regular Kaggle dataset download since 2026-09-16, not the `asl-signs` competition); `resolve_datasets()` for everything (POPSIGN included, huge).
-- `.env` (gitignored) holds `KAGGLE_MCP_TOKEN`. `POPSIGN_LANDMARKS_DRIVE` not currently set → extraction falls back to `data/raw/popsign`; set it before a bulk run if you don't want hundreds of GB there.
+- Dataset resolution is **lazy** — importing `sb.core.paths` downloads nothing. `gislr_dir()` for GISLR, the only active dataset. `resolve_datasets()` also resolves POPSIGN (deprecated, huge) — don't call it for new work.
+- `.env` (gitignored) holds `KAGGLE_MCP_TOKEN`. `POPSIGN_LANDMARKS_DRIVE` is vestigial now that POPSIGN is deprecated.
 - Type checking: `.venv/Scripts/ty.exe check` from repo root (canonical; `pyrefly` dropped 2026-07-22).
 - No `jq` on this machine — parse notebook JSON with `python -c "import json; ..."`.
 
@@ -36,8 +36,8 @@ Notebook-driven ML research: streaming (causal, frame-by-frame) sign language re
 ## Windows constraints
 
 - Training is PyTorch + CUDA. TensorFlow GPU doesn't work on native Windows — TFLite export rebuilds the model in native Keras and transfers weights (`sb.recognize.export.keras`, via `gislr.2.models.evaluation.ipynb`); the ONNX/onnx2tf route was tried and abandoned.
-- MediaPipe extraction is CPU-only (GPU delegate is Ubuntu-only), parallelized across workers. Two extractors exist — `packages/sb-extract` (Python, produced the 33,599 test clips) and `packages/sb-extract-ts` (Deno/TS, for native `ImageData`/Web Workers without a `canvas` native module). **Not yet known to agree** — run `python -m sb.extract.parity` before letting the TS path extract anything trainable.
-- POPSIGN downloads **one part at a time** (~870GB doesn't fit): `python -m sb.extract.popsign_cycle run --part <name>` downloads → extracts → verifies → deletes, and refuses to delete a part whose clips aren't all extracted and spec-valid.
+- MediaPipe extraction is CPU-only (GPU delegate is Ubuntu-only), parallelized across workers. Two extractors exist — `packages/sb-extract` (Python, produced the 33,599 POPSIGN test clips) and `packages/sb-extract-ts` (Deno/TS). **Both paused (2026-09-22)** — POPSIGN, their only workload, is deprecated; kept for a future raw-video dataset or live-camera deployment, not maintained until one exists.
+- POPSIGN's `python -m sb.extract.popsign_cycle run --part <name>` (download → extract → verify → delete, one part at a time) is **deprecated** along with the rest of POPSIGN (`TODO.md` §2/§10.3).
 - DataLoader multiprocessing (spawn) is fragile from ad-hoc scripts — in-RAM arrays with `num_workers=0` train GISLR at ~0.3 min/epoch, plenty (`SubsetArrayDataset` in `sb.recognize.features.base_v1`).
 
 ## Architecture & conventions
@@ -60,7 +60,7 @@ Notebook-driven ML research: streaming (causal, frame-by-frame) sign language re
 3. **Long tasks save state as they go** — manifest-driven resumable pattern (write artifact before marking `done` in `data/cache/.../<scope>_manifest.json`, atomic via temp file + `os.replace`, `done` skipped/`failed` retried); training uses the driver's auto-resume. Record seeded samples to JSON.
 - Code cells open with a `# ===== / <what this cell does> / =====` banner.
 - One setup cell after title: imports, then UPPERCASE tunables with inline comments, then print resolved paths.
-- `gislr_dir()` for GISLR work; never `resolve_datasets()` unless POPSIGN raw video is genuinely required.
+- `gislr_dir()` for all dataset work — the only active dataset. Never `resolve_datasets()` (POPSIGN-inclusive, deprecated).
 - One `tqdm.auto` bar per long task, everything in its description/postfix — no nested bars, no per-iteration prints.
 - Heavy outputs (parquets, PNGs) go to `data/cache/`/`assets/`, not cell outputs — display only a couple of representative figures inline (a notebook once hit 17MB from animation outputs).
 
@@ -71,4 +71,4 @@ Notebook-driven ML research: streaming (causal, frame-by-frame) sign language re
 
 ## Known broken / stale
 
-This list rots fast — `TODO.md` §0 (repo-restructure follow-ups) and §2 (POPSIGN extraction) are the source of truth, not this file.
+This list rots fast — `TODO.md` §0 (repo-restructure follow-ups) is the source of truth, not this file. §2 (POPSIGN extraction) is deprecated, not stale-and-pending.

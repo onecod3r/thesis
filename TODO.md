@@ -9,6 +9,13 @@ existing section or a new one added without restructuring.
 doesn't fit an existing one, add a new `## N. <Workstream Name>` section at the end
 (before "Backlog / Someday") rather than bolting it onto an unrelated section.
 
+**POPSIGN is deprecated (2026-09-22).** Every open item under §2 (Bulk Landmark
+Extraction), §10.1 (Deno/TS extractor parity), and §10.3 (`popsign_cycle`) is
+closed, not pursued — see §2's banner for the decision. `data/raw/popsign/`
+and `data/cache/popsign/` (~6.2 GB) have been deleted from disk; the extraction
+packages (`sb-extract`, `sb-extract-ts`) and `popsign.*.ipynb` notebooks are
+kept but marked paused, not deleted. GISLR is the only active dataset.
+
 ---
 
 ## Current focus (2026-09-04)
@@ -22,8 +29,8 @@ stale, trust the sections.
 | 1 | **Restart the Jupyter kernels, then run one short training** to prove the restructure end to end | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
 | 2 | ~~Run the first checkpoint backup~~ — **done 2026-09-04**: 42 on Kaggle, local copies pruned after hash verification. Remaining: confirm the model is **private** | §9.3 | was the last single-copy risk |
 | 3 | **Notebook §5b: the three-arm AWP/LateDropout ablation** (~30 min) | §4.2 | the 1st-place port has collapsed at epoch 15 twice and neither switch has been run alone, so the recipe is still unmeasured |
-| 4 | **Install deno + ffmpeg, then run the TS extractor once** and `sb.extract.parity` against the existing test clips | §10.1 | the extractor is written but has never executed; parity gates whether it may touch anything trainable |
-| 4b | **Regenerate the POPSIGN train manifest** (30,867 rows covers 1 of 4 parts), then `popsign_cycle run --part test` to exercise verify against a known-good tree | §2.2, §10.3 | all four train parts are downloaded; the stale manifest blocks the primary dataset, and verify should be trusted before it deletes 220 GB |
+| ~~4~~ | ~~Install deno + ffmpeg, then run the TS extractor once~~ — **deprecated 2026-09-22**: POPSIGN (the only workload this parity check gates) is deprecated; see §2/§10.1 | §10.1 | — |
+| ~~4b~~ | ~~Regenerate the POPSIGN train manifest, then `popsign_cycle run --part test`~~ — **deprecated 2026-09-22**: POPSIGN deprecated, extracted data deleted from disk; see §2 | §2.2, §10.3 | — |
 | 5 | **§7.2 normalization or §7.4 augmentation**, under §7.6's ablation protocol | §7.1 → §7.2/§7.4 | the diagnosis is complete: the plateau is a generalization gap (train confusion 0.012 vs val 0.273), and these are the two levers that attack one |
 | 6 | Re-run the evaluation notebook on the 42-run registry | §6.1 | it last ran against 18 runs; only 1 of 42 run folders has a confusion matrix |
 | 7 | **Run `gislr.1.models.landmark-importance.ipynb`** (built 2026-09-16, not yet executed) | §3.3 | custom DNN/LSTM/GRU + full-543 engineered features + rotating k-fold — the model-derived complement to the motion-energy/probe landmark rankings (§1/§3.0) |
@@ -63,23 +70,21 @@ docs daily/weekly/reports split).
   **resolved 2026-07-16** by the notebook overhaul (§3.1): it now imports only
   the subset registry (`modules.dataset.landmark.subsets`) and defines the
   dataset class itself.
-- [ ] `experiments/extraction/popsign.1.mediapipe.ipynb` imports `DATASETS`,
-  which **no longer exists in any form** — the eager module-level dict was
-  replaced by `DATASET_IDS` plus the lazy `gislr_dir()` / `train_dirs()` /
-  `test_dir()` resolvers, now in `sb.core.paths`. (The old note here said to
-  swap the key to `"GISLR"`; that instruction is stale — there is no dict to key
-  into.) This and `popsign.2`'s `tensorflow.keras` import are the **only two
-  unresolved imports left in the tree** as of 2026-09-04. Retire the notebook
-  (next bullet) rather than repairing an import into code that is itself
-  superseded.
+- [x] `experiments/extraction/popsign.1.mediapipe.ipynb` imported `DATASETS`,
+  which no longer existed in any form. **Resolved by deletion** — the file no
+  longer exists on disk (retired at some point before 2026-09-22, this entry
+  just hadn't been closed). `popsign.2.model.ipynb`'s `tensorflow.keras`
+  import is now moot too: that notebook is **deprecated along with POPSIGN**
+  (2026-09-22, §2) and marked paused rather than fixed.
 - [x] `src/modules/` had no `__init__.py` files — **resolved 2026-07-18**, and
   superseded 2026-09-04: the tree is now six installed packages under a `sb`
   PEP 420 namespace, so there is deliberately **no** `sb/__init__.py` — that
   absence is what lets separate distributions share the namespace.
-- [ ] `experiments/extraction/popsign.1.mediapipe.ipynb` currently contains early **GISLR** motion-energy
-  exploration code, not POPSIGN extraction — retire that content (superseded by
-  `gislr.0.dataset.motion-energy.ipynb`) and rebuild the notebook as the extraction
-  driver (§2).
+- [x] `experiments/extraction/popsign.1.mediapipe.ipynb` had contained early
+  **GISLR** motion-energy exploration code, not POPSIGN extraction. **Moot**:
+  the file has since been deleted, GISLR's motion-energy work moved to
+  `gislr.0.dataset.motion-energy.ipynb` long ago, and rebuilding it as a
+  POPSIGN extraction driver is no longer wanted — POPSIGN is deprecated (§2).
 - [x] `gislr.0.dataset.motion-energy.ipynb` — **deleted 2026-09-19** (it broke on
   2026-09-16 when GISLR moved to npz), **rebuilt 2026-09-21** against GISLR_Stratified
   npz (TODO §1.8/§7.7): xy-native per-landmark RMS speed (z dropped before the speed
@@ -207,9 +212,10 @@ Executed 2026-07-18 (full write-up: `docs/logs/daily/2026-07-18.md`):
   ME_126 / ME_132 / FP_118, so the "+3.1 pts over full-543" claim still rests
   on the pre-reset v1 numbers whose weights are gone. Filed as its own item in
   §3.1.
-- [ ] `popsign.2.model.ipynb` / `popsign.3.pipeline.ipynb` still predate the
-  restructure (old paths, TF-era code) — modernize or retire alongside
-  `popsign.1` (§0.1).
+- [x] `popsign.2.model.ipynb` / `popsign.3.pipeline.ipynb` still predated the
+  restructure (old paths, TF-era code). **Resolved 2026-09-22: retired, not
+  modernized** — both marked paused/deprecated along with POPSIGN (§2), not
+  worth updating for a workstream that isn't being pursued.
 
 ### 0.5 Docs tree: `logs/` vs `reports/` (2026-07-19)
 
@@ -387,11 +393,29 @@ the design rationale (loading-layer decision aside — see §1.8).
 
 ---
 
-## 2. Bulk Landmark Extraction (POPSIGN)
+## 2. Bulk Landmark Extraction (POPSIGN) — DEPRECATED 2026-09-22
 
-**Decision (resolved):** extracted landmarks go to **`data/raw/popsign/{train,test}`**,
-rooted at the separate drive configured via `POPSIGN_LANDMARKS_DRIVE` in `.env`
-when set (fallback: `src/data/`, gitignored) — too large to live next to the code.
+**POPSIGN is deprecated as a workstream.** Every open (`[ ]`) item below is
+closed as "not pursued," not completed — kept as history, not a queue. What
+changed on disk: `data/raw/popsign/` (5.6 GB, 19,899 npz across 72 labels —
+one part's worth of train, extracted under the old single-part manifest) and
+`data/cache/popsign/` (582 MB — manifests, confidence-tuning and pilot
+outputs) were **deleted**. The ~870 GB of raw video this section originally
+sized for was not actually on this machine when the decision was made — the
+two train parts §2.2 records as downloaded to `D:`/`E:` and the kagglehub
+dataset cache were already clear, most likely cleaned up by the ordinary
+download→extract→delete cycle (§10.3) at some point this wasn't logged, or
+the drives were repurposed for other work since. `sb-extract`/`sb-extract-ts`
+(the extraction packages) and every `popsign.*.ipynb` notebook are marked
+**paused**, not deleted — see their own docstrings/banners — in case a future
+raw-video dataset or a live-camera deployment path (§10.2) reuses them.
+
+**Original section, kept for history below.**
+
+**Decision (resolved, historical):** extracted landmarks go to
+**`data/raw/popsign/{train,test}`**, rooted at the separate drive configured
+via `POPSIGN_LANDMARKS_DRIVE` in `.env` when set (fallback: `src/data/`,
+gitignored) — too large to live next to the code.
 
 ### 2.1 Extraction module — `sb.extract.holistic` (2026-07-16)
 
@@ -2448,11 +2472,11 @@ code: `sb.recognize.data` hardcodes `FEATURES_DIR = CACHE_DIR/"gislr"/"features"
   one, with GISLR as the first implementation.
 - [x] Keep the `<dataset>.<stage>.<topic>.ipynb` notebook convention as-is —
   renaming notebooks is churn that fixes nothing.
-- [ ] POPSIGN's canonical split needs the same treatment GISLR's got (fixed
-  seed, asserted val size) before any POPSIGN number is comparable to anything.
-  This is now a `DatasetSource` entry in `sb.recognize.sources`, not a
-  second training driver — `get_source("popsign")` already fails with the list
-  of what that entry must provide.
+- [x] POPSIGN's canonical split would have needed the same treatment GISLR's
+  got (fixed seed, asserted val size) before any POPSIGN number was
+  comparable to anything. **Moot: POPSIGN is deprecated (2026-09-22, §2)** —
+  `get_source("popsign")` still fails, and the seam is being kept general on
+  principle (`sb.recognize.sources`), not because a second dataset is coming.
 
 **Done 2026-09-04.** `sb.recognize.sources`: `DatasetSource` bundles dir
 resolver, label map, canonical split, per-sample reader, sample-path builder,
@@ -2602,10 +2626,10 @@ Still open, and deliberately so:
 - [ ] **Notebooks have not been re-executed** under the new layout — only parsed.
   Their imports resolve and the CLIs run, but the first real training run is the
   proof. Restart the Jupyter kernels: `import modules...` is gone.
-- [ ] `experiments/extraction/popsign.1.mediapipe.ipynb` still imports
+- [x] `experiments/extraction/popsign.1.mediapipe.ipynb` had still imported
   `DATASETS`, and `popsign.2.model.ipynb` still imports `tensorflow.keras` —
-  both pre-existing breakage (§0.1), both now the only unresolved imports in the
-  tree.
+  both pre-existing breakage (§0.1). **Resolved 2026-09-22**: the first file
+  no longer exists; the second is deprecated along with POPSIGN, not fixed.
 
 
 ### 9.9 The reasoning §9.8 overruled (kept 2026-09-04)
@@ -2668,9 +2692,17 @@ the thing worth losing.
 ## 10. Extraction in TypeScript, staged environments, artifact naming (2026-09-05)
 
 Three changes requested together. §10.1 is the large one and is **not finished** —
-the code exists and has never run.
+the code exists and has never run. **§10.1 and §10.3 deprecated 2026-09-22**
+along with POPSIGN (§2) — both existed to serve POPSIGN extraction and there
+is no other workload to run them against. §10.2, §10.4, §10.5 are unaffected
+(dataset-agnostic infrastructure / GISLR-specific).
 
-### 10.1 Deno/TypeScript extractor — `packages/sb-extract-ts`
+### 10.1 Deno/TypeScript extractor — `packages/sb-extract-ts` — DEPRECATED 2026-09-22
+
+**Kept for history; not pursued.** This section blocked on measuring parity
+against POPSIGN video, which no longer matters — POPSIGN is deprecated (§2)
+and its extracted data deleted. `sb-extract-ts` is marked paused, not
+deleted (its own README explains why).
 
 Deno rather than Node for one concrete reason: it implements `ImageData` and Web
 Workers natively, so MediaPipe's WASM build needs no `canvas` native module in a
@@ -2765,6 +2797,12 @@ long-running frame loop.
 
 ### 10.2 Livestream mode — the end goal, not yet started
 
+**Unaffected by POPSIGN's deprecation** — this is about a live camera feed,
+not a stored dataset, and the deployment target is GISLR-trained models
+regardless. It depends on `sb-extract-ts`'s `schema.ts` (paused, not
+deleted, §10.1) and the deployment-target decision §9.8 left open, not on
+POPSIGN itself.
+
 - [ ] `runningMode: "LIVE_STREAM"` is a genuinely different contract from
   `VIDEO`: a result callback rather than a return value, and frames dropped
   under load. That is right for a camera and wrong for a corpus, so it is a
@@ -2773,7 +2811,12 @@ long-running frame loop.
   and it is what makes the streaming architecture choice (`StreamingGRU`) pay
   off. Needs the deployment target decision that §9.8 left open.
 
-### 10.3 POPSIGN one part at a time — `sb.extract.popsign_cycle`
+### 10.3 POPSIGN one part at a time — `sb.extract.popsign_cycle` — DEPRECATED 2026-09-22
+
+**Kept for history; not pursued.** POPSIGN is deprecated (§2); the two open
+items below (running the cycle, regenerating the train manifest) are closed
+as not-pursued, not completed. `popsign_cycle.py` stays in `sb-extract`,
+marked paused rather than deleted.
 
 - [x] download → extract → **verify** → delete, resumable at part and clip level.
   ~870 GB does not fit; the landmarks are ~14 GB, so the video is a transient
@@ -2782,11 +2825,12 @@ long-running frame loop.
   clip must have a `done` unit, the npz must exist, and a seeded sample must
   pass the spec. A part deleted while partly extracted costs a ~220 GB
   re-download to notice.
-- [ ] **Not yet run.** Start with `--part test`, which is already extracted, so
-  the verify path can be checked against a known-good tree before it is trusted
-  to delete 220 GB.
-- [ ] `train.csv` still describes 1 of 4 parts (30,867 rows) — §2.2. The cycle
-  regenerates nothing; the manifest still needs rebuilding from the raw tree.
+- [x] ~~Not yet run. Start with `--part test`...~~ — **deprecated 2026-09-22,
+  not pursued**: POPSIGN's extracted test split no longer exists on disk to
+  verify against.
+- [x] ~~`train.csv` still describes 1 of 4 parts...~~ — **deprecated
+  2026-09-22, not pursued**: the manifest and its underlying npz have been
+  deleted along with the rest of POPSIGN's extracted data.
 
 ### 10.4 Per-stage environments — `ops/envs.ps1`
 

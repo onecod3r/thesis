@@ -1,5 +1,12 @@
 """Stage 1: video -> landmark tensors.
 
+**PAUSED (2026-09-22): POPSIGN, this package's only active consumer, is
+deprecated** (see ``TODO.md`` §2) — GISLR ships pre-extracted npz and needs
+no extraction stage. Not deleted: the extraction engine itself is
+dataset-agnostic and could serve a future raw-video dataset or a live-camera
+deployment path (``TODO.md`` §10.2), but nothing currently exercises it and
+it is not being maintained until a new consumer exists.
+
 MediaPipe Holistic over a worker pool, resumable through a manifest, capped so a
 bulk run leaves the machine usable. Every artifact it writes conforms to
 ``sb.core.schema`` — the contract stage 2 reads.
