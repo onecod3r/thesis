@@ -1,0 +1,25 @@
+{
+  "_comment": "GISLR-Sentences dataset build (TODO §12.1) -- gislr.0.dataset.sentences.ipynb. Every tunable of the build lives here, never in a cell.",
+  "dataset_version": "v1",
+  "corpus_version": "v1",
+  "seed": 42,
+  "source_split": "test",
+  "corpus": {
+    "min_len": 2,
+    "max_len": 8,
+    "min_per_gloss": 12
+  },
+  "synth": {
+    "gap_frames": [2, 10],
+    "rest_frames": [10, 30],
+    "rest_jitter": 0.002
+  },
+  "planner": {
+    "reuse_penalty": 2.0,
+    "repeat_penalty": 0.05,
+    "length_bonus": 0.3,
+    "pressure_weight": 0.3
+  },
+  "n_roundtrip_checks": 300,
+  "kaggle_handle": "bracu23101281/gislr-sentences"
+}
