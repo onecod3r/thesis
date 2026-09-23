@@ -18,15 +18,18 @@ kept but marked paused, not deleted. GISLR is the only active dataset.
 
 ---
 
-## Current focus (2026-09-04)
+## Current focus (2026-09-24)
 
 The workstream sections below are the source of truth; this is just the short
 list of what is actually next, in order. Re-derived at each audit — if it looks
-stale, trust the sections.
+stale, trust the sections. Rows 1–12 are carried over from the 2026-09-04 audit
+and were not individually re-verified on 2026-09-24.
 
 | # | next action | where | why now |
 |---|---|---|---|
-| 1 | **Restart the Jupyter kernels, then run one short training** to prove the restructure end to end | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
+| **0** | **Finish `gislr.3.streaming.continuous-eval.ipynb` §§4–5 (user)**, then Claude writes `docs/reports/continuous-models.md` | §12.3 | §§1–3 done 2026-09-24 (parity passes, sweeps cached); §4 final eval was interrupted at 0% with nothing saved. Selection-signer GER already suggests C1 D3 **0.413** vs the best §12.2 baseline 0.507 |
+| 0b | Plan §12.4 add-a-sign (enroll C-open's 20 held-out glosses from 1/5/10 examples) | §12.4 | C-open (`1790146838`) is trained and waiting; needs a plan + user review before building |
+| ~~1~~ | ~~Restart the Jupyter kernels, then run one short training~~ — **effectively done**: the four §12.3 continuous runs trained end to end through the restructured stack on 2026-09-23 | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
 | 2 | ~~Run the first checkpoint backup~~ — **done 2026-09-04**: 42 on Kaggle, local copies pruned after hash verification. Remaining: confirm the model is **private** | §9.3 | was the last single-copy risk |
 | 3 | **Notebook §5b: the three-arm AWP/LateDropout ablation** (~30 min) | §4.2 | the 1st-place port has collapsed at epoch 15 twice and neither switch has been run alone, so the recipe is still unmeasured |
 | ~~4~~ | ~~Install deno + ffmpeg, then run the TS extractor once~~ — **deprecated 2026-09-22**: POPSIGN (the only workload this parity check gates) is deprecated; see §2/§10.1 | §10.1 | — |
@@ -3179,6 +3182,16 @@ The design brief comes from `docs/reports/sentence-baselines.md` §5.
   `1790144582`, C3 `1790142624`, C-open `1790146838`. Two orphan runs
   (`1790139949`, `1790141422`) exist with `eval: pending` — superseded by the
   fresh runs the training cells created, not on the leaderboard.
+- [~] **Eval notebook partial run (observed 2026-09-24).** Setup + §§1–3 ran:
+  parity C1 0/10 (+1 near-tie), C2 0/10, C3 0/10. Per-frame (16 eval signers,
+  `sentence`): frame acc C1 0.723 / C2 0.712 / C3 0.329; in-context vote acc
+  0.750 / 0.741 / 0.527; boundary F1 0.435 / 0.426 / 0.255 (precision ~0.33 —
+  the head over-fires). Sweeps cached (`sweep_C{1,2,3}.json`). Best
+  selection-signer GER: **C1 D3 collapsed 0.413**, C2 D3 0.437, C1 D2
+  collapsed 0.546, C3 D4 0.672 (vs §12.2 best streaming baseline 0.507).
+  D1 uncollapsed is poor (1.15). **§4 (final eval) was interrupted at 0% —
+  no `final_*` artifacts saved; §5 not run.** Next: re-run §§4–5 (user).
+  Check whether D1's chosen β=0.7 / min_mass=4.0 sit at the grid edge.
 - [ ] **Run the eval notebook** — first attempt 2026-09-23 stopped at the §1
   parity cell (C1: 1/10 D2-vs-live-loop mismatches). **Not a decoder bug**
   (diagnosed 2026-09-23): a float tie at the threshold. At frame 347 of
