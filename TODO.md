@@ -2987,7 +2987,7 @@ own plan and the user's review *before* it is built. Order agreed 2026-09-23
 |---|---|---|---|
 | **12.1** | 2 | GISLR-Sentences: sentence corpus + test-derived continuous dataset → Kaggle | **built + run 2026-09-23; upload pending** |
 | 12.2 | 3 (baselines) | existing isolated models on 12.1 | **run 2026-09-23** — `docs/reports/sentence-baselines.md` |
-| 12.3 | 1 + 4 | continuous frame-level model (null class, add-a-sign head) | **plan proposed 2026-09-23, awaiting review** |
+| 12.3 | 1 + 4 | continuous frame-level model (null class, add-a-sign head) | **built 2026-09-23, not yet trained** |
 | 12.4 | 3 (rerun) + 4 | 12.3 on 12.1; teach held-out signs | plan pending |
 | 12.5 | — | pipeline structure + deployment/architecture research | plan pending |
 
@@ -3116,13 +3116,68 @@ signer split).
 - [ ] Follow-up: once the Kaggle copy is published, confirm
   `gislr_sentences_dir()` resolves it (this run used the local build).
 
-### 12.3–12.5 — outlines (each needs its own plan + review)
+### 12.3 Continuous model — plan approved + built 2026-09-23, not yet trained
 
-- [ ] **12.3 continuous model**: causal encoder (starting from `StreamingGRU`)
-  with per-frame confidence over 250 glosses + null, trained on sentences
-  composed on the fly from `train.csv` (the same `sb.recognize.sequences`
-  composer); per-frame CE (alignments known) vs CTC arms; cosine-normalized
-  head; ~20 glosses held out of training for 12.4.
+The user approved all recommended options:
+- **a dedicated boundary head** rather than null-only commits;
+- **training on continuous streams with no state reset** (the decoder may
+  still reset);
+- **all four runs** (C1 GRU, C2 LSTM, C3 CTC, C-open);
+- **a separate open-vocabulary run** with 20 glosses held out.
+
+The design brief comes from `docs/reports/sentence-baselines.md` §5.
+
+**Built:**
+- `ContinuousRNN` (+ `ContinuousGRU`/`ContinuousLSTM`, `ARCHS` keys
+  `gru_continuous`/`lstm_continuous`) in `architectures.py`: a per-frame
+  **cosine** gloss+null head (`CosineGlossHead`, with `class_mask` and
+  `enroll()` for §12.4) and a sign-boundary head. It keeps the isolated
+  read-out, so `sb-evaluate` scores it canonically.
+- New package `sb.recognize.continuous`:
+  - `data.py`: NaN-preserving `train.csv` clip bank (`clipbank_v1`,
+    3.0 GB); a per-epoch random partition into one-signer streams of 1–6
+    signs; 0–15-frame interpolated gaps; lowered or hands-absent rest;
+    per-frame gloss/null/boundary targets.
+  - `train.py`: the driver (auto-resume, registry run, `meta.json` every
+    epoch). Selection is on validation-stream segment accuracy, from a
+    sign-stratified 5% of `train.csv`.
+  - `decode.py`: D1 boundary commit, D1r + reset, D3 null-gated, D4 greedy
+    CTC. D2 (the user's literal loop) is `streaming.decode_stream(...,
+    exclude=null)`.
+- Notebooks: `gislr.1.models.continuous.ipynb` (training, one section per
+  run, learning curves, canonical isolated eval) and
+  `gislr.3.streaming.continuous-eval.ipynb` (the §12.2 protocol, results
+  beside the baseline rows, a by-length analysis). Configs:
+  `configs/gislr.continuous.json` and `gislr.continuous-eval.json`.
+
+**Checks:**
+- [x] `smoke=N` driver mode (no registry writes) passes for all four runs:
+  71,801 train clips (20.5k streams/epoch) and 3,780 validation clips
+  (1,097 streams); C-open holds out 20 glosses (66,096 train clips).
+- [x] Contract tests, GRU and LSTM:
+  - isolated read-out == `forward_all` at the last frame;
+  - state_dict round-trips with the mask;
+  - masked classes are `-inf` (also under CUDA/AMP);
+  - `RecurrentSession` matches the batch forward to 6e-7;
+  - D2 matches the live loop (0/6 mismatches);
+  - `enroll()` unmasks a class.
+- [x] The eval notebook smoke-run end to end on random-init fake runs. Its
+  parity cell passes, and every artifact and figure is produced.
+- [x] **Rest design corrected before any training.** Measured on training
+  frames: hips are out of frame in 97% of frames (median y 1.25), hands are
+  never detected below y ≈ 0.9, and each hand is present in only ~30% of
+  frames. So "lowered" rest now drops the pose wrists to hip height and
+  **blanks each hand once it leaves the frame**, instead of keeping the
+  hands visible below the image.
+- [x] Bug found and fixed: hands-absent rest blanked only the hands' y
+  columns and left x present.
+- [ ] **Train C1, C2, C3, C-open** (user), then run the eval notebook and
+  write `docs/reports/continuous-models.md`.
+- [ ] Follow-up: GISLR-Sentences v2 with the realistic lowered rest
+  (pose down, hands out of frame), plus the `minemy` rewrite.
+
+### 12.4–12.5 — outlines (each needs its own plan + review)
+
 - [ ] **12.4 add-a-sign**: enroll held-out glosses from 1/5/10 examples —
   prototype imprinting (no retraining) vs short fine-tune with replay;
   new-class accuracy on 12.1 and forgetting on the base classes.
