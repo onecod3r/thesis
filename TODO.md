@@ -2985,8 +2985,8 @@ own plan and the user's review *before* it is built. Order agreed 2026-09-23
 
 | step | user # | what | status |
 |---|---|---|---|
-| **12.1** | 2 | GISLR-Sentences: sentence corpus + test-derived continuous dataset → Kaggle | **built, not yet run** |
-| 12.2 | 3 (baselines) | existing isolated models on 12.1 | plan pending |
+| **12.1** | 2 | GISLR-Sentences: sentence corpus + test-derived continuous dataset → Kaggle | **built + run 2026-09-23; upload pending** |
+| 12.2 | 3 (baselines) | existing isolated models on 12.1 | **plan proposed 2026-09-23, awaiting review** |
 | 12.3 | 1 + 4 | continuous frame-level model (null class, add-a-sign head) | plan pending |
 | 12.4 | 3 (rerun) + 4 | 12.3 on 12.1; teach held-out signs | plan pending |
 | 12.5 | — | pipeline structure + deployment/architecture research | plan pending |
@@ -3012,7 +3012,7 @@ clips; 0.4% hand-absent frames overall; length median 22 / p95 131 / max
 early-stopped on — 12.2's baselines carry that selection advantage, and
 12.3 must select on a `train.csv`-derived set.
 
-### 12.1 GISLR-Sentences v1 — built 2026-09-23, not yet run
+### 12.1 GISLR-Sentences v1 — built + run 2026-09-23 (local), upload pending
 
 `experiments/recognition/gislr.0.dataset.sentences.ipynb` + new
 `sb.recognize.sequences` (`corpus.py`, `compose.py`, committed corpus in
@@ -3039,7 +3039,18 @@ early-stopped on — 12.2's baselines carry that selection advantage, and
   end to end on a 40-sequence slice with every real `sb.*` import blocked:
   identical plan (6,616 / 8.0% / 1,227), round-trip 20/20 at float32 and
   float16. Regenerate it after changing any of those inputs.
-- [ ] **Run it on Kaggle** (GISLR_Stratified as input, CPU, Save & Run All),
+- [x] **Local build run (user, 2026-09-23)**: 12,727/12,727 sequences, 0
+  failed; round-trip 300/300 exact; 0 segment-consistency issues;
+  18,896/18,896 clips used in `sentence` (17,560 once, max 7 uses);
+  **12.12 GB** float32; frames 69.1% sign / 7.4% transition / 23.5% rest in
+  both splits (matched by construction). `docs/logs/daily/2026-09-23.md`.
+- [ ] **Realism flaw found in the exemplar**: at rest the pose wrists stay at
+  signing height while the hands are NaN, so rest is trivially separable
+  (hands NaN ⇒ null). 12.2 must score rest and transition frames
+  separately; 12.3's training generator should synthesize a lowered-hands
+  rest (wrists interpolated toward the hips, hand landmarks present) rather
+  than copying this. Candidate for a v2 of the dataset.
+- [ ] **Publish**: run the Kaggle twin (GISLR_Stratified as input, CPU, Save & Run All),
   then Output → New Dataset `GISLR-Sentences` (private). §3 stops early if
   the projected size exceeds Kaggle's ~20 GB `/kaggle/working` limit
   (~16 GB estimated at float32; `STORAGE_DTYPE = "float16"` halves it).
