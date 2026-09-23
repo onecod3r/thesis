@@ -1,0 +1,163 @@
+{
+  "schema_version": 4,
+  "run_id": 1790146838,
+  "created": "2026-09-23T13:00:38",
+  "dataset": "gislr",
+  "architecture": "gru_continuous",
+  "model_name": "ContinuousGRU",
+  "streaming": true,
+  "subset": "ME_132",
+  "coords": "xy",
+  "n_landmarks": 132,
+  "feature_dim": 264,
+  "n_classes": 250,
+  "n_params": 927505,
+  "split": {
+    "strategy": "stratified 80/20 (fixed, GISLR_Stratified-provided)",
+    "random_state": 42,
+    "n_val": 18896
+  },
+  "training": {
+    "regime": "continuous-v1",
+    "source": "gislr.1.models.continuous.ipynb",
+    "epoch_cap": 150,
+    "epochs_trained": 95,
+    "best_epoch": 95,
+    "early_stopped": true,
+    "finished": true,
+    "wall_time_min": 26.1
+  },
+  "hyperparameters": {
+    "loss": "per-frame CE over glosses+null (label smoothing, ramped sign weights) + boundary BCE",
+    "batch_size": 64,
+    "lr": 0.001,
+    "hidden_size": 256,
+    "num_layers": 2,
+    "dropout": 0.3,
+    "embed_dim": 256,
+    "cos_scale": 16.0,
+    "weight_decay": 0.0001,
+    "epochs": 150,
+    "grad_clip": 5.0,
+    "lr_factor": 0.5,
+    "lr_patience": 4,
+    "es_patience": 12,
+    "es_min_delta": 0.001,
+    "label_smoothing": 0.1,
+    "null_weight": 0.5,
+    "ramp_start": 0.3,
+    "boundary_weight": 0.5,
+    "seed": 42,
+    "max_seq_len": null,
+    "num_workers": 0,
+    "precision": "AMP",
+    "composer": {
+      "signs_per_seq": [
+        1,
+        6
+      ],
+      "gap_frames": [
+        0,
+        15
+      ],
+      "rest_frames": [
+        5,
+        30
+      ],
+      "p_lowered_rest": 0.7,
+      "rest_ramp_frames": 8,
+      "rest_default_drop": 0.3,
+      "hand_visible_max": 0.9,
+      "rest_jitter": 0.002,
+      "max_frames": 600,
+      "boundary_before": 2,
+      "boundary_after": 1
+    },
+    "val_fraction": 0.05,
+    "held_out_glosses": [
+      "before",
+      "better",
+      "brown",
+      "cloud",
+      "grass",
+      "green",
+      "helicopter",
+      "jeans",
+      "night",
+      "owl",
+      "pool",
+      "pretty",
+      "puppy",
+      "red",
+      "see",
+      "snack",
+      "stuck",
+      "weus",
+      "will",
+      "yourself"
+    ]
+  },
+  "provenance": {
+    "git_commit": "4174f4f4e75919d2108e031a7c9913004315dbd5",
+    "git_branch": "main",
+    "git_dirty": true,
+    "code_dirty": false,
+    "dirty_code_paths": [],
+    "config_path": "experiments/recognition/configs/gislr.continuous.json",
+    "config_sha256": "sha256:ba4516c949038c5e41f8ded6389a779bb113016f819aa3212ec6cbf4a1527282",
+    "feature_pipeline": "clipbank_v1",
+    "feature_cache_key": "2d47c5837944dca0",
+    "source": {
+      "name": "gislr",
+      "kaggle_ref": "bracu23101281/gislr-stratified",
+      "version": null,
+      "n_videos": 75581,
+      "manifest": "train.csv",
+      "manifest_sha256": "sha256:1a1d3a1fa62e83e57ed4df30925c3aeee631910f960841f8bb877e3bbf7801b4",
+      "resolved_dir": "C:\\Users\\user2\\.cache\\kagglehub\\datasets\\bracu23101281\\gislr-stratified\\versions\\1"
+    },
+    "env": {
+      "python": "3.12.3",
+      "platform": "win32-AMD64",
+      "gpu": "NVIDIA GeForce RTX 4080 SUPER",
+      "cuda": "13.0",
+      "torch": "2.13.0+cu130",
+      "numpy": "2.5.1",
+      "pandas": "3.0.3",
+      "pyarrow": "24.0.0",
+      "scikit-learn": "1.9.0",
+      "mediapipe": "0.10.35"
+    },
+    "captured_at": "2026-09-23T13:00:38"
+  },
+  "metrics": {
+    "train_val_acc": 0.7243,
+    "eval_status": "canonical",
+    "overall_accuracy": 0.6695596951735817,
+    "macro_accuracy": 0.6669930874514665,
+    "median_class_accuracy": 0.7302494802494802,
+    "n_classes_below_50pct": 32
+  },
+  "checkpoints": {
+    "best": "best.pt",
+    "last": "last.pt"
+  },
+  "assets": {
+    "landmarks": "assets/landmarks.npy",
+    "history": "assets/history.json",
+    "per_class_csv": "assets/per_class_accuracy.csv",
+    "per_class_png": "assets/per_class_accuracy.png",
+    "eval_summary": "assets/eval_summary.json",
+    "val_predictions": "assets/val_predictions.npz"
+  },
+  "submission": {
+    "tested": true,
+    "platform": "local",
+    "submitted_at": "2026-09-23T13:28:04",
+    "public_score": 0.6695596951735817,
+    "private_score": null,
+    "reference": "gislr canonical eval",
+    "notes": "scored on gislr's held-out test split (18896 videos) via sb.recognize.evaluate \u2014 no external leaderboard"
+  },
+  "notes": "Copen: C1's recipe with 20 seeded glosses held out of training entirely (masked in the head); the model TODO \u00a712.4 teaches new signs to. Continuous streams composed from train.csv (66096 clips; 3482 held out for selection, seed 42); held-out glosses: ['before', 'better', 'brown', 'cloud', 'grass', 'green', 'helicopter', 'jeans', 'night', 'owl', 'pool', 'pretty', 'puppy', 'red', 'see', 'snack', 'stuck', 'weus', 'will', 'yourself']. Selection metric = segment accuracy on validation streams, not the canonical isolated split."
+}

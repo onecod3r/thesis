@@ -3116,7 +3116,7 @@ signer split).
 - [ ] Follow-up: once the Kaggle copy is published, confirm
   `gislr_sentences_dir()` resolves it (this run used the local build).
 
-### 12.3 Continuous model — plan approved + built 2026-09-23, not yet trained
+### 12.3 Continuous model — plan approved + built 2026-09-23, **trained 2026-09-23**
 
 The user approved all recommended options:
 - **a dedicated boundary head** rather than null-only commits;
@@ -3171,7 +3171,15 @@ The design brief comes from `docs/reports/sentence-baselines.md` §5.
   hands visible below the image.
 - [x] Bug found and fixed: hands-absent rest blanked only the hands' y
   columns and left x present.
-- [ ] **Train C1, C2, C3, C-open** (user), then run the eval notebook and
+- [x] **Train C1, C2, C3, C-open** (user, 2026-09-23) — all four runs early-stopped,
+  canonically evaluated. Results: **C1 GRU 0.7188** / **C2 LSTM 0.7144** /
+  **C3 CTC 0.3354** (last-frame CTC readout is not meaningful, evaluate under
+  D4 greedy CTC on streams) / **C-open 0.6696** (−20-gloss penalty by design).
+  Boundary F1 ~0.42–0.45 for C1/C2/C-open. Run IDs: C1 `1790143122`, C2
+  `1790144582`, C3 `1790142624`, C-open `1790146838`. Two orphan runs
+  (`1790139949`, `1790141422`) exist with `eval: pending` — superseded by the
+  fresh runs the training cells created, not on the leaderboard.
+  Then run the eval notebook and
   write `docs/reports/continuous-models.md`.
 - [ ] Follow-up: GISLR-Sentences v2 with the realistic lowered rest
   (pose down, hands out of frame), plus the `minemy` rewrite.
