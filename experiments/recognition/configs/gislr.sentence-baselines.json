@@ -1,0 +1,32 @@
+{
+  "_comment": "TODO §12.2 -- existing isolated-sign models on GISLR-Sentences, gislr.3.streaming.sentence-baselines.ipynb. Every decoder tunable lives here, never in a cell.",
+  "dataset_version": "v1",
+  "seed": 42,
+  "n_selection_signers": 5,
+  "selection_kind": "sentence",
+  "selection_metric": "ger",
+  "models": {
+    "gru_reg": {"source": "registry", "run_id": 1789559734},
+    "gru": {"source": "five_arch"},
+    "lstm": {"source": "five_arch"},
+    "cnn": {"source": "five_arch"},
+    "dnn": {"source": "five_arch"},
+    "bilstm": {"source": "five_arch"}
+  },
+  "five_arch_config": "gislr.five-arch-benchmark.json",
+  "five_arch_root": "gislr/five_arch_benchmark_runs",
+  "reset_decode": {
+    "models": ["gru_reg", "gru", "lstm"],
+    "tau": [0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+    "hold": [2, 3, 5, 8]
+  },
+  "window_decode": {
+    "models": ["gru", "cnn", "dnn", "bilstm"],
+    "win": [16, 24, 32],
+    "stride": 2,
+    "tau": [0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+    "min_run": [1, 2, 3]
+  },
+  "collapse_repeats": [false, true],
+  "parity_max_frames": 128
+}
