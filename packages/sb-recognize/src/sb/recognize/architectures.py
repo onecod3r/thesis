@@ -465,6 +465,123 @@ class Conv1DTransformer(nn.Module):
         return self._trunk(x, mask)
 
 
+class CosineGlossHead(nn.Module):
+    """Per-frame gloss + null logits from a recurrent hidden state, as a
+    **cosine classifier**: ``scale * <normalize(embed(h)), normalize(W_c)>``.
+
+    Rows ``0..num_classes-1`` are the glosses in the dataset's own label
+    order; row ``num_classes`` is **null** (non-signing). Cosine logits make a
+    class's weight row interchangeable with a normalized mean embedding of
+    its examples, which is what lets a new sign be added after training
+    without retraining (weight imprinting, TODO §12.4): write its prototype
+    into a row and unmask it.
+
+    ``class_mask`` (buffer, glosses only) is False for glosses the model must
+    not predict: held out of training for the open-vocabulary run, until
+    :meth:`enroll` fills them. Masked rows get ``-inf`` logits, so the index
+    space never changes and labels stay the dataset's.
+    """
+
+    class_mask: torch.Tensor  # registered buffer
+
+    def __init__(self, hidden_size: int, num_classes: int, embed_dim: int, cos_scale: float):
+        super().__init__()
+        self.num_classes = num_classes
+        self.embed = nn.Sequential(nn.LayerNorm(hidden_size), nn.Linear(hidden_size, embed_dim))
+        self.weight = nn.Parameter(torch.randn(num_classes + 1, embed_dim) * 0.02)
+        self.scale = cos_scale
+        self.register_buffer("class_mask", torch.ones(num_classes, dtype=torch.bool))
+
+    def embeddings(self, h: torch.Tensor) -> torch.Tensor:
+        """Unit-norm frame embeddings -- what enrollment averages."""
+        return nn.functional.normalize(self.embed(h), dim=-1)
+
+    def forward(self, h: torch.Tensor) -> torch.Tensor:
+        logits = self.scale * self.embeddings(h) @ nn.functional.normalize(self.weight, dim=-1).T
+        mask = torch.cat([self.class_mask, torch.ones(1, dtype=torch.bool, device=logits.device)])  # null always on
+        return logits.masked_fill(~mask, float("-inf"))
+
+    @torch.no_grad()
+    def enroll(self, class_idx: int, prototype: torch.Tensor) -> None:
+        """Add (or replace) one gloss from a prototype embedding -- the mean
+        of :meth:`embeddings` over its example frames. No gradient step."""
+        self.weight[class_idx] = nn.functional.normalize(prototype, dim=-1)
+        self.class_mask[class_idx] = True
+
+
+class ContinuousRNN(nn.Module):
+    """Causal recurrent model trained on **continuous multi-sign streams**
+    (TODO §12.3), not isolated clips.
+
+    Per frame it emits (a) a confidence over every gloss plus null
+    (:class:`CosineGlossHead`) and (b) a **sign-boundary** logit: "the sign in
+    progress has just ended". The boundary head exists because a fixed
+    "confident for N frames" rule cannot find sign ends across short and long
+    signs (``docs/reports/sentence-baselines.md`` §3.2); the model has to
+    signal them itself.
+
+    Contract, compatible with the rest of the stack:
+    - ``forward(x, lengths)`` -> ``(B, num_classes)`` gloss logits at the last
+      valid frame, null column dropped -- the isolated-clip contract, so
+      ``sb-evaluate`` scores it canonically like any other architecture.
+    - ``forward_full(x)`` -> the same for an unpadded batch.
+    - ``forward_all(x)`` -> ``(B, T, num_classes + 1)`` per-frame gloss + null
+      logits, so ``sb.recognize.streaming``'s per-frame decoders and
+      ``RecurrentSession`` (which calls ``input_norm``, the recurrent cell
+      and ``head``) work unchanged.
+    - ``forward_frames(x)`` -> ``(gloss_logits, boundary_logits)``.
+    Padded frames trail every sequence and the model is causal, so no packing
+    is needed; losses mask them out.
+    """
+
+    cell = "gru"
+    head: CosineGlossHead
+
+    def __init__(self, input_size, hidden_size, num_layers, num_classes, dropout=0.3,
+                 embed_dim=256, cos_scale=16.0):
+        super().__init__()
+        self.num_classes = num_classes
+        self.input_norm = nn.LayerNorm(input_size)
+        rnn_cls = nn.GRU if self.cell == "gru" else nn.LSTM
+        rnn = rnn_cls(input_size, hidden_size, num_layers, batch_first=True,
+                      dropout=dropout if num_layers > 1 else 0.0)
+        setattr(self, self.cell, rnn)  # model.gru / model.lstm, as RecurrentSession expects
+        self.dropout = nn.Dropout(dropout)
+        self.head = CosineGlossHead(hidden_size, num_classes, embed_dim, cos_scale)
+        self.boundary = nn.Sequential(nn.LayerNorm(hidden_size), nn.Linear(hidden_size, 1))
+
+    def hidden(self, x):
+        out, _ = getattr(self, self.cell)(self.input_norm(x))
+        return self.dropout(out)
+
+    def forward_frames(self, x):
+        h = self.hidden(x)
+        return self.head(h), self.boundary(h).squeeze(-1)
+
+    def forward_all(self, x):
+        return self.head(self.hidden(x))
+
+    def forward_full(self, x):
+        return self.forward_all(x)[:, -1, : self.num_classes]
+
+    def forward(self, x, lengths):
+        logits = self.forward_all(x)
+        idx = (lengths - 1).view(-1, 1, 1).expand(-1, 1, logits.size(-1)).to(logits.device)
+        return logits.gather(1, idx).squeeze(1)[:, : self.num_classes]
+
+
+class ContinuousGRU(ContinuousRNN):
+    """:class:`ContinuousRNN` on a GRU -- the §12.3 primary model."""
+
+    cell = "gru"
+
+
+class ContinuousLSTM(ContinuousRNN):
+    """:class:`ContinuousRNN` on an LSTM -- the §12.3 architecture comparison."""
+
+    cell = "lstm"
+
+
 @dataclass(frozen=True)
 class ArchSpec:
     cls: type[nn.Module]
@@ -511,6 +628,20 @@ ARCHS: dict[str, ArchSpec] = {
         False,
         "1st-place port: (3x causal Conv1DBlock + TransformerBlock) x N stages, "
         "masked global-average readout, OFFLINE-ONLY reference",
+    ),
+    "gru_continuous": ArchSpec(
+        ContinuousGRU,
+        "ContinuousGRU",
+        True,
+        "causal GRU trained on continuous streams: per-frame cosine gloss+null head "
+        "+ sign-boundary head (TODO §12.3)",
+    ),
+    "lstm_continuous": ArchSpec(
+        ContinuousLSTM,
+        "ContinuousLSTM",
+        True,
+        "causal LSTM trained on continuous streams: per-frame cosine gloss+null head "
+        "+ sign-boundary head (TODO §12.3)",
     ),
 }
 

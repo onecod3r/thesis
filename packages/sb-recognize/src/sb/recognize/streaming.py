@@ -24,7 +24,7 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-RECURRENT_ARCHS = ("gru", "lstm")
+RECURRENT_ARCHS = ("gru", "lstm", "gru_continuous", "lstm_continuous")
 FRAME_LOCAL_ARCHS = ("cnn", "dnn")
 STREAMING_ARCHS = RECURRENT_ARCHS + FRAME_LOCAL_ARCHS
 
@@ -75,7 +75,7 @@ class RecurrentSession:
         self.model = model.eval()
         self.arch = arch
         self.device = device or next(model.parameters()).device
-        self._rnn = model.gru if arch == "gru" else model.lstm
+        self._rnn = model.gru if hasattr(model, "gru") else model.lstm
         self.state = None
 
     def reset(self) -> None:
@@ -132,7 +132,7 @@ def clip_probs(model, arch: str, x: torch.Tensor) -> np.ndarray:
     return torch.softmax(model.forward_full(xb).float(), dim=-1).squeeze(0).cpu().numpy()
 
 
-def first_accept(probs: np.ndarray, tau: float, hold: int) -> tuple[int, int] | None:
+def first_accept(probs: np.ndarray, tau: float, hold: int, exclude: int | None = None) -> tuple[int, int] | None:
     """Vectorized :class:`AcceptTrigger` from a fresh streak: the first frame
     ``k`` at which the top class has stayed ``>= tau`` for ``hold``
     consecutive frames, as ``(k, class)``; ``None`` if it never does.
@@ -141,12 +141,17 @@ def first_accept(probs: np.ndarray, tau: float, hold: int) -> tuple[int, int] | 
     and stopping at its first return (checked in the sentence-baselines
     notebook), without a Python loop per frame -- the difference between
     minutes and hours for a threshold sweep over a whole dataset.
+
+    ``exclude`` (e.g. the null column of a continuous model) is a class that
+    can never be accepted: a frame whose top class it is counts as not held.
     """
     T = len(probs)
     if T == 0:
         return None
     top = probs.argmax(1)
     held = probs[np.arange(T), top] >= tau
+    if exclude is not None:
+        held &= top != exclude
     cont = np.zeros(T, bool)
     cont[1:] = held[1:] & held[:-1] & (top[1:] == top[:-1])
     idx = np.arange(T)
@@ -161,7 +166,7 @@ def first_accept(probs: np.ndarray, tau: float, hold: int) -> tuple[int, int] | 
 
 def decode_stream(
     model, arch: str, x: torch.Tensor, tau: float, hold: int, *, reset: bool = True,
-    cache: dict | None = None,
+    cache: dict | None = None, exclude: int | None = None,
 ) -> list[tuple[int, int, float]]:
     """Run a causal model over a whole continuous stream and emit a gloss
     every time the accept rule fires: ``[(class, frame, confidence), ...]``.
@@ -193,7 +198,7 @@ def decode_stream(
     probs = from_frame(0)  # the no-reset stream; also the first reset segment
     while pos < T:
         p = from_frame(pos) if reset and pos > 0 else probs[pos:]
-        hit = first_accept(p, tau, hold)
+        hit = first_accept(p, tau, hold, exclude)
         if hit is None:
             break
         k, cls = hit
@@ -268,9 +273,10 @@ class AcceptTrigger:
     validated independently of who decides to pull it.
     """
 
-    def __init__(self, tau: float, hold_frames: int):
+    def __init__(self, tau: float, hold_frames: int, exclude: int | None = None):
         self.tau = tau
         self.hold_frames = hold_frames
+        self.exclude = exclude  # a class that can never be accepted (a continuous model's null)
         self._label: int | None = None
         self._streak = 0
 
@@ -280,7 +286,7 @@ class AcceptTrigger:
         None. The streak resets whenever the top class or the threshold
         crossing changes."""
         top = int(np.argmax(probs))
-        held = probs[top] >= self.tau
+        held = probs[top] >= self.tau and top != self.exclude
         if held and top == self._label:
             self._streak += 1
         elif held:
