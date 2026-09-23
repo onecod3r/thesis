@@ -3179,13 +3179,17 @@ The design brief comes from `docs/reports/sentence-baselines.md` §5.
   `1790144582`, C3 `1790142624`, C-open `1790146838`. Two orphan runs
   (`1790139949`, `1790141422`) exist with `eval: pending` — superseded by the
   fresh runs the training cells created, not on the leaderboard.
-- [~] **Run the eval notebook** — attempted 2026-09-23. Notebook stopped at
-  the §1 parity cell: `decode_stream(..., reset=True, exclude=null)` gives 1/10
-  mismatches vs the live loop for C1 (session vs batch diff is fine at 5.36e-06;
-  the mismatch is decoder logic). Baselines' B2 passed without `exclude` or
-  `cache`; one of those additions causes the bug. Fix `sb.recognize.streaming.
-  decode_stream` first, then re-run. `docs/logs/daily/2026-09-23.md` §8.
-  Then write `docs/reports/continuous-models.md`.
+- [ ] **Run the eval notebook** — first attempt 2026-09-23 stopped at the §1
+  parity cell (C1: 1/10 D2-vs-live-loop mismatches). **Not a decoder bug**
+  (diagnosed 2026-09-23): a float tie at the threshold. At frame 347 of
+  sequence row 2 (τ=0.5, hold=2), the live `step` gives p=0.5000002 and the
+  batch forward 0.4999995, so the accept lands one frame apart (348 vs 349).
+  The two resync at the next emission. The parity cell now counts such
+  divergences as near-ties (`TIE_EPS=1e-5`) and fails only on an unexplained
+  mismatch. Verified: C1 0/10 (+1 near-tie), C2 0/10, C3 0/10. The parity cell
+  doesn't pass `cache`, so the earlier "exclude + cache" hypothesis was
+  wrong. Unblocked — re-run the notebook (user), then write
+  `docs/reports/continuous-models.md`. `docs/logs/daily/2026-09-23.md` §8.
 - [ ] Follow-up: GISLR-Sentences v2 with the realistic lowered rest
   (pose down, hands out of frame), plus the `minemy` rewrite.
 
