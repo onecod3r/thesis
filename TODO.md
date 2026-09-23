@@ -3179,8 +3179,13 @@ The design brief comes from `docs/reports/sentence-baselines.md` §5.
   `1790144582`, C3 `1790142624`, C-open `1790146838`. Two orphan runs
   (`1790139949`, `1790141422`) exist with `eval: pending` — superseded by the
   fresh runs the training cells created, not on the leaderboard.
-  Then run the eval notebook and
-  write `docs/reports/continuous-models.md`.
+- [~] **Run the eval notebook** — attempted 2026-09-23. Notebook stopped at
+  the §1 parity cell: `decode_stream(..., reset=True, exclude=null)` gives 1/10
+  mismatches vs the live loop for C1 (session vs batch diff is fine at 5.36e-06;
+  the mismatch is decoder logic). Baselines' B2 passed without `exclude` or
+  `cache`; one of those additions causes the bug. Fix `sb.recognize.streaming.
+  decode_stream` first, then re-run. `docs/logs/daily/2026-09-23.md` §8.
+  Then write `docs/reports/continuous-models.md`.
 - [ ] Follow-up: GISLR-Sentences v2 with the realistic lowered rest
   (pose down, hands out of frame), plus the `minemy` rewrite.
 
