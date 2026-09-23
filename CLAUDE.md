@@ -8,6 +8,15 @@ Notebook-driven ML research: streaming (causal, frame-by-frame) sign language re
 
 **Bookend every task with `README.md` and `TODO.md`.** Read both before starting — TODO.md is the source of truth for workstreams. After finishing: mark items done/in-progress, file follow-ups under the matching `## N.` section (new section only if none fits), reflect any result/structure/plan change in the README.
 
+**Every response that learns or changes something updates `TODO.md` before it ends — not just at task end.** This includes status checks and Q&A, not only code changes. Record in the matching section, dated (`YYYY-MM-DD`):
+- state you observed (a notebook half-run, an artifact present or missing, a run finished or failed);
+- results and numbers read from outputs;
+- decisions and answers the user gave, and questions you asked them that are still open;
+- new blockers, bugs, or follow-ups;
+- the "next action" as you would now state it.
+
+Keep the "Current focus" table at the top current — re-derive it whenever what's next changes, and never leave a stale date on it. A response that only chats and learns nothing new needs no edit. If a session ends mid-task, TODO.md must say exactly where it stopped, so the next session can resume from the file alone.
+
 ## Environment & commands
 
 - `uv sync` installs deps. **Never `uv pip install` ad-hoc** — it removes anything undeclared in `pyproject.toml` (torch was lost this way once). Declare new deps there.
