@@ -311,8 +311,11 @@ def materialize(
     }
 
 
-def write_sequence(path: Path, arrays: dict) -> Path:
-    """Atomic compressed npz (temp file + ``os.replace``)."""
+def write_sequence(path: Path, arrays: dict, dtype=np.float32) -> Path:
+    """Atomic compressed npz (temp file + ``os.replace``). ``dtype`` is the
+    stored landmark precision: float32 (default) keeps every segment
+    bit-identical to its float32 source; float16 halves the size."""
+    arrays = {**arrays, "landmarks": arrays["landmarks"].astype(dtype)}
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp.npz")
@@ -328,11 +331,15 @@ def read_sequence(path: Path) -> dict:
 
 def check_roundtrip(arrays: dict, row: dict, data_dir: Path, relpath_of: dict[str, str]) -> None:
     """Every segment slices back to its exact source clip; labels and kinds
-    agree with the segments. Raises on the first mismatch."""
+    agree with the segments. Raises on the first mismatch.
+
+    The source is cast to the stored dtype before comparing, so a float16
+    build is checked for exactly what float16 storage promises (the same
+    rounding of the same clip), and a float32 build stays bit-exact."""
     fk, fl = arrays["frame_kind"], arrays["frame_labels"]
     covered = np.zeros(len(fk), bool)
     for (s, e), uid, lab in zip(arrays["segments"], row["source_uids"], arrays["labels"]):
-        src = load_clip(data_dir, relpath_of[uid])
+        src = load_clip(data_dir, relpath_of[uid]).astype(arrays["landmarks"].dtype)
         if not np.array_equal(arrays["landmarks"][s:e], src, equal_nan=True):
             raise AssertionError(f"segment {s}:{e} != source clip {uid}")
         if not ((fk[s:e] == SIGN).all() and (fl[s:e] == lab).all()):
