@@ -183,6 +183,51 @@ def gislr_dir() -> Path:
     return d
 
 
+GISLR_SENTENCES_ID = "bracu23101281/gislr-sentences"  # TODO §12.1, private
+
+
+def _sentences_root(d: Path) -> Path | None:
+    """The folder holding ``sequences.csv``: the dataset root, or one level
+    down (a dataset published from a Kaggle notebook's output keeps the
+    notebook's ``gislr-sentences/`` folder)."""
+    for cand in (d, *sorted(p for p in d.iterdir() if p.is_dir())):
+        if (cand / "sequences.csv").is_file():
+            return cand
+    return None
+
+
+def gislr_sentences_dir(version: str = "v1", *, allow_local: bool = True) -> Path:
+    """Resolve GISLR-Sentences (the continuous multi-sign test set, TODO §12.1).
+
+    The Kaggle dataset (``GISLR_SENTENCES_ID``, via kagglehub) is the
+    canonical copy. Until it is published or reachable, fall back to the
+    local build ``data/cache/gislr/sentences/<version>/`` written by
+    ``gislr.0.dataset.sentences.ipynb`` -- printed, never silent, so a result
+    always says which copy it read. Either copy's ``build_info.json`` must
+    carry the requested ``version``.
+    """
+    import json
+
+    local = CACHE_DIR / "gislr" / "sentences" / version
+    try:
+        import kagglehub
+
+        root = _sentences_root(Path(kagglehub.dataset_download(GISLR_SENTENCES_ID)))
+        if root is None:
+            raise FileNotFoundError(f"{GISLR_SENTENCES_ID} has no sequences.csv")
+        source = f"kaggle:{GISLR_SENTENCES_ID}"
+    except Exception as e:  # not published yet, offline, or no access
+        if not (allow_local and (local / "sequences.csv").is_file()):
+            raise
+        print(f"gislr_sentences_dir: kaggle copy unavailable ({type(e).__name__}); "
+              f"using the local build {local}")
+        root, source = local, "local"
+    built = json.loads((root / "build_info.json").read_text(encoding="utf-8"))
+    if built["dataset_version"] != version:
+        raise ValueError(f"{source} holds GISLR-Sentences {built['dataset_version']}, wanted {version}")
+    return root
+
+
 def train_dir(index: int) -> Path:
     """Download/resolve exactly one POPSIGN train part (~170-200GB each) — the
     staged-extraction unit. Prefer this over ``train_dirs()`` for anything that
