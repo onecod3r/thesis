@@ -77,12 +77,14 @@ def load_sentences(version: str = "v1") -> list[Sentence]:
 
 def corpus_sha256(version: str = "v1") -> str:
     """Content hash over the lexicon and every sentence file (name + bytes),
-    recorded by anything built from the corpus."""
+    recorded by anything built from the corpus. Line endings are normalized
+    first: git's autocrlf rewrites them per checkout, and the same corpus
+    must hash the same on every machine."""
     h = hashlib.sha256()
     files = [lexicon_path(version), *sorted(sentences_dir(version).glob("*.txt"))]
     for path in files:
         h.update(path.name.encode())
-        h.update(path.read_bytes())
+        h.update(path.read_bytes().replace(b"\r\n", b"\n"))
     return h.hexdigest()
 
 
