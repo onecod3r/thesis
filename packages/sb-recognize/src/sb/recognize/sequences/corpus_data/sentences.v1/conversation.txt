@@ -1,0 +1,169 @@
+# Conversation: greetings, questions, answers, conditions, quantifiers.
+hello yourself fine
+hello grandma yourself fine
+hello there minemy puppy
+hello man police
+hello person there
+bye bye grandpa
+bye weus go home now
+bye see yourself tomorrow
+bye aunt thankyou gift
+bye uncle see later
+bye dog stay home
+bye mom go store
+bye kitty sleep
+yes minemy like
+yes please thankyou
+yes minemy hungry
+yes minemy finish
+yes weus go pool
+yes hesheit minemy brother
+yes minemy can
+yes that minemy toy
+yes dog there
+no minemy not like
+no thankyou minemy not hungry
+no minemy not finish
+no that not minemy
+no dog not there
+yourself hungry yes no
+yourself thirsty yes no
+yourself like pizza yes no
+yourself finish yes no
+yourself go pool yes no
+any food
+any milk refrigerator
+any icecream
+any gum
+any penny
+any water
+any snack please
+any chocolate there
+yourself have any penny
+yourself have any gum
+store have any apple
+refrigerator have any milk
+minemy not have any toy
+no any food there
+dog not have any water
+every morning
+every night
+every morning minemy cereal milk
+every night mom read story
+every night grandpa look moon
+every morning dad shower
+every child have gift
+every animal hungry
+every flower pretty
+every toy dirty
+every person happy
+every dog bad
+every morning bird loud
+if yourself hungry say
+if yourself sleepy go bed
+if dog hungry give food
+if rain no pool
+if cat hide find
+if yourself finish go outside
+if yourself thirsty drink water
+if hot drink water
+if grandma callonphone listen
+for yourself
+for minemy
+gift for dad
+gift for yourself
+food for dog
+milk for kitty
+water for flower
+carrot for horse
+nuts for mouse
+dog there
+cat there
+there tree
+there car
+there bird
+look there
+go there
+who there
+that minemy
+that yourself
+that man
+that person
+that car
+that hat
+that dog minemy
+that pretty
+that yucky
+that bad
+who that
+who yourself
+who hesheit
+who go
+who cry
+who hide
+who callonphone
+who noisy
+who finish
+who drop
+why cry
+why hide
+why mad
+why noisy
+why go
+why not
+why wait
+where yourself
+where go
+where mom
+where dad
+where grandma
+where toy
+where book
+where hesheit
+hesheit go
+hesheit sleep
+hesheit hungry
+hesheit happy
+hesheit cry
+hesheit mad
+hesheit fine
+hesheit cute
+hesheit man
+can go
+can not
+can yourself find minemy hat
+can minemy go outside
+can yourself hear
+can yourself see
+can dog jump high
+can weus go pool
+say please
+say thankyou
+say hello
+say bye
+say yes
+say no
+say bye grandma
+listen minemy
+listen mom
+listen dad
+listen story
+listen radio
+same same
+same shirt
+same hat
+same car
+same dog
+another story
+another book
+another apple
+another snack please
+another drink
+another toy
+all finish
+all food finish now
+all go home
+all sleep
+all happy
+all dirty
+all clean

@@ -1,0 +1,147 @@
+# Family and people. ASL gloss order (time first, topic-comment, wh-word last
+# or first). Pronouns available: minemy, hesheit, weus, yourself, that, there.
+hello mom
+hello dad
+hello grandma
+hello grandpa
+bye mom
+bye dad see later
+bye grandma see tomorrow
+hello uncle thankyou
+hello aunt please
+mom dad go store
+dad go store now
+mom callonphone grandma
+grandma callonphone mom morning
+grandpa callonphone dad yesterday
+uncle callonphone aunt night
+minemy mom happy
+minemy dad sleepy now
+minemy dad sleepy
+minemy grandma old
+minemy grandpa old happy
+minemy brother mad
+minemy brother fast
+minemy aunt pretty
+minemy uncle loud
+minemy uncle like pretend clown
+brother hide closet
+brother hide bedroom
+brother hate bath
+brother like pizza
+brother like frenchfries
+girl like doll
+girl like pretty flower
+boy like toy car
+boy like airplane
+boy ride horse
+boy ride boat
+girl ride horse farm
+child sleep now
+child cry because hungry
+child cry because sleepy
+child happy because gift
+child sick stay home
+child dirty haveto bath
+mom give child milk
+dad give child apple
+grandma give minemy gift
+grandpa give child penny
+aunt give girl doll
+uncle give boy toy
+mom kiss child
+grandma kiss cheek
+dad kiss mom
+mom read story child
+dad read book night
+grandpa read story before sleep
+grandma make cereal morning
+grandma make food
+mom make pizza
+dad make snack
+brother make puzzle
+mom say please
+child say thankyou
+child say yes
+child say no
+boy say hello girl
+girl say bye boy
+man look car
+man drink water
+man find penny
+person wait there
+person talk loud
+person callonphone police
+police car fast
+police find person outside
+police find child
+fireman go fast
+fireman go up stairs fast
+fireman hat red
+fireman jacket yellow
+clown hat red nose red
+clown make balloon
+clown blow balloon
+clown hat
+cowboy ride horse
+cowboy hat brown
+cowboy farm
+minemy mom dad go farm
+weus go grandma home
+tomorrow weus go grandpa home
+weus like same food
+weus go outside
+weus like dance
+weus go pool
+weus go store later
+hesheit minemy brother
+hesheit minemy aunt
+hesheit minemy uncle
+hesheit man police
+who that man
+who that girl
+who that boy
+who that person
+that man who
+that girl minemy aunt child
+that boy minemy brother
+minemy brother old
+yourself go
+yourself stay home
+yourself wake now
+yourself clean room
+yourself have gift
+yourself like dog
+dad wake first morning
+mom wake child morning
+grandma wait home
+grandpa sleep chair
+grandpa nap chair
+grandma nap after food
+uncle ride car store
+aunt go store
+aunt look pretty
+uncle hear radio
+dad listen radio
+mom listen child
+girl smile
+boy smile mom
+child touch dog
+child pretend fireman
+child pretend police
+boy pretend cowboy
+girl pretend mom
+mom haveto go now
+dad haveto wait
+child haveto sleep
+brother haveto clean room
+child can read
+child can jump high
+boy can ride fast
+girl can dance
+grandpa can not hear
+grandma can not see
+dad will go tomorrow
+mom will go home later
+uncle will go farm tomorrow
+aunt will callonphone later

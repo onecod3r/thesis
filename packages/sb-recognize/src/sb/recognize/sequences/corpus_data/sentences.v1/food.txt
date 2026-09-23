@@ -1,0 +1,142 @@
+# Food and drink. ASL FOOD and EAT share one sign, so "food" also stands in
+# for the verb where natural.
+minemy hungry
+minemy thirsty
+minemy thirsty drink water please
+minemy hungry food now please
+child hungry haveto food now
+child thirsty give milk please
+mom give child cereal milk morning
+morning minemy like cereal milk
+dad make cereal morning
+cereal milk morning
+cereal empty
+cereal finish
+milk empty refrigerator
+refrigerator empty haveto go store
+refrigerator open close
+close refrigerator please
+open refrigerator find milk
+milk refrigerator
+water refrigerator drink now
+apple refrigerator
+chocolate refrigerator
+icecream refrigerator
+icecream hot sun sticky
+icecream sticky finger
+icecream taste fine
+icecream chocolate taste
+minemy like chocolate icecream
+brother like icecream
+yourself like icecream
+who like icecream
+who like chocolate
+who have gum
+where gum
+gum sticky
+gum sticky hair
+gum sticky shoe
+gum stuck hair
+gum stuck shoe yucky
+minemy like gum
+child not like carrot yucky
+carrot yucky
+carrot orange
+orange orange
+orange taste better apple
+apple red
+apple green
+apple red taste
+apple green yucky
+grandma give apple child
+dad cut apple
+mom cut pizza
+mom cut orange
+dad cut carrot
+pizza hot
+pizza hot taste
+minemy like pizza
+weus like pizza frenchfries
+frenchfries hot
+frenchfries taste
+frenchfries not hot yucky
+brother hate carrot like frenchfries
+nuts brown
+mouse nuts
+nuts snack
+snack time
+snack time now
+minemy hungry snack please
+yourself like snack now
+yourself hungry
+yourself thirsty
+yourself finish food
+finish food now go outside
+finish milk first
+first food after go outside
+first milk after chocolate
+food table
+food hot
+food not hot
+food taste yucky
+food taste fine
+food empty
+food finish
+all food finish
+many food table
+dad make food night
+mom make food morning
+grandma make pizza
+grandma make chocolate
+grandpa like nuts
+uncle like chocolate
+aunt like apple
+brother finish all chocolate
+brother find minemy chocolate
+minemy chocolate where
+who finish icecream
+who finish milk
+who finish pizza
+why food not hot
+why refrigerator empty
+table dirty
+table clean
+clean table after food
+napkin table
+napkin dirty
+give minemy napkin please
+face dirty napkin
+drink water
+drink milk
+drop milk
+milk drop
+child drop icecream cry
+child drop apple
+child drop pizza
+water hot
+water not hot
+thirsty drink water now
+hot water bath
+store have apple
+store have milk
+store have icecream
+go store milk apple
+dad go store food
+mom go store find chocolate
+weus go store later food
+tomorrow weus make pizza
+yesterday weus have pizza
+now weus have icecream
+later weus have snack
+chocolate before food no
+no chocolate before food
+no icecream now
+no gum
+yes please
+no thankyou
+thankyou mom
+thankyou dad food
+thankyou grandma chocolate
+taste yucky
+taste fine
+taste same

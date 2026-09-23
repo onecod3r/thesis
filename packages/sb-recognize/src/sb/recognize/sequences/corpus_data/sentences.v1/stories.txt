@@ -1,0 +1,286 @@
+# Longer multi-clause sentences, little stories, lists and chained events.
+# Written last, to bring every gloss up to the corpus's minimum coverage
+# (validate(min_per_gloss=12)) while pulling the length distribution upward.
+
+# face and body
+child fall down stairs chin owie cry
+mom kiss chin owie better now
+food on chin napkin please
+yourself chin dirty napkin clean now
+dad touch chin think
+grandpa chin white hair old
+chin lips nose face
+touch chin touch nose touch ear
+child fall down chin arm owie
+child chin sticky icecream napkin
+chin cheek red hot sick
+chin mouth dirty chocolate
+ear owie child cry night
+dog ear brown cute
+minemy ear hear loud radio
+grandpa ear not hear
+elephant ear high
+kitty ear touch smile
+listen ear quiet please
+lips dry drink water
+lips red pretty mom
+lips sticky gum yucky
+mom kiss cheek lips red
+girl lips pretty smile
+tongue lips taste icecream
+touch lips quiet shhh
+head owie sick bed
+minemy head hot sick
+hat on head snow outside
+dog head beside feet sleep
+cow head brown white
+tongue taste frenchfries hot
+dog tongue drink water
+tongue red chocolate
+child tongue touch icecream
+tongue owie hot pizza
+arm owie fall bed
+arm dirty clean shower
+bee touch arm owie cry
+cheek red snow outside
+grandma kiss cheek bye
+nose red clown pretend
+dog nose wet
+elephant nose water drink
+feet wet rain shoe
+feet dirty grass backyard
+eye close sleep night
+eye open wake morning
+face napkin clean after food
+finger touch icecream sticky
+mouth open tooth toothbrush
+toothbrush tooth morning night
+kiss mom dad bye
+
+# rooms and furniture
+lamp beside bed bedroom
+lamp on table beside chair
+lamp open read book night
+lamp close sleep now
+dad find lamp closet
+minemy lamp yellow pretty
+lamp drop owie
+cat drop lamp mom mad
+lamp high table
+bedroom dirty clean vacuum now
+minemy bedroom beside brother room
+grandma bedroom quiet nap
+child hide bedroom closet
+bedroom glasswindow open hot
+room dirty mom mad vacuum
+room clean happy mom
+room hot open glasswindow
+room many toy dirty
+vacuum room after food
+vacuum loud dog hide bedroom
+vacuum stairs up down
+vacuum finish room clean
+potty time before bed
+potty after food first
+child potty finish clean
+child haveto potty now please
+underwear wet potty
+underwear clean drawer bedroom
+underwear pajamas dryer dry
+dryer dry shirt jeans
+jeans dry after dryer
+hair dry after shower
+shower hot dad morning
+shower before bed night
+garbage empty now after food
+garbage outside dad night
+garbage yucky dog find
+refrigerator empty store later
+drawer empty find scissors
+cereal empty store haveto go
+radio on dance now
+radio loud shhh child sleep
+puzzle table finish night
+scissors cut hair clown
+scissors drawer high child not touch
+scissors cut napkin
+scissors no touch owie
+pen pencil scissors drawer
+pen blue pencil yellow
+pen drop beside chair
+pencil drawer beside scissors
+napkin table beside food
+napkin for face after pizza
+napkin dirty garbage
+give napkin for grandpa
+napkin wet water drop
+
+# animals, farm, outside
+hen goose duck farm grandma
+hen brown farm grandma
+hen loud morning farm
+hen cow pig horse farm many animal
+hen sleep night farm
+hen find bug grass
+hen white brown
+cat look hen farm
+goose loud mad
+goose white duck yellow
+goose into water
+goose find bug
+goose bad boy cry
+donkey horse same
+donkey carrot hungry
+donkey ride farm
+donkey mad loud
+donkey old grandpa farm
+donkey brown beside horse
+donkey noisy
+giraffe high tree
+giraffe drink water
+giraffe cute yellow brown
+giraffe tongue black
+giraffe look zebra elephant
+tiger lion zebra outside
+tiger orange black pretty
+tiger hungry mad
+tiger sleep sun
+tiger cute puppy same
+tiger fast go
+alligator into water hide
+alligator mouth open tooth
+alligator green water
+alligator bad no touch
+alligator hungry fish
+elephant old sleep
+elephant beside giraffe
+elephant blow water
+elephant drink many water
+pig dirty pretend
+pig dirty hungry
+pig farm hungry cow
+pig snack carrot
+pig sleep farm
+wolf loud night moon
+wolf hungry pig story
+wolf look pig
+wolf black night
+wolf hide tree
+owl night moon tree
+owl awake night sleep morning
+owl eye yellow high tree
+owl say who who
+moon night pretty high
+moon white cloud night
+bird yellow high tree
+bird beside glasswindow morning
+bird go up high
+bird blue red
+bee flower yellow
+bee bug outside
+bug on arm bee
+bug black flower
+bug frog hungry
+frog green jump pool
+frog into water
+frog pretend jump
+fish orange into water
+fish blue water boat
+fish for kitty
+duck yellow into pool
+duck water cute
+cow brown milk farm
+cow black white farm
+zebra black white horse same
+zebra beside giraffe
+flower yellow orange pretty
+flower red for mom
+flower green grass backyard
+flower give grandma pretty
+orange carrot same orange
+orange cut dad
+nuts brown mouse hide drawer
+nuts snack hungry
+nuts drop beside table
+nuts for bird tree
+nuts mouse drawer
+flag red white blue high
+flag beside tree outside
+flag cowboy horse
+flag fireman car
+flag high pretty
+cowboy hat brown horse ride
+cowboy jeans hat brown
+cowboy man farm
+clown blow balloon yellow child
+blow balloon red yellow
+blow nose
+blow balloon for girl
+blow water hot food
+lion loud mad tiger
+lion hungry animal
+helicopter loud high cloud
+helicopter police look find
+fireman helicopter high
+person there wait
+person man police
+person beside car
+person talk callonphone
+man find penny beside car
+man cut grass
+man black hat
+green grass green tree
+frog green jump grass
+fall snow down
+fall down stairs
+child fall into pool
+cereal milk empty morning
+cereal yellow
+carrot orange yucky
+carrot for horse donkey
+cut carrot dad
+cut hair mom
+cut napkin scissors
+empty garbage outside now
+garbage empty dad
+frenchfries hot yucky
+frenchfries sticky
+frenchfries pizza chocolate icecream
+frenchfries give please
+sticky gum hair
+finger sticky gum
+shhh quiet grandpa nap
+shhh listen mom
+shhh helicopter
+shhh sleep now
+nap time child
+nap finish happy
+kiss cheek grandpa
+hear radio
+hear helicopter
+on table book
+on bed pajamas
+zipper stuck mom close
+zipper jacket black
+black cat
+black car
+cloud black rain later
+cloud high airplane
+penny drop
+fireman hat red jacket yellow
+tooth owie cry dad look
+
+# top-ups for the last thin glosses
+fish go down water hide
+duck goose fish water farm
+dog go down stairs
+kitty jump down bed
+balloon go up high drop down
+sun go down night
+pen pencil down table
+bee go flower yellow
+pen pencil puzzle table
+alligator wolf zebra story
+touch head touch feet touch finger
+owl nuts tree night
+underwear toothbrush pajamas bed
