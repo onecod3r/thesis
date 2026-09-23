@@ -3,7 +3,7 @@
 Living project TODO, organized by workstream so new tasks can be filed under an
 existing section or a new one added without restructuring.
 
-**Status legend:** `[ ]` open · `[~]` in progress · `[x]` done · `[?]` open question / decision needed
+**Status legend:** `[ ]` open · `[~]` in progress · `[x]` done · `[?]` open question / decision needed · `[-]` closed without doing (obsolete, superseded or rejected — reason inline)
 
 **How to add a task:** file it under the matching workstream section below. If it
 doesn't fit an existing one, add a new `## N. <Workstream Name>` section at the end
@@ -23,7 +23,7 @@ kept but marked paused, not deleted. GISLR is the only active dataset.
 The workstream sections below are the source of truth; this is just the short
 list of what is actually next, in order. Re-derived at each audit — if it looks
 stale, trust the sections. Rows 1–12 are carried over from the 2026-09-04 audit
-and were not individually re-verified on 2026-09-24.
+and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 
 | # | next action | where | why now |
 |---|---|---|---|
@@ -38,8 +38,8 @@ and were not individually re-verified on 2026-09-24.
 | ~~4~~ | ~~Install deno + ffmpeg, then run the TS extractor once~~ — **deprecated 2026-09-22**: POPSIGN (the only workload this parity check gates) is deprecated; see §2/§10.1 | §10.1 | — |
 | ~~4b~~ | ~~Regenerate the POPSIGN train manifest, then `popsign_cycle run --part test`~~ — **deprecated 2026-09-22**: POPSIGN deprecated, extracted data deleted from disk; see §2 | §2.2, §10.3 | — |
 | 5 | **§7.2 normalization or §7.4 augmentation**, under §7.6's ablation protocol | §7.1 → §7.2/§7.4 | the diagnosis is complete: the plateau is a generalization gap (train confusion 0.012 vs val 0.273), and these are the two levers that attack one |
-| 6 | Re-run the evaluation notebook on the 42-run registry | §6.1 | it last ran against 18 runs; only 1 of 42 run folders has a confusion matrix |
-| 7 | **Run `gislr.1.models.landmark-importance.ipynb`** (built 2026-09-16, not yet executed) | §3.3 | custom DNN/LSTM/GRU + full-543 engineered features + rotating k-fold — the model-derived complement to the motion-energy/probe landmark rankings (§1/§3.0) |
+| ~~6~~ | ~~Re-run the evaluation notebook~~ — **done 2026-09-19** (55 runs, 37 canonical; 5 skipped for missing `best.pt`) | §6.1 | it last ran against 18 runs; only 1 of 42 run folders has a confusion matrix |
+| ~~7~~ | ~~Run `gislr.1.models.landmark-importance.ipynb`~~ — **done 2026-09-18** | §3.3 | custom DNN/LSTM/GRU + full-543 engineered features + rotating k-fold — the model-derived complement to the motion-energy/probe landmark rankings (§1/§3.0) |
 | ~~8~~ | ~~Run `gislr.0.dataset.motion-energy.ipynb`~~ — **done 2026-09-21**: all three scopes, 0 failed units, results in `docs/reports/motion-energy.md` §5 | §1 | — |
 | 9 | **Run `gislr.1.models.training.ipynb` §§5b/6/7/8** (`gru_deep`/`lstm`/`bilstm`/`cnn1d` × 3 subsets, 12 runs) | §4.3 | closes the current-split benchmark gap — 52 of 55 registry runs are on the retired split, only `gru` has been re-run since the reset; no porting needed, the cells are already correct, just never executed |
 | ~~10~~ | ~~Run `gislr.1.models.five-arch-benchmark.ipynb`~~ — **done 2026-09-21**: `bilstm` 0.7392 (offline) > `gru` 0.7380 > `lstm` 0.7286 > `cnn` 0.6696 > `dnn` 0.6485; `dnn`'s mean true-class confidence (0.24) a quarter of the rest — results in `docs/reports/five-arch-benchmark.md` | §3.7 | — |
@@ -53,6 +53,16 @@ Decisions still owed by the user, blocking real work:
 - **§4.1**: BiLSTM is the accuracy leader (0.7569) but can never ship. Is the
   goal understanding the causality gap, or a deployable model? The section
   flags this conflict and it is still unresolved.
+- **Stale questions surfaced by the 2026-09-24 audit** (each waiting on the user):
+  - §3.0.1 — where is the draft paper (Google Doc / Overleaf)? Open since 2026-07-22.
+  - §4.3 — re-benchmark `gru` × `xyz` on the current split, or accept "xy wins" as settled?
+  - §5 (spectrogram CNN/ViT arm) — untouched since July. Keep or drop?
+  - §7.2–§7.7 (normalization, motion, augmentation) — the evidence-backed accuracy
+    levers, never started. Still wanted alongside the §12 continuous work, or paused?
+  - §6.3 — **rotate the Kaggle API token** pasted into a chat on 2026-07-19 (security,
+    still open).
+  - §9.3 — confirm the `signbridge-gislr` Kaggle model is **private**.
+  - §12.1 — `minemy` used as "I": rewrite or keep?
 
 ---
 
@@ -257,11 +267,11 @@ docs/
   the week containing the 1st-place port (daily log `2026-08-23.md` exists with
   no weekly around it). Today's work (§9 execution + the workspace restructure)
   has no daily log yet either. Concretely:
-  - [ ] Close `2026-30.md` (drop the marker, final summary).
-  - [ ] Decide whether to backfill 31–35 or record them as "no dev work" weeks —
+  - [x] **Done (verified 2026-09-24: no marker left).** Close `2026-30.md` (drop the marker, final summary).
+  - [ ] (**Still open 2026-09-24**: weeks 31–34 have no file; 35–39 exist.) Decide whether to backfill 31–35 or record them as "no dev work" weeks —
     do not invent narrative for weeks that had none; the honest version is a
     one-line stub per empty week and a real file for the 08-23 week.
-  - [ ] Write `daily/2026-09-04.md` and `weekly/2026-36.md` for the current week.
+  - [x] **Done (verified 2026-09-24: both files exist).** Write `daily/2026-09-04.md` and `weekly/2026-36.md` for the current week.
   - [ ] The deeper problem is that this is hand-maintained and drifts. §9.6
     generated the registry-derived tables for exactly this reason; the narrative
     logs were deliberately left manual, so the fix here is discipline (or a
@@ -457,7 +467,7 @@ must not be reproduced):
 - [x] `extract_popsign.py pilot` **clears the temp tree before benchmarking** —
   `extract_dataset` skips done videos, so leftover npz from an interrupted pilot
   would time an empty trial and report a meaningless throughput.
-- [ ] Consider a per-video **watchdog timeout** in the driver. The three fixes
+- [-] **POPSIGN deprecated 2026-09-22.** Consider a per-video **watchdog timeout** in the driver. The three fixes
   above address the known cause, but nothing yet bounds an unknown one: a worker
   that stops returning still hangs the whole run indefinitely.
 
@@ -502,7 +512,7 @@ Replaces the deleted `popsign.0.dataset.ipynb` stub as the extraction driver
   `train-t-z-signs` → `E:/datasets/…` (complete 07-21 16:29), `a-e`/`f-m`
   already in the default kagglehub cache. ~650GB that was outstanding all last
   week is now on disk.
-- [ ] **Regenerate the train manifest** — `data/cache/popsign/dataframes/train.csv`
+- [-] **POPSIGN deprecated 2026-09-22.** **Regenerate the train manifest** — `data/cache/popsign/dataframes/train.csv`
   was last written 2026-07-19 17:51, *before* the 3 new parts finished, so it
   still reflects only the old 72-label / 30,867-video single-part state. Consequence
   today: **train still covers only 72 labels while test covers all 250**, so 178
@@ -529,7 +539,7 @@ Replaces the deleted `popsign.0.dataset.ipynb` stub as the extraction driver
   that day, but this hasn't been confirmed — **re-run the pilot with no
   concurrent downloads before picking a worker count for the train run.**
   Full write-up: `docs/logs/weekly/2026-30.md` §3.
-- [ ] Investigate the one failed test video —
+- [-] **POPSIGN deprecated 2026-09-22.** Investigate the one failed test video —
   `gtsignstudy4a.8035-into-2023_01_30_12_00_12.563-0`, `cv2` cannot open the source
   mp4. Likely a truncated/corrupt download rather than an extraction bug; the
   manifest retries `failed` on the next run, so confirm the source file first.
@@ -729,7 +739,7 @@ is **not** yet chosen, and the sweep should not simply be finished as-is:
   rate (worse on 31 videos, better on 5) and buys 0.002 less hand jitter.
   Composite score 0.160 vs −0.163 — but with two arms the z-scored score is ±1
   by construction, so it is directional only.
-- [ ] **BLOCKER — the proxies are measuring clip padding, not extraction quality.**
+- [-] **POPSIGN deprecated 2026-09-22.** **BLOCKER — the proxies are measuring clip padding, not extraction quality.**
   Hand presence peaks at **0.86** mid-clip and sits at 0.12–0.19 across the first
   and last fifths; the median clip's first hand detection is at 27% of its
   duration and its last at 72%. Restricted to that span the same extraction
@@ -739,22 +749,22 @@ is **not** yet chosen, and the sweep should not simply be finished as-is:
   order of magnitude below the artifact (~0.4). **Restrict the proxies to the
   signing span (or add `*_span` variants) before scoring anything else**, then
   re-derive the comparison above.
-- [ ] Follow-up: `pose_rate` was 1.0 in every arm tested, including
+- [-] **POPSIGN deprecated 2026-09-22.** Follow-up: `pose_rate` was 1.0 in every arm tested, including
   `min_pose_*_confidence = 0.99` — the pose block appears to be emitted
   whenever *any* pose is found, so the proxy can't discriminate pose quality.
   Either find a per-landmark visibility signal or drop `pose_rate` from the
   composite score's weighting (it currently contributes a constant offset).
-- [ ] Then run the remaining five arms (`pose_permissive`, `pose_very_permissive`,
+- [-] **POPSIGN deprecated 2026-09-22.** Then run the remaining five arms (`pose_permissive`, `pose_very_permissive`,
   `pose_det_only`, `pose_lm_only`, `face_off`) — ~250 extractions, ~25 min at 19
   workers — and record the chosen config as `CONFIDENCE_CONFIG` in
   `popsign.0.dataset.extraction.ipynb` (and as the default in `extraction.py`).
-- [ ] **Separate deficiency, bigger than any threshold: only 1.1% of frames carry
+- [-] **POPSIGN deprecated 2026-09-22.** **Separate deficiency, bigger than any threshold: only 1.1% of frames carry
   both hands** (left 9.5%, right 34.3%), and `hand_rate` tops out at exactly 0.50
   across the sample — the signature of "exactly one hand, always". Several
   sampled signs (`car`, `bath`) are two-handed in ASL. This is about *which*
   landmarks holistic returns and no confidence threshold addresses it. Inspect
   the `default` overlay frames before accepting any config.
-- [ ] **Downstream consequence** (not a §2.3 item, filed here so it isn't lost):
+- [-] **POPSIGN deprecated 2026-09-22.** **Downstream consequence** (not a §2.3 item, filed here so it isn't lost):
   ~50% of every POPSIGN clip is non-signing lead-in/lead-out. Trimming, or a
   learned attention over the signing span, belongs in the POPSIGN
   feature-building stage.
@@ -796,7 +806,7 @@ is **not** yet chosen, and the sweep should not simply be finished as-is:
   reports version 1) — not wired up in this pass, since it wasn't blocking
   anything. Low-effort follow-up: thread the dataset's own version through
   `DatasetSource`/`P.build()`.
-- [ ] The two GISLR diagnostic notebooks that read raw parquet directly
+- [ ] (2026-09-24: motion-energy was rebuilt on npz 2026-09-21 — only subset-comparison is still broken, §0.1.) The two GISLR diagnostic notebooks that read raw parquet directly
   (motion-energy, subset-comparison) are now broken by this switch — filed
   under §0.1.
 - [x] **Replaced the Kaggle submission step with local testing (2026-09-16).**
@@ -866,7 +876,7 @@ existing content is known:
   chunks, 0 failures; global descriptors ≈50 min, probes ≈7 min). All 6
   registered subsets scored; `probe_acc_global` written back into
   `subsets.py`; report `docs/2026-07-16.md`.
-- [~] Feed the winning subset + per-landmark rankings into the §3.1 training
+- [x] **Done (closed 2026-09-24): the subset ablations ran and ME-126 won; `gislr.1.model.gru.ipynb` no longer exists.** Feed the winning subset + per-landmark rankings into the §3.1 training
   ablations (probe predicts: pose helps, pose-wrist points {17-22} don't) —
   top-3 probe subsets queued in the rebuilt `gislr.1.model.gru.ipynb`
   (2026-07-16), awaiting user run.
@@ -910,7 +920,7 @@ is now a one-line config change. Awaiting user run.
   canonically evaluated** on all four architectures; the probe was right — best
   ME_132 0.7476 sits below ME_126's 0.7569, so the 6 extra wrist points cost
   rather than add. ME_126 remains the leader.
-- [~] **xy only** (drop z) — tests the z-noise finding in-model. Trained
+- [x] **Settled (closed 2026-09-24; the item's own text says so):** **xy only** (drop z) — tests the z-noise finding in-model. Trained
   2026-07-17 for all three subsets (v1 regime, `COORDS="xy"`): train-loop val
   acc **ME_126-xy 74.92 / ME_132-xy 74.95 / FP_118-xy 74.54 — each beats its
   xyz counterpart** (73.73 / 72.47–74.95 / 74.60), consistent with the z-noise
@@ -951,7 +961,7 @@ is now a one-line config change. Awaiting user run.
   so the comparison that exists is train-loop numbers in the daily logs, not a
   canonical one.
 
-### 3.3 Model-derived landmark importance: custom DNN/LSTM/GRU, full-543 (2026-09-16, built — not yet run)
+### 3.3 Model-derived landmark importance: custom DNN/LSTM/GRU, full-543 (2026-09-16, built; run 2026-09-18)
 
 Directly answers the §3.0's "position as complementary to gradient saliency
 and SHAP from trained models" follow-up: three trained-from-scratch
@@ -1559,7 +1569,7 @@ so it isn't chased as three separate untracked efforts:
   checkpoint: **0.7459** overall / 0.7433 macro / 0.7632 median / 13 classes
   below 50%. That is *below* the 0.7565 GRU and is not a measurement of the
   recipe — it is a model 15 epochs into a 300-epoch cosine.
-- [~] **Re-run it with the fixed driver (user).** Full write-up:
+- [x] **Ran (closed 2026-09-24): `1787492560` collapsed at epoch 15 again; the open work is §5b below.** **Re-run it with the fixed driver (user).** Full write-up:
   `docs/logs/daily/2026-08-23.md`. What happened and what changed:
   - **The run died at epoch 15** — the exact step `awp_start_epoch` and
     `late_dropout_start_epoch` both fire. Train loss 2.01 -> 5.79 and then
@@ -1765,9 +1775,9 @@ the subset ablations (§3.1) — was a manual chore across four files.
   an artifact, not an architecture result. Restored as an explicit
   `overrides: {"num_layers": 5}` in the config, with the reasoning in its
   `notes` field.
-- [ ] **Re-run cnn1d** with the corrected receptive field before drawing any
+- [-] **Folded into §4.3 (2026-09-24): its 12-run grid includes `cnn1d` × 3 subsets on the current split.** **Re-run cnn1d** with the corrected receptive field before drawing any
   conclusion about the architecture (all three subsets; ~1.7M params now).
-- [ ] Once re-run, revisit `docs/logs/daily/2026-07-19.md` §1.3, which currently
+- [-] **Obsolete (2026-09-24): that log reports the retired split; §4.3's runs replace it.** Once re-run, revisit `docs/logs/daily/2026-07-19.md` §1.3, which currently
   reports the crippled numbers.
 - [ ] Consider making the receptive field an explicit, asserted quantity in
   `CausalConv1D.__init__` (e.g. warn when it is much shorter than
@@ -1803,10 +1813,14 @@ notebooks are training drivers only; they no longer carry export code.
   §7 Phase 1.4).
 - [x] Run the notebook (user) — run on 2026-07-19 (18-run aggregate) and again
   on 2026-08-23 for the 1st-place port; its findings are what §7.1 closed on.
-- [ ] **Re-run it on the current 42-run registry.** It last ran against 18 runs;
+- [x] **Done 2026-09-19 (verified 2026-09-24 from the notebook's outputs): 55 runs, 37 canonical.** Two leftovers filed below. Original text: **Re-run it on the current 42-run registry.** It last ran against 18 runs;
   since then the four-architecture × three-subset grid completed and six
   1st-place runs landed. Only 1 of 42 run folders has a `confusion.png`, so the
   per-run confusion artifacts are mostly missing.
+- [ ] (2026-09-24) Only 1 run folder has a `confusion.png` — the per-run confusion artifacts are still missing.
+- [ ] (2026-09-24) The 09-19 run **skipped 5 runs for "no best.pt on disk"** (`1787494351`, `1787492560`,
+  `1787493805`, `1787494807`, `1787495142`) — the notebook does not go through
+  `ensure_local`'s auto-fetch, or those weights were never pushed. Check `sb-sync status`.
 
 ### 6.2 Supporting module work (2026-07-19)
 
@@ -1902,12 +1916,12 @@ record rather than something remembered by hand.
   the cell submits only untested models and respects the daily cap by
   construction. Exports each to `submission.zip`, submits, marks `tested`.
 - [x] Declare `kaggle` in `pyproject.toml` and `uv sync` — done 2026-07-19.
-- [~] Submission mechanics. The `kaggle` **CLI** path submits through a Kaggle
+- [-] **Obsolete (2026-09-24): submission was replaced by local testing 2026-09-16 (§3.0.2), and `.mcp.json` is now empty.** Submission mechanics. The `kaggle` **CLI** path submits through a Kaggle
   kernel (`-k <owner>/<notebook> -v <version>`), so each zip must be attached to
   a kernel version first — and there are currently **no credentials on this
   machine** (`~/.kaggle/kaggle.json` absent, `KAGGLE_USERNAME` unset), so a
   non-dry-run submit can only fail or hang.
-- [~] **Kaggle MCP server** (offered 2026-07-19) — likely the better path: it
+- [-] **Obsolete (2026-09-24): submission was replaced by local testing 2026-09-16 (§3.0.2), and `.mcp.json` is now empty.** **Kaggle MCP server** (offered 2026-07-19) — likely the better path: it
   exposes `mcp_kaggle_start_competition_submission_upload` +
   `kaggle_mcp_submit_to_competition`, i.e. **upload a file and submit it
   directly**, with no kernel-version dance. `.mcp.json` added at the repo root
@@ -1916,9 +1930,9 @@ record rather than something remembered by hand.
   — `.mcp.json` is committed and is not gitignored. Token auth is the fallback:
   add `--header "Authorization: Bearer ${KAGGLE_MCP_TOKEN}"` to the args and set
   that variable in the environment, never inline.
-  - [ ] Authorize the server from an **interactive** session (OAuth cannot run
+  - [-] **Obsolete, see parent.** Authorize the server from an **interactive** session (OAuth cannot run
     in a non-interactive one), then submit one model by hand end to end.
-  - [ ] Once proven, decide whether the (since-deleted, 2026-09-19) `submit_run`
+  - [-] **Obsolete, see parent.** Once proven, decide whether the (since-deleted, 2026-09-19) `submit_run`
     keeps shelling out to the CLI or the notebook drives the MCP tools instead;
     the queue query and `mark_tested` bookkeeping are unaffected either way.
 - [ ] **Security**: an API token was pasted in plaintext into a chat transcript
@@ -2025,7 +2039,7 @@ Figure out whether this is overfitting, underfitting or a data/label ceiling
     (repeated) and `wake` (single) differ — and the sequence models do beat the
     probes (≈57% vs 46% recall on that pair). **It does not refute §7.3**, which
     proposes per-frame velocity channels in a sequence model, a different claim.
-- [ ] Backfill top-k on more runs — only **1 of 31** has it (`sb-evaluate` began
+- [ ] Backfill top-k on more runs (count below is from 2026-09-04; re-count 2026-09-24) — only **1 of 31** has it (`sb-evaluate` began
   storing top-5 on 2026-09-04), so the near-miss split rests on a single run.
 - [ ] Two of the top-20 pairs (`finger`/`wait`, `animal`/`have`) are **not**
   semantically related. Whatever drives those is not meaning — and `finger`/`wait`
@@ -2218,12 +2232,12 @@ already identified as semantic, not geometric).
     (`CLAUDE.md`) — an LLM-correction *pipeline component* is a reasonable
     research notebook (train/eval a re-ranker), but an actual inference
     service wiring model → LLM → output would be new territory for this repo.
-- [ ] If continuous/sentence-level is in scope: this is a substantial new
+- [x] **Done: this became §12 (2026-09-24).** If continuous/sentence-level is in scope: this is a substantial new
   workstream (data: does either dataset have sentence-level
   labels/transcripts to train or even evaluate this against? POPSIGN and
   GISLR are both isolated-sign as extracted here) — needs its own numbered
   section once scoped, not folded into §7.
-- [ ] If the smaller-scope reading is intended: prototype using the existing
+- [-] **Obsolete (2026-09-24): the user chose the continuous reading.** If the smaller-scope reading is intended: prototype using the existing
   aggregate confusion matrix (`docs/logs/daily/2026-07-19.md` §1.2) as a
   confusability prior — e.g. an LLM or even a simple bigram/co-occurrence
   re-ranker over the confused pairs — as a notebook-based offline experiment,
@@ -2617,16 +2631,16 @@ all six console scripts run, every notebook parses, and `ty` is back at its
 
 Still open, and deliberately so:
 
-- [ ] **MLflow.** Still not recommended, and still not installed: it is a second
+- [-] **Rejected (recorded 2026-09-24).** **MLflow.** Still not recommended, and still not installed: it is a second
   write path for data `meta.json` already holds, needs a server process, and its
   payoff (parallel-coordinates / run comparison for the ablation write-up) is a
   plotting cell over `index.csv`, which is one row per run and DuckDB-queryable.
   If the write-up needs those views, add the plot to
   `experiments/recognition/gislr.2.models.evaluation.ipynb`.
-- [ ] **DVC.** Rejected in §9.3 and unchanged: its one advantage over the current
+- [-] **Rejected (recorded 2026-09-24).** **DVC.** Rejected in §9.3 and unchanged: its one advantage over the current
   setup — stage DAGs catching stale derived artifacts — is what §9.2's content
   addressing buys directly.
-- [ ] **`sb-rescore` and `sb-synthesize` are skeletons with no implementation**,
+- [~] **Partly answered (2026-09-24): §8 resolved as in scope, so `sb-rescore` is §12.6's home. `sb-synthesize` (speech → sign) still has no scope, and `apps/` does not exist on disk although README's tree lists it.** **`sb-rescore` and `sb-synthesize` are skeletons with no implementation**,
   and `apps/*` is empty. That is the known cost of building the full tree before
   the code exists (§9.9's "empty scaffolding rots" argument). Each carries a
   docstring saying what is fixed regardless of the open scope question, so the
@@ -2634,7 +2648,7 @@ Still open, and deliberately so:
   hashed, the eval set is frozen, and synthesis emits the same tensor
   `sb.core.schema` defines. **If §8 resolves toward "not in scope", delete
   `sb-rescore`/`sb-synthesize` rather than leaving them to rot.**
-- [ ] **Notebooks have not been re-executed** under the new layout — only parsed.
+- [-] **Obsolete (2026-09-24): notebooks have run many times since (continuous training 2026-09-23).** **Notebooks have not been re-executed** under the new layout — only parsed.
   Their imports resolve and the CLIs run, but the first real training run is the
   proof. Restart the Jupyter kernels: `import modules...` is gone.
 - [x] `experiments/extraction/popsign.1.mediapipe.ipynb` had still imported
@@ -2658,11 +2672,11 @@ was wrong is now checkable: it argued the split would break the
 `CWD = src/` convention — it did, and that convention turned out to be
 the thing worth losing.
 
-- [?] **Repo rename `sign2speech` → `signbridge`.** Rejected *for now*, not on
+- [x] **Done anyway — overruled by §9.8 on 2026-09-04 (closed 2026-09-24).** **Repo rename `sign2speech` → `signbridge`.** Rejected *for now*, not on
   taste: the justification is bidirectionality (speech → sign), and there is no
   synthesis direction anywhere in the repo, the README, or this TODO. §8 has not
   even settled whether *sentence-level* recognition is in scope. Blocked on §8.
-- [?] **The `packages/sb-*` uv workspace split.** All of `packages/` is
+- [x] **Done anyway — overruled by §9.8 (closed 2026-09-24).** **The `packages/sb-*` uv workspace split.** All of `packages/` is
   **5,532 lines** across 20 files, single developer, no test suite, no CI. Six
   workspace members rooted at `packages/*/src/sb/<pkg>/` would add six
   `pyproject.toml`s, editable installs, and an import-root change to every
@@ -2672,7 +2686,7 @@ the thing worth losing.
   subset indices) already exists as `modules/dataset/landmark/`, and §9.4 makes
   it enforceable without moving a single file. Revisit when POPSIGN training
   starts (§9.5 is the real preparation for it).
-- [ ] **Move the registry out of `src/data/` to a top-level `registry/`.** The
+- [x] **Done by §9.8 (closed 2026-09-24).** **Move the registry out of `src/data/` to a top-level `registry/`.** The
   review's stated reason — that `.gitignore` negation is fragile and can be
   "silently defeated" — does not apply as written: `src/data/*` globs the
   *contents* (not the directory), so `!registry/runs/` works, and verifiably
@@ -2681,19 +2695,19 @@ the thing worth losing.
   argument, worth ~1 line in `paths.py` plus a `git mv` of 264 files and every
   path reference in docs and notebooks. Low value alone — bundle it with the
   layout change if that ever happens.
-- [ ] **`aliases.json` + a `promote` command.** The right idea, but a promotion
+- [x] **Done by §9.8 — `sb-promote` exists (closed 2026-09-24).** **`aliases.json` + a `promote` command.** The right idea, but a promotion
   pointer needs something to promote *to*. There is no app, no deployment
   target, and TFLite export already exists in
   `gislr.2.models.evaluation.ipynb`. File it properly when a deployment target
   is real; `submission.tested` (§6.3) already covers the query that exists today.
-- [ ] **MLflow as a mirror.** Recommend against. It is a second write path for
+- [-] **Duplicate of §9.8's MLflow item (2026-09-24).** **MLflow as a mirror.** Recommend against. It is a second write path for
   data `meta.json` already holds, needs a server process, and its stated payoff
   (parallel-coordinates / run-comparison views for the ablation write-up) is a
   plotting cell over `index.csv`, which is already a flat, DuckDB-queryable
   table with one row per run. If the ablation chapter needs those views, add
   the plot to `gislr.2.models.evaluation.ipynb` — hours cheaper, and it cannot
   drift from the registry.
-- [ ] **`apps/` (web/edge/shared-ts), `sb-synthesize/`, `sb-rescore/`
+- [-] **Duplicate of §9.8's skeleton item (2026-09-24).** **`apps/` (web/edge/shared-ts), `sb-synthesize/`, `sb-rescore/`
   skeletons.** No code, and in §8's case no scope decision. The review's own
   step 6 says "empty scaffolding rots" while its structure diagram creates four
   such directories; the advice is right and the diagram is wrong. Prompt
@@ -2742,7 +2756,7 @@ long-running frame loop.
   `ReferenceError: WebGLRenderingContext is not defined` inside
   `_emscripten_webgl_do_create_context`, during `Module._changeBinaryGraph` —
   i.e. graph *construction*, before a frame is submitted.
-- [ ] **BLOCKER, and it is not ours to fix in this package.**
+- [-] **POPSIGN deprecated 2026-09-22.** **BLOCKER, and it is not ours to fix in this package.**
   `@mediapipe/tasks-vision` is the *web* build: its graph creates a WebGL
   context whatever `delegate` is asked for (`"CPU"` selects the inference
   backend, not the image pipeline), and Deno has `ImageData`, `OffscreenCanvas`,
@@ -2780,11 +2794,11 @@ long-running frame loop.
   transcribes `encodeNpy`/`encodeNpz`/`toFloat16` into Python and numpy reads the
   result: header padding, ZIP offsets, float16 with NaN preserved and exact
   binary fractions intact. Passes.
-- [ ] Still unproven: that the **TypeScript itself** runs correctly. Everything
+- [-] **POPSIGN deprecated 2026-09-22.** Still unproven: that the **TypeScript itself** runs correctly. Everything
   up to the MediaPipe call now is — ffmpeg spawns and decodes, the pool
   dispatches, the manifest records all 12 units — but no npz has ever been
   written by it, so `--file <clip>.npz` still has nothing to check.
-- [ ] **BLOCKER before it extracts anything trainable: parity — still not
+- [-] **POPSIGN deprecated 2026-09-22.** **BLOCKER before it extracts anything trainable: parity — still not
   measured.** `python -m sb.extract.parity_run --limit 12` now does the whole
   thing (seeded selection → hardlink staging → both extractors → npz format
   check → `sb.extract.parity`), and reports `BLOCKED` because the TS half
@@ -2798,15 +2812,19 @@ long-running frame loop.
   and is deleted per the temp policy, but the selection is cached to
   `data/cache/popsign/parity/selection.json`, so a re-run rebuilds exactly those
   clips. Parity needs only the TS side to appear.
-- [ ] Note for whoever picks this up: the parity sample comes from POPSIGN
+- [-] **POPSIGN deprecated 2026-09-22.** Note for whoever picks this up: the parity sample comes from POPSIGN
   **train a–e**, not test. The test split's videos are gone — `popsign_cycle`
   deletes video once landmarks verify, which is its whole point — and parity is
   a comparison on identical inputs, so the split does not matter but the video
   existing does.
-- [ ] Model asset is pinned to the bucket's `latest`, the only published path.
+- [-] **POPSIGN deprecated 2026-09-22.** Model asset is pinned to the bucket's `latest`, the only published path.
   Mirror the `.task` file if extraction reproducibility matters.
 
 ### 10.2 Livestream mode — the end goal, not yet started
+
+**2026-09-24: now part of §12.5** (Cloudflare Workers deployment research), which
+decides where MediaPipe runs. The `schema.ts` dependency below points at the
+paused `sb-extract-ts`; re-check it in 12.5.
 
 **Unaffected by POPSIGN's deprecation** — this is about a live camera feed,
 not a stored dataset, and the deployment target is GISLR-trained models
@@ -2955,13 +2973,13 @@ last-frame-only-supervision caveat). Full results:
 
 ### 11.2 Phase C — per-frame-supervised retrain (downgraded, 2026-09-22)
 
-- [ ] **No longer the assumed prerequisite.** §11.1's freshness split showed
+- [-] **Superseded (2026-09-24): §12.3 trained per-frame-supervised continuous models (C1/C2).** **No longer the assumed prerequisite.** §11.1's freshness split showed
   clean per-frame confidence is already well-calibrated and accumulates
   sensibly on its own — the blocker was carried-over state, not the
   training objective. Downgraded from "next step" to **optional refinement,
   revisit only if a live reset-wired system still under-performs** after
   §11.2's actual lever (reset, not retraining) is in place.
-- [ ] If revisited anyway: add an auxiliary per-frame loss term (target =
+- [-] **Superseded by §12.3 (2026-09-24).** If revisited anyway: add an auxiliary per-frame loss term (target =
   the video's static label at every frame, weight ramped from 0 over the
   first ~15-20% of the sequence, small coefficient e.g. 0.1-0.3) alongside
   the existing last-frame loss — never replacing it, to avoid regressing the
@@ -2974,11 +2992,11 @@ last-frame-only-supervision caveat). Full results:
 **Superseded 2026-09-24 by §12.6** (fused LLM + recognizer acceptance); §8's
 scope question is answered and §12.1 supplies sentence-level data.
 
-- [ ] **Blocked on §8's still-open scope question and its own open item**:
+- [-] **Superseded by §12.6 (2026-09-24).** **Blocked on §8's still-open scope question and its own open item**:
   where does "next-word suggestion" data come from? Neither GISLR nor
   POPSIGN has sentence-level transcripts. Do not start building this against
   an undefined vocabulary/language-model source.
-- [ ] Once unblocked: swap `AcceptTrigger` for an LLM reading the same
+- [-] **Superseded by §12.6 (2026-09-24).** Once unblocked: swap `AcceptTrigger` for an LLM reading the same
   confidence stream this notebook produces — decoupled from Phase A-D by
   construction, since the reset mechanism is already validated independently
   of who decides to pull it.
@@ -3059,7 +3077,7 @@ early-stopped on — 12.2's baselines carry that selection advantage, and
   18,896/18,896 clips used in `sentence` (17,560 once, max 7 uses);
   **12.12 GB** float32; frames 69.1% sign / 7.4% transition / 23.5% rest in
   both splits (matched by construction). `docs/logs/daily/2026-09-23.md`.
-- [ ] **Realism flaw found in the exemplar**: at rest the pose wrists stay at
+- [x] **Fixed in 12.3's training generator (closed 2026-09-24); the dataset v2 is tracked in 12.3's last item.** **Realism flaw found in the exemplar**: at rest the pose wrists stay at
   signing height while the hands are NaN, so rest is trivially separable
   (hands NaN ⇒ null). 12.2 must score rest and transition frames
   separately; 12.3's training generator should synthesize a lowered-hands
@@ -3204,7 +3222,7 @@ The design brief comes from `docs/reports/sentence-baselines.md` §5.
   D1 uncollapsed is poor (1.15). **§4 (final eval) was interrupted at 0% —
   no `final_*` artifacts saved; §5 not run.** Next: re-run §§4–5 (user).
   Check whether D1's chosen β=0.7 / min_mass=4.0 sit at the grid edge.
-- [ ] **Run the eval notebook** — first attempt 2026-09-23 stopped at the §1
+- [x] **Parity fixed; the run itself is tracked by the partial-run item above (2026-09-24).** **Run the eval notebook** — first attempt 2026-09-23 stopped at the §1
   parity cell (C1: 1/10 D2-vs-live-loop mismatches). **Not a decoder bug**
   (diagnosed 2026-09-23): a float tie at the threshold. At frame 347 of
   sequence row 2 (τ=0.5, hold=2), the live `step` gives p=0.5000002 and the
