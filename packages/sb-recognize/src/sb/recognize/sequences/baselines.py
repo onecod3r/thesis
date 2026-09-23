@@ -52,6 +52,33 @@ class LoadedModel:
     note: str
 
 
+def seq_arrays(row) -> tuple[np.ndarray, np.ndarray]:
+    """``(labels, segments)`` of one ``sequences.csv`` row."""
+    labels = np.array(row["labels"].split(), dtype=np.int64)
+    seg = np.stack([np.array(row["starts"].split(), int), np.array(row["ends"].split(), int)], 1)
+    return labels, seg
+
+
+def hard_cut(x: np.ndarray, kinds: np.ndarray, seg: np.ndarray):
+    """Drop every null frame: the back-to-back concatenation of the clips,
+    with segments remapped."""
+    from sb.recognize.sequences.compose import SIGN
+
+    keep = kinds == SIGN
+    newpos = np.cumsum(keep) - 1
+    seg2 = np.stack([newpos[seg[:, 0]], newpos[seg[:, 1] - 1] + 1], 1)
+    return x[keep], kinds[keep], seg2
+
+
+def frame_totals(kinds_list) -> dict:
+    """``{"sign": n, "transition": n, "rest": n}`` over a list of
+    ``frame_kind`` arrays -- the denominators of the per-kind insertion rates."""
+    from sb.recognize.sequences.compose import FRAME_KINDS
+
+    k = np.concatenate(list(kinds_list)) if len(kinds_list) else np.array([], np.uint8)
+    return {name: int((k == v).sum()) for v, name in FRAME_KINDS.items()}
+
+
 def signer_split(participants, n_select: int, seed: int) -> tuple[list[int], list[int]]:
     """``(selection, evaluation)`` signer ids: ``n_select`` drawn with
     ``seed`` from the sorted ids, the rest for reporting."""

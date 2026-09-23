@@ -68,6 +68,10 @@ def score_sequence(
     counts = Counter(op for op, _, _ in ops)
     latencies = [emissions[j][1] - (int(segments[i][1]) - 1)
                  for op, i, j in ops if op == MATCH and i is not None and j is not None]
+    ref_correct = [False] * len(ref)
+    for op, i, _ in ops:
+        if op == MATCH and i is not None:
+            ref_correct[i] = True
 
     def kind_of(frame: int) -> str:
         return FRAME_KINDS[int(frame_kind[min(frame, len(frame_kind) - 1)])]
@@ -78,6 +82,7 @@ def score_sequence(
         "match": counts[MATCH], "sub": counts[SUB], "del": counts[DEL], "ins": counts[INS],
         "exact": hyp == ref,
         "latencies": latencies,
+        "ref_correct": ref_correct,  # per reference sign: recognized (aligned as a match)?
         "emit_kinds": Counter(kind_of(f) for _, f, _ in emissions),
         "ins_kinds": Counter(kind_of(emissions[j][1]) for op, _, j in ops if op == INS and j is not None),
     }
