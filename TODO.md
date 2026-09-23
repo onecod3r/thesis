@@ -2986,7 +2986,7 @@ own plan and the user's review *before* it is built. Order agreed 2026-09-23
 | step | user # | what | status |
 |---|---|---|---|
 | **12.1** | 2 | GISLR-Sentences: sentence corpus + test-derived continuous dataset → Kaggle | **built + run 2026-09-23; upload pending** |
-| 12.2 | 3 (baselines) | existing isolated models on 12.1 | **plan proposed 2026-09-23, awaiting review** |
+| 12.2 | 3 (baselines) | existing isolated models on 12.1 | **built 2026-09-23, not yet run** |
 | 12.3 | 1 + 4 | continuous frame-level model (null class, add-a-sign head) | plan pending |
 | 12.4 | 3 (rerun) + 4 | 12.3 on 12.1; teach held-out signs | plan pending |
 | 12.5 | — | pipeline structure + deployment/architecture research | plan pending |
@@ -3062,14 +3062,45 @@ early-stopped on — 12.2's baselines carry that selection advantage, and
   transitions/rest — any 12.2–12.4 number is an upper bound on real
   continuous signing until validated on real multi-sign video.
 
-### 12.2–12.5 — outlines (each needs its own plan + review)
+### 12.2 Baselines on GISLR-Sentences — plan approved + built 2026-09-23, not yet run
 
-- [ ] **12.2 baselines**: registry `gru` ME_132 + five-arch `gru`/`lstm`/`cnn`/`dnn`
-  (+ `bilstm` offline reference, oracle only). Segmentation modes: oracle
-  reset at true boundaries (upper bound), `AcceptTrigger` reset (realistic),
-  sliding window. Metrics: gloss error rate (edit distance), sentence
-  accuracy, boundary F1, latency, false accepts on null frames; `sentence`
-  vs `control` split.
+User-approved decisions: τ/hold chosen on **5 held-out selection signers**
+(seeded) of the `sentence` split and every number reported on the other
+16; B4 sliding window included for `cnn`/`dnn`/`bilstm` (+ `gru` as a
+reference); v1 published as is, with the `minemy` and rest-realism fixes
+deferred; the dataset is read via kagglehub
+(`sb.core.paths.gislr_sentences_dir`), falling back to the local build
+until the Kaggle copy exists.
+
+`experiments/recognition/gislr.3.streaming.sentence-baselines.ipynb` +
+`configs/gislr.sentence-baselines.json`; new code:
+`sb.recognize.streaming` (`clip_probs`, `first_accept`, the vectorized
+`AcceptTrigger`, `decode_stream` with a per-stream forward cache and a
+reset/no-reset switch, `collapse_repeats`, `window_probs`, `decode_windows`),
+`sb.recognize.sequences.metrics` (edit alignment, GER, latency, and where
+insertions land by frame kind), and `sb.recognize.sequences.baselines`
+(content-addressed stream feature cache, registry/five-arch loaders,
+signer split).
+
+- [x] `first_accept` ≡ `AcceptTrigger`: 0 mismatches over 3,000 random
+  cases (+ a real-probability parity cell in the notebook).
+- [x] `decode_stream` ≡ the true live loop (`RecurrentSession.step` +
+  `AcceptTrigger` + `reset()`, CPU): 0 mismatches over 120 cases each for
+  `gru`/`lstm`, with and without reset (also a notebook cell).
+- [x] Smoke run of every cell (6 sequences/group): passes; B1 agrees with the
+  isolated predictions on 39/39 clips for all six models. Stream feature
+  caches built (2 × ~2.1 GB).
+- [x] Decoded three real sequences with every model/mode before building the
+  sweep. Found: reset-on-accept **re-fires inside long signs** (`lstm`
+  accepted one 247-frame clip 8 times), and no-reset repeats one gloss
+  throughout. Both are now scored raw and with consecutive duplicates
+  collapsed.
+- [ ] **Run the notebook** (user), then write `docs/reports/sentence-baselines.md`.
+- [ ] B1's parity with the saved isolated predictions (clips ≤128 frames)
+  must be ~100% before any other number is trusted.
+
+### 12.3–12.5 — outlines (each needs its own plan + review)
+
 - [ ] **12.3 continuous model**: causal encoder (starting from `StreamingGRU`)
   with per-frame confidence over 250 glosses + null, trained on sentences
   composed on the fly from `train.csv` (the same `sb.recognize.sequences`
