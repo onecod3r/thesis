@@ -2986,8 +2986,8 @@ own plan and the user's review *before* it is built. Order agreed 2026-09-23
 | step | user # | what | status |
 |---|---|---|---|
 | **12.1** | 2 | GISLR-Sentences: sentence corpus + test-derived continuous dataset → Kaggle | **built + run 2026-09-23; upload pending** |
-| 12.2 | 3 (baselines) | existing isolated models on 12.1 | **built 2026-09-23, not yet run** |
-| 12.3 | 1 + 4 | continuous frame-level model (null class, add-a-sign head) | plan pending |
+| 12.2 | 3 (baselines) | existing isolated models on 12.1 | **run 2026-09-23** — `docs/reports/sentence-baselines.md` |
+| 12.3 | 1 + 4 | continuous frame-level model (null class, add-a-sign head) | **plan proposed 2026-09-23, awaiting review** |
 | 12.4 | 3 (rerun) + 4 | 12.3 on 12.1; teach held-out signs | plan pending |
 | 12.5 | — | pipeline structure + deployment/architecture research | plan pending |
 
@@ -3062,7 +3062,7 @@ early-stopped on — 12.2's baselines carry that selection advantage, and
   transitions/rest — any 12.2–12.4 number is an upper bound on real
   continuous signing until validated on real multi-sign video.
 
-### 12.2 Baselines on GISLR-Sentences — plan approved + built 2026-09-23, not yet run
+### 12.2 Baselines on GISLR-Sentences — built + run 2026-09-23
 
 User-approved decisions: τ/hold chosen on **5 held-out selection signers**
 (seeded) of the `sentence` split and every number reported on the other
@@ -3095,9 +3095,26 @@ signer split).
   accepted one 247-frame clip 8 times), and no-reset repeats one gloss
   throughout. Both are now scored raw and with consecutive duplicates
   collapsed.
-- [ ] **Run the notebook** (user), then write `docs/reports/sentence-baselines.md`.
-- [ ] B1's parity with the saved isolated predictions (clips ≤128 frames)
-  must be ~100% before any other number is trusted.
+- [x] **Run (user, 2026-09-23).** Parity: 0/960 trigger and 0/120 live-loop
+  mismatches; B1 agrees with the isolated predictions on 99.96–100% of
+  17,829 clips per model. Results (16 evaluation signers, `sentence`
+  split): oracle B1 GER **0.221** (`gru_reg`); best streaming **0.507**
+  (`gru` sliding window, collapsed); reset-on-accept **0.659** (`lstm`) /
+  0.681 (`gru`). Errors are **deletions** (0.30–0.47), not substitutions
+  (~0.14) or insertions (~0.05). Sentence ≡ control (±0.01). Full write-up:
+  `docs/reports/sentence-baselines.md`.
+- [x] **Why (diagnostic, same day):** with the state reset at each TRUE
+  sign start, the fixed-hold trigger commits the right gloss on only 60% of
+  signs vs 76% isolated. Short signs (<12 frames, 25% of signs) need a
+  short hold, and long signs (50+) commit early and wrong. No single hold
+  serves both (best 0.617). The remaining drop to the real stream is reset
+  timing. This is the design brief for 12.3: per-frame supervision + a
+  model-signalled boundary, not a fixed hold.
+- [ ] Follow-up, optional: extend the B2 `hold` grid past 8 and `dnn`'s
+  τ/window below 0.4/16 (all selected at grid edges). Expected to move
+  those rows a few points, not to resolve the length trade-off.
+- [ ] Follow-up: once the Kaggle copy is published, confirm
+  `gislr_sentences_dir()` resolves it (this run used the local build).
 
 ### 12.3–12.5 — outlines (each needs its own plan + review)
 
