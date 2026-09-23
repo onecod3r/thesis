@@ -118,6 +118,145 @@ def build_synthetic_stream(
     return np.concatenate(clips, axis=0), boundaries, lengths
 
 
+@torch.no_grad()
+def clip_probs(model, arch: str, x: torch.Tensor) -> np.ndarray:
+    """``(T, feature_dim)`` -> ``(num_classes,)``: the model's own whole-clip
+    prediction, exactly as it was trained and evaluated -- the last-frame
+    readout for every sequence model (``forward_full``, incl. the offline
+    ``bilstm``), the softmax average over frames for the memory-free ``dnn``.
+    Used for oracle-segmented decoding (TODO §12.2 mode B1)."""
+    model.eval()
+    xb = x.unsqueeze(0).to(next(model.parameters()).device)
+    if arch == "dnn":
+        return torch.softmax(model(xb).float(), dim=-1).mean(1).squeeze(0).cpu().numpy()
+    return torch.softmax(model.forward_full(xb).float(), dim=-1).squeeze(0).cpu().numpy()
+
+
+def first_accept(probs: np.ndarray, tau: float, hold: int) -> tuple[int, int] | None:
+    """Vectorized :class:`AcceptTrigger` from a fresh streak: the first frame
+    ``k`` at which the top class has stayed ``>= tau`` for ``hold``
+    consecutive frames, as ``(k, class)``; ``None`` if it never does.
+
+    Same rule as feeding ``probs`` row by row into a new ``AcceptTrigger``
+    and stopping at its first return (checked in the sentence-baselines
+    notebook), without a Python loop per frame -- the difference between
+    minutes and hours for a threshold sweep over a whole dataset.
+    """
+    T = len(probs)
+    if T == 0:
+        return None
+    top = probs.argmax(1)
+    held = probs[np.arange(T), top] >= tau
+    cont = np.zeros(T, bool)
+    cont[1:] = held[1:] & held[:-1] & (top[1:] == top[:-1])
+    idx = np.arange(T)
+    run_start = np.maximum.accumulate(np.where(cont, 0, idx))
+    streak = np.where(held, idx - run_start + 1, 0)
+    hits = np.flatnonzero(streak >= hold)
+    if not len(hits):
+        return None
+    k = int(hits[0])
+    return k, int(top[k])
+
+
+def decode_stream(
+    model, arch: str, x: torch.Tensor, tau: float, hold: int, *, reset: bool = True,
+    cache: dict | None = None,
+) -> list[tuple[int, int, float]]:
+    """Run a causal model over a whole continuous stream and emit a gloss
+    every time the accept rule fires: ``[(class, frame, confidence), ...]``.
+
+    ``reset=True`` is the reset-on-accept loop (TODO §12.2 mode B2): after an
+    accept at frame ``k`` the model restarts from a fresh state at ``k + 1``,
+    which is exactly ``RecurrentSession.reset()`` -- computed as a fresh
+    batch forward from ``k + 1`` rather than stepping frame by frame, since
+    the two agree to 1e-6 (§11.1). ``reset=False`` (mode B3) keeps the state
+    and only clears the trigger's streak, as ``AcceptTrigger`` does after
+    firing -- the no-reset contamination baseline.
+
+    ``cache`` (one dict per stream, shared across calls) memoizes the
+    fresh-state forward from each start frame: it depends only on where the
+    state was reset, not on ``tau``/``hold``, so a threshold sweep over one
+    stream reuses most of its forwards.
+    """
+
+    def from_frame(p0: int) -> np.ndarray:
+        if cache is not None and p0 in cache:
+            return cache[p0]
+        p = per_frame_probs(model, arch, x[p0:])
+        if cache is not None:
+            cache[p0] = p
+        return p
+
+    out: list[tuple[int, int, float]] = []
+    pos, T = 0, len(x)
+    probs = from_frame(0)  # the no-reset stream; also the first reset segment
+    while pos < T:
+        p = from_frame(pos) if reset and pos > 0 else probs[pos:]
+        hit = first_accept(p, tau, hold)
+        if hit is None:
+            break
+        k, cls = hit
+        out.append((cls, pos + k, float(p[k, cls])))
+        pos += k + 1
+    return out
+
+
+@torch.no_grad()
+def window_probs(
+    model, arch: str, x: torch.Tensor, win: int, stride: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """Classify every ``win``-frame window of a stream (step ``stride``) as an
+    isolated clip: ``(n_windows, num_classes)`` probabilities and each
+    window's last frame. The one streaming decoder that works for models
+    with no usable running state (``cnn``/``dnn``) and the offline ``bilstm``
+    (TODO §12.2 mode B4). A stream shorter than ``win`` is one window."""
+    T = len(x)
+    starts = np.arange(0, max(T - win, 0) + 1, stride)
+    ends = np.minimum(starts + win, T)
+    xb = torch.stack([x[s:e] for s, e in zip(starts, ends)]).to(next(model.parameters()).device)
+    model.eval()
+    if arch == "dnn":
+        p = torch.softmax(model(xb).float(), dim=-1).mean(1)
+    else:
+        p = torch.softmax(model.forward_full(xb).float(), dim=-1)
+    return p.cpu().numpy(), ends - 1
+
+
+def collapse_repeats(emissions: list[tuple[int, int, float]]) -> list[tuple[int, int, float]]:
+    """Drop an emission identical in class to the one just before it -- the
+    usual CTC-style post-process. Suppresses a long sign being accepted over
+    and over, at the cost of a genuinely repeated gloss (``WHO WHO``)."""
+    out: list[tuple[int, int, float]] = []
+    for e in emissions:
+        if not out or out[-1][0] != e[0]:
+            out.append(e)
+    return out
+
+
+def decode_windows(
+    probs: np.ndarray, end_frames: np.ndarray, tau: float, min_run: int
+) -> list[tuple[int, int, float]]:
+    """Window predictions -> emitted glosses: a run of consecutive windows
+    whose top class is the same and ``>= tau`` emits that class once, at the
+    end frame of its ``min_run``-th window. Runs are broken by a window
+    below ``tau`` or with a different top class, so a gloss repeated in the
+    sentence can be emitted twice if a low-confidence gap separates them."""
+    out: list[tuple[int, int, float]] = []
+    top = probs.argmax(1)
+    conf = probs[np.arange(len(probs)), top]
+    run_cls, run_len = -1, 0
+    for i, (c, p) in enumerate(zip(top, conf)):
+        if p < tau:
+            run_cls, run_len = -1, 0
+            continue
+        run_len = run_len + 1 if c == run_cls else 1
+        run_cls = c
+        if run_len == min_run:
+            out.append((int(c), int(end_frames[i]), float(p)))
+    return out
+
+
 class AcceptTrigger:
     """Rule-based reset trigger: fires once the top class's confidence stays
     above `tau` for `hold_frames` consecutive frames.
