@@ -41,6 +41,7 @@ Keep the "Current focus" table at the top current — re-derive it whenever what
 ## Git workflow
 
 - Commit after each logical unit of work — don't batch unrelated changes. Stage explicitly with `git add`. Conventional-commit format (`feat:`, `fix:`, `docs:`, `refactor:`, `chore:`).
+- **At the end of every response with a significant change, commit and push (`git push origin main`) — standing authorization, no need to ask.** Significant = code, config, notebook source, or docs/TODO/README content that records a result, decision, status, or plan. Not significant (don't commit on their own): typo/whitespace-only fixes, or leaving a notebook mid-run. Those ride along with the next significant commit. Never commit a notebook whose run is partial — wait until it finishes. If a push fails (auth, non-fast-forward), report it; never force-push.
 
 ## Windows constraints
 
