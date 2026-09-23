@@ -28,7 +28,10 @@ and were not individually re-verified on 2026-09-24.
 | # | next action | where | why now |
 |---|---|---|---|
 | **0** | **Finish `gislr.3.streaming.continuous-eval.ipynb` §§4–5 (user)**, then Claude writes `docs/reports/continuous-models.md` | §12.3 | §§1–3 done 2026-09-24 (parity passes, sweeps cached); §4 final eval was interrupted at 0% with nothing saved. Selection-signer GER already suggests C1 D3 **0.413** vs the best §12.2 baseline 0.507 |
-| 0b | Plan §12.4 add-a-sign (enroll C-open's 20 held-out glosses from 1/5/10 examples) | §12.4 | C-open (`1790146838`) is trained and waiting; needs a plan + user review before building |
+| 0b | Plan §12.4 add-a-sign (enroll C-open's 20 held-out glosses from 1/5/10 examples) | §12.4 | C-open (`1790146838`) is trained and waiting; decides how custom signs (§12.7) work |
+| 0c | §12.5 Cloudflare Workers deployment research → `docs/reports/deployment-research.md` | §12.5 | sets where each stage runs + latency budget before §12.6 picks an LLM/TTS |
+| 0d | §12.6 downstream LLM (fused acceptance, gloss → English, TTS), offline notebook first | §12.6 | user's 2026-09-24 ask; needs 12.5's model choices |
+| 0e | §12.7 custom-sign feature | §12.7 | product layer over 12.4 + 12.5 |
 | ~~1~~ | ~~Restart the Jupyter kernels, then run one short training~~ — **effectively done**: the four §12.3 continuous runs trained end to end through the restructured stack on 2026-09-23 | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
 | 2 | ~~Run the first checkpoint backup~~ — **done 2026-09-04**: 42 on Kaggle, local copies pruned after hash verification. Remaining: confirm the model is **private** | §9.3 | was the last single-copy risk |
 | 3 | **Notebook §5b: the three-arm AWP/LateDropout ablation** (~30 min) | §4.2 | the 1st-place port has collapsed at epoch 15 twice and neither switch has been run alone, so the recipe is still unmeasured |
@@ -45,9 +48,8 @@ and were not individually re-verified on 2026-09-24.
 
 Decisions still owed by the user, blocking real work:
 
-- **§8 scope**: continuous/sentence-level, or n-best re-ranking? `sb-rescore/`
-  and `sb-synthesize/` are empty skeletons until this is answered — and should
-  be **deleted** if the answer is "out of scope".
+- ~~**§8 scope**~~ — **answered 2026-09-24**: continuous/sentence-level, LLM +
+  TTS downstream (§12.6). `sb-rescore/` is the LLM's home.
 - **§4.1**: BiLSTM is the accuracy leader (0.7569) but can never ship. Is the
   goal understanding the causality gap, or a deployable model? The section
   flags this conflict and it is still unresolved.
@@ -2194,7 +2196,12 @@ correction LLM that uses sentence-level context to pick the right word among
 near-synonyms (`awake`/`wake`, `mouth`/`lips`, etc. — the exact pairs §7.1
 already identified as semantic, not geometric).
 
-- [?] **Scope conflict to resolve before filing real sub-tasks:** GISLR and
+- [x] **Answered by the user 2026-09-24: continuous/sentence-level is in
+  scope** — the LLM fuses next-gloss prediction with recognizer confidence,
+  writes fluent English, and feeds TTS. Work moved to **§12.6**; the data gap
+  below is covered by §12.1's (synthetic) corpus. Original question kept for
+  context:
+- [?] ~~**Scope conflict to resolve before filing real sub-tasks:**~~ GISLR and
   POPSIGN as used in this repo are **isolated single-sign classification**
   (one video → one of 250 labels), not continuous sentence recognition —
   there is currently no stage that assembles a sequence of predicted signs
@@ -2964,6 +2971,9 @@ last-frame-only-supervision caveat). Full results:
 
 ### 11.3 Phase E — LLM as reset decision-maker (blocked on §8)
 
+**Superseded 2026-09-24 by §12.6** (fused LLM + recognizer acceptance); §8's
+scope question is answered and §12.1 supplies sentence-level data.
+
 - [ ] **Blocked on §8's still-open scope question and its own open item**:
   where does "next-word suggestion" data come from? Neither GISLR nor
   POPSIGN has sentence-level transcripts. Do not start building this against
@@ -2991,8 +3001,10 @@ own plan and the user's review *before* it is built. Order agreed 2026-09-23
 | **12.1** | 2 | GISLR-Sentences: sentence corpus + test-derived continuous dataset → Kaggle | **built + run 2026-09-23; upload pending** |
 | 12.2 | 3 (baselines) | existing isolated models on 12.1 | **run 2026-09-23** — `docs/reports/sentence-baselines.md` |
 | 12.3 | 1 + 4 | continuous frame-level model (null class, add-a-sign head) | **built 2026-09-23, not yet trained** |
-| 12.4 | 3 (rerun) + 4 | 12.3 on 12.1; teach held-out signs | plan pending |
-| 12.5 | — | pipeline structure + deployment/architecture research | plan pending |
+| 12.4 | 3 (rerun) + 4 | 12.3 on 12.1; teach held-out signs (model side of custom signs) | plan pending — **do 1st** |
+| 12.5 | — | pipeline structure + **Cloudflare Workers** deployment research | plan pending — **do 2nd** |
+| 12.6 | — (2026-09-24) | downstream LLM: next-gloss prior fused with recognizer confidence, gloss → fluent English, TTS | plan pending — **do 3rd** |
+| 12.7 | — (2026-09-24) | user-facing custom-sign feature (capture → enroll → persist) | plan pending — **do 4th** |
 
 **Decisions the user made (2026-09-23):**
 - Sentences written by Claude, validated by script, user reviews samples.
@@ -3206,13 +3218,104 @@ The design brief comes from `docs/reports/sentence-baselines.md` §5.
 - [ ] Follow-up: GISLR-Sentences v2 with the realistic lowered rest
   (pose down, hands out of frame), plus the `minemy` rewrite.
 
-### 12.4–12.5 — outlines (each needs its own plan + review)
+### 12.4–12.7 — the user's three new asks (filed 2026-09-24)
 
-- [ ] **12.4 add-a-sign**: enroll held-out glosses from 1/5/10 examples —
-  prototype imprinting (no retraining) vs short fine-tune with replay;
-  new-class accuracy on 12.1 and forgetting on the base classes.
-- [ ] **12.5 pipeline + deployment research** (see the 2026-09-23 plan in
-  chat, to be written up as `docs/reports/deployment-research.md`).
+The user asked (2026-09-24) for: (a) the full pipeline deployed on
+**Cloudflare Workers**, (b) a **downstream LLM** that fuses its next-word
+prediction with the recognizer's confidence to accept signs, turns ASL glosses
+into fluent English, and speaks it via **TTS**, (c) **custom signs** a user can
+teach the model. Partial overlap found: (a) ⊂ §12.5's outline (nothing
+Cloudflare-specific) and §10.2; (b) ⊂ §8 + §11.3 (no gloss→English, no TTS);
+(c) ⊂ §12.4 (model side only, no user feature). Filed as extensions, not
+duplicates.
+
+**Order and why** (differs from the user's 1/2/3 numbering):
+1. **12.4 first** — cheapest and unblocked: C-open (`1790146838`) is trained
+   with 20 held-out glosses, `CosineGlossHead.enroll()` exists. It decides
+   *how* custom signs work (prototype imprinting vs fine-tune), which 12.5
+   and 12.7 both depend on.
+2. **12.5 second** — research only, but it sets the hard constraints (where
+   each model runs, latency and size budgets, which LLM/TTS are available)
+   before 12.6 picks an LLM and builds against it.
+3. **12.6 third** — needs 12.3's decoders (done), 12.1's corpus (done) and
+   12.5's model/latency choices.
+4. **12.7 last** — product feature on top of 12.4's method and 12.5's
+   storage/deploy decisions.
+
+### 12.4 Add-a-sign — model side (plan + review needed)
+
+- [ ] Enroll held-out glosses from 1/5/10 examples — prototype imprinting
+  (no retraining) vs short fine-tune with replay; new-class accuracy on 12.1
+  and forgetting on the base classes. Start from C-open's 20 held-out
+  glosses.
+- [ ] Also measure what 12.7 needs: accuracy vs number of user examples, and
+  whether a *new signer's* few examples transfer (enroll with one signer,
+  test on others vs same signer).
+
+### 12.5 Pipeline + Cloudflare Workers deployment research (plan + review needed)
+
+Write up as `docs/reports/deployment-research.md` (the 2026-09-23 chat plan
+for this was never written down — start fresh). Research questions:
+
+- [ ] **Where does each stage run?** Camera + MediaPipe landmarks almost
+  certainly in the browser (MediaPipe Tasks for Web); the recognizer in the
+  browser (TF.js / ONNX Runtime Web / TFLite-wasm) vs in a Worker; LLM + TTS
+  on Workers AI or via an external API. Per-frame recognition over the
+  network costs a round trip every frame — quantify it.
+- [ ] **Workers constraints** (verify from current Cloudflare docs, don't
+  assume): CPU-time and memory limits, bundle size, WASM support, whether
+  ONNX Runtime can run inside a Worker, cold starts.
+- [ ] **Workers AI catalogue**: which LLMs and TTS models are available,
+  their latency/pricing, and whether constrained or streaming output is
+  supported (12.6 needs a next-gloss distribution over 250 glosses).
+- [ ] **Session state**: Durable Objects for per-session LLM context and
+  WebSocket streaming; where custom-sign prototypes live (KV / D1 / R2 — R2
+  was not activated on this account as of 2026-09-04, §9.3).
+- [ ] **Export path**: the StreamingGRU/`ContinuousGRU` → browser format.
+  TFLite export already exists (`sb.recognize.export.keras`); check it
+  covers the continuous heads and the cosine head's `class_mask`.
+- [ ] Output: an architecture diagram, a latency budget per stage, and a
+  recommendation. Resolves §10.2's and §9.8's open "deployment target"
+  question.
+
+### 12.6 Downstream LLM: fused acceptance, gloss → English, TTS (plan + review needed)
+
+**User decision (2026-09-24), answers §8's scope question:** the roadmap
+*is* continuous/sentence-level. The LLM (1) keeps the session's accepted
+glosses as context, (2) predicts the next gloss, (3) that prediction is
+combined with the recognizer's per-frame confidence and a sign is accepted
+when the combined score clears a threshold, (4) turns the accepted gloss
+sequence (ASL order, no inflection) into fluent English, (5) TTS speaks it.
+
+- [ ] **Fused acceptance, offline first** (notebook, on 12.1 streams with the
+  12.3 decoders): LLM next-gloss distribution *constrained to the 250-gloss
+  vocabulary* × recognizer confidence (shallow fusion, weight λ tuned on the
+  selection signers). Compare GER against 12.3's best decoder (C1 D3). This
+  supersedes §11.3 (LLM as reset decision-maker).
+- [ ] **Circularity risk**: 12.1's sentences were written by Claude, so a
+  Claude/LLM prior will look better on them than on real signing. Hold out
+  sentence *templates*/themes, and report the gain as an upper bound.
+- [ ] Compare a small n-gram LM over the 12.1 corpus as a baseline — if it
+  gets most of the gain, the LLM earns its place only for step (4).
+- [ ] **Gloss → English**: prompt design + an eval set (`sb-rescore`'s
+  `evalset/` and `prompts/` skeletons are the natural home). Handle GISLR
+  gaps (no I/you, `minemy` doubling as "I" — §12.1).
+- [ ] **TTS**: pick a model per 12.5 (Workers AI vs external), measure
+  end-to-end latency sign-accepted → audio.
+- [ ] When to emit: per accepted gloss (streaming, may revise) vs at a pause
+  (sentence end = long null/rest run from the boundary head).
+
+### 12.7 Custom signs — user-facing feature (plan + review needed)
+
+- [ ] Capture flow: user records N examples of a new sign + types its gloss;
+  landmarks extracted client-side.
+- [ ] Enroll via 12.4's winning method (prototype imprinting runs in the
+  client, no server training); persist per-user prototypes (storage per
+  12.5).
+- [ ] The LLM (12.6) must learn the new gloss exists — add it to the
+  constrained vocabulary and give it a user-provided English meaning.
+- [ ] Guardrails: reject an enrollment that collides with an existing gloss
+  (high cosine similarity to its prototype), and a way to delete/re-record.
 
 Related: §8 (sentence-level data for an LLM — 12.1's corpus is the first
 sentence-level artifact in the repo, though synthetic), §11 (reset

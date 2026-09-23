@@ -2,7 +2,7 @@
 
 > Renamed from `sign2speech` on 2026-09-04, alongside the workspace restructure. The old name described one direction; the repo is now laid out so the other one (speech → sign, `packages/sb-synthesize/`) can be built against the same landmark contract. The working directory and the git remote are unchanged.
 
-A sign language recognition system focused on **streaming, real-time inference** rather than offline-only accuracy. The end goal is a deployable pipeline that classifies signs frame-by-frame with low latency, trained on hand/pose/face landmark sequences extracted via MediaPipe Holistic.
+A sign language recognition system focused on **streaming, real-time inference** rather than offline-only accuracy. The end goal is a deployable pipeline that classifies signs frame-by-frame with low latency, trained on hand/pose/face landmark sequences extracted via MediaPipe Holistic. Planned downstream (TODO §12.4–12.7, filed 2026-09-24): an LLM that fuses its next-word prediction with the recognizer's confidence and turns ASL glosses into fluent English, text-to-speech, user-taught custom signs, and deployment on Cloudflare Workers.
 
 ## Datasets
 
@@ -326,7 +326,7 @@ signbridge/
 │   │       ├── artifacts.py  #   `sb-sync`: second copy of the weights (kaggle/local/s3) + the manifest
 │   │       ├── promote.py    #   `sb-promote`: aliases — which run is champion
 │   │       └── docs.py       #   `sb-docs`: regenerate schemas/, index.csv, README generated blocks
-│   ├── sb-rescore/           # top-k → sentence (TODO §8 — scoped skeleton, see its __init__)
+│   ├── sb-rescore/           # downstream LLM: fused acceptance + gloss → English (TODO §12.6, was §8) — skeleton
 │   │   └── src/sb/rescore/   #   prompts/v1/ (versioned, hashed into the run record) · evalset/ (frozen)
 │   └── sb-synthesize/        # speech → sign (future) — emits the SAME tensor sb.core.schema defines
 ├── experiments/              # notebooks are thin drivers; CWD does not matter any more
