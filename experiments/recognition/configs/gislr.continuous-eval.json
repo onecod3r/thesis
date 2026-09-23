@@ -1,0 +1,21 @@
+{
+  "_comment": "TODO §12.3 -- continuous models on GISLR-Sentences, gislr.3.streaming.continuous-eval.ipynb. Same protocol as gislr.sentence-baselines.json: settings chosen on the same 5 seeded selection signers of the sentence split, reported on the other 16.",
+  "dataset_version": "v1",
+  "seed": 42,
+  "n_selection_signers": 5,
+  "selection_kind": "sentence",
+  "selection_metric": "ger",
+  "runs": ["C1", "C2", "C3"],
+  "decoders": {
+    "D1": {"beta": [0.2, 0.3, 0.4, 0.5, 0.6, 0.7], "min_mass": [0.5, 1, 2, 4]},
+    "D1r": {"beta": [0.3, 0.4, 0.5, 0.6, 0.7], "min_mass": [0.5, 1, 2, 4]},
+    "D2": {"tau": [0.4, 0.5, 0.6, 0.7, 0.8, 0.9], "hold": [1, 2, 3, 5, 8]},
+    "D3": {"nu": [0.3, 0.5, 0.7], "min_len": [2, 4, 6]},
+    "D4": {}
+  },
+  "collapse_repeats": [false, true],
+  "boundary_tolerance": 3,
+  "length_bins": [0, 12, 20, 30, 50, 1000000],
+  "baselines_results": "gislr/sentence_baselines/results",
+  "reference_baseline": {"model": "lstm", "mode": "B2", "collapse": true}
+}

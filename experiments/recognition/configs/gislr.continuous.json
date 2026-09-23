@@ -1,0 +1,65 @@
+{
+  "_comment": "TODO §12.3 -- continuous-signing models, gislr.1.models.continuous.ipynb. Every hyperparameter lives here, never in a cell. Runs inherit `shared` and may deviate only via `overrides` naming a key that exists in `shared` (sb.recognize.continuous.train enforces this).",
+  "schema_version": 1,
+  "dataset": "gislr",
+  "regime": "continuous-v1",
+  "source": "gislr.1.models.continuous.ipynb",
+  "subset": "ME_132",
+  "coords": "xy",
+  "seed": 42,
+  "val_fraction": 0.05,
+  "shared": {
+    "loss": "frame",
+    "batch_size": 64,
+    "lr": 0.001,
+    "hidden_size": 256,
+    "num_layers": 2,
+    "dropout": 0.3,
+    "embed_dim": 256,
+    "cos_scale": 16.0,
+    "weight_decay": 0.0001,
+    "epochs": 150,
+    "grad_clip": 5.0,
+    "lr_factor": 0.5,
+    "lr_patience": 4,
+    "es_patience": 12,
+    "es_min_delta": 0.001,
+    "label_smoothing": 0.1,
+    "null_weight": 0.5,
+    "ramp_start": 0.3,
+    "boundary_weight": 0.5
+  },
+  "composer": {
+    "signs_per_seq": [1, 6],
+    "gap_frames": [0, 15],
+    "rest_frames": [5, 30],
+    "p_lowered_rest": 0.7,
+    "rest_ramp_frames": 8,
+    "rest_default_drop": 0.3,
+    "hand_visible_max": 0.9,
+    "rest_jitter": 0.002,
+    "max_frames": 600,
+    "boundary_before": 2,
+    "boundary_after": 1
+  },
+  "runs": {
+    "C1": {
+      "arch": "gru_continuous",
+      "notes": "Primary model: GRU, per-frame gloss+null cross-entropy + sign-boundary BCE, all 250 glosses."
+    },
+    "C2": {
+      "arch": "lstm_continuous",
+      "notes": "C1 with an LSTM body: the architecture comparison."
+    },
+    "C3": {
+      "arch": "gru_continuous",
+      "overrides": {"loss": "ctc"},
+      "notes": "C1 trained with CTC (blank = null) instead of per-frame targets: the alignment-free reference real continuous video would need. Its boundary head is untrained."
+    },
+    "Copen": {
+      "arch": "gru_continuous",
+      "n_holdout_glosses": 20,
+      "notes": "C1's recipe with 20 seeded glosses held out of training entirely (masked in the head); the model TODO §12.4 teaches new signs to."
+    }
+  }
+}
