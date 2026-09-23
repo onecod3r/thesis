@@ -37,6 +37,7 @@ stale, trust the sections.
 | ~~8~~ | ~~Run `gislr.0.dataset.motion-energy.ipynb`~~ — **done 2026-09-21**: all three scopes, 0 failed units, results in `docs/reports/motion-energy.md` §5 | §1 | — |
 | 9 | **Run `gislr.1.models.training.ipynb` §§5b/6/7/8** (`gru_deep`/`lstm`/`bilstm`/`cnn1d` × 3 subsets, 12 runs) | §4.3 | closes the current-split benchmark gap — 52 of 55 registry runs are on the retired split, only `gru` has been re-run since the reset; no porting needed, the cells are already correct, just never executed |
 | ~~10~~ | ~~Run `gislr.1.models.five-arch-benchmark.ipynb`~~ — **done 2026-09-21**: `bilstm` 0.7392 (offline) > `gru` 0.7380 > `lstm` 0.7286 > `cnn` 0.6696 > `dnn` 0.6485; `dnn`'s mean true-class confidence (0.24) a quarter of the rest — results in `docs/reports/five-arch-benchmark.md` | §3.7 | — |
+| 12 | **Run `gislr.0.dataset.sentences.ipynb`**, review the sentence sample, pick float32/float16, upload (private) | §12.1 | first of the continuous-signing experiments; 12.2–12.4 all read this dataset |
 | ~~11~~ | ~~Run `gislr.3.streaming.confidence-eval.ipynb`~~ — **done 2026-09-22**: fresh-start confidence is already well-calibrated (`gru` late-third 0.58); the blocker is un-reset state (bleed-through cut 96-98% by resetting), not the training objective — §11.2's retrain downgraded to optional. `docs/reports/streaming-confidence.md` | §11.1 | — |
 
 Decisions still owed by the user, blocking real work:
@@ -2973,6 +2974,93 @@ Related: §4.1 (BiLSTM accuracy-vs-streaming-viability decision, same
 exclusion rule applied here), §8 (LLM scope + the missing sentence-level
 data source, now shared by both), §10.2 (livestream mode — this stays a
 notebook-based simulation until that's built).
+
+---
+
+## 12. Continuous Signing: Sentence Dataset, Frame-Level Model, Open Vocabulary (2026-09-23, new)
+
+**The user's four experiments, plus pipeline research** — each step gets its
+own plan and the user's review *before* it is built. Order agreed 2026-09-23
+(it differs from the user's numbering because of dependencies):
+
+| step | user # | what | status |
+|---|---|---|---|
+| **12.1** | 2 | GISLR-Sentences: sentence corpus + test-derived continuous dataset → Kaggle | **built, not yet run** |
+| 12.2 | 3 (baselines) | existing isolated models on 12.1 | plan pending |
+| 12.3 | 1 + 4 | continuous frame-level model (null class, add-a-sign head) | plan pending |
+| 12.4 | 3 (rerun) + 4 | 12.3 on 12.1; teach held-out signs | plan pending |
+| 12.5 | — | pipeline structure + deployment/architecture research | plan pending |
+
+**Decisions the user made (2026-09-23):**
+- Sentences written by Claude, validated by script, user reviews samples.
+- Null frames: interpolated transitions + hands-absent rest segments (not hard cuts only).
+- **Model output contract (12.3):** at every frame, a confidence over *every*
+  gloss for the sign in progress since the last reset — once it crosses a
+  threshold the sign is accepted and the scores reset for the next sign.
+  This is §11's `AcceptTrigger` + `RecurrentSession.reset` loop, now as the
+  design target of a model trained for it (so §11.2's per-frame-supervised
+  retrain is back in scope, as part of 12.3, not as an optional refinement).
+- Kaggle dataset private; sentences built **only from `test.csv`**, using as
+  many test clips as possible.
+
+**Facts that shaped the plan (measured 2026-09-23):** GISLR clips are
+trimmed to the sign (0 hand-absent lead-in/out frames over 1,500 test
+clips; 0.4% hand-absent frames overall; length median 22 / p95 131 / max
+405), so every null frame must be synthesized. Each test signer covers
+221–249 of the 250 glosses, so one signer per sequence is feasible.
+`test.csv` doubles as the canonical val set every existing checkpoint was
+early-stopped on — 12.2's baselines carry that selection advantage, and
+12.3 must select on a `train.csv`-derived set.
+
+### 12.1 GISLR-Sentences v1 — built 2026-09-23, not yet run
+
+`experiments/recognition/gislr.0.dataset.sentences.ipynb` + new
+`sb.recognize.sequences` (`corpus.py`, `compose.py`, committed corpus in
+`corpus_data/`) + `configs/gislr.sentences.json`.
+
+- [x] Corpus v1: 1,757 sentences, 11 themes, ASL gloss order, length 2–7
+  (mean 3.14); every gloss in ≥12 sentences; POS lexicon for all 250
+  glosses. The vocabulary has no I/you (ASL points), no `eat` (ASL FOOD
+  doubles for it), no `want`/`big`/`small`/`good` — sentences are simple
+  and third-person heavy.
+- [x] Coverage-driven planner: **all 18,896 test clips placed**, 8.0% of
+  slots re-use a clip (flagged), 0 orphans → 6,616 `sentence` sequences
+  (1,227 distinct sentences); `control` split = same clips, random order,
+  each once (~6.1k sequences).
+- [x] Smoke test (40 sequences): every segment bit-identical to its source,
+  rest frames hands-NaN/body present, null frames labelled −1; ~0.08 s per
+  sequence.
+- [ ] **Run the notebook §1–§5**, then review the printed sentence sample.
+- [ ] **Size decision before upload**: ~16 GB at float32 (5.5 KB/frame, the
+  jittered rest frames and raw float32 barely compress). float16 would
+  halve it at the cost of bit-exact round-trip (the source is float32).
+- [ ] Set `UPLOAD = True`, run §6 (creates the private Kaggle dataset).
+- [ ] Follow-up, not blocking: synthesized null frames are not real
+  transitions/rest — any 12.2–12.4 number is an upper bound on real
+  continuous signing until validated on real multi-sign video.
+
+### 12.2–12.5 — outlines (each needs its own plan + review)
+
+- [ ] **12.2 baselines**: registry `gru` ME_132 + five-arch `gru`/`lstm`/`cnn`/`dnn`
+  (+ `bilstm` offline reference, oracle only). Segmentation modes: oracle
+  reset at true boundaries (upper bound), `AcceptTrigger` reset (realistic),
+  sliding window. Metrics: gloss error rate (edit distance), sentence
+  accuracy, boundary F1, latency, false accepts on null frames; `sentence`
+  vs `control` split.
+- [ ] **12.3 continuous model**: causal encoder (starting from `StreamingGRU`)
+  with per-frame confidence over 250 glosses + null, trained on sentences
+  composed on the fly from `train.csv` (the same `sb.recognize.sequences`
+  composer); per-frame CE (alignments known) vs CTC arms; cosine-normalized
+  head; ~20 glosses held out of training for 12.4.
+- [ ] **12.4 add-a-sign**: enroll held-out glosses from 1/5/10 examples —
+  prototype imprinting (no retraining) vs short fine-tune with replay;
+  new-class accuracy on 12.1 and forgetting on the base classes.
+- [ ] **12.5 pipeline + deployment research** (see the 2026-09-23 plan in
+  chat, to be written up as `docs/reports/deployment-research.md`).
+
+Related: §8 (sentence-level data for an LLM — 12.1's corpus is the first
+sentence-level artifact in the repo, though synthetic), §11 (reset
+mechanism), §10.2 (livestream mode).
 
 ---
 
