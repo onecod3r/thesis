@@ -9,6 +9,10 @@
         "torch>=2.13.0",
         "numpy>=2.5.1",
         "pandas>=3.0.3",
+        # pandas' parquet engine: the motion-energy and feature-discriminability
+        # notebooks cache their per-unit artifacts as parquet. Dropped with the
+        # npz switch (2613426) while still in use; only a stale lock kept it installed.
+        "pyarrow>=24.0.0",
         "scikit-learn>=1.9.0",
         "matplotlib>=3.11.0",
         "seaborn>=0.13.2",
