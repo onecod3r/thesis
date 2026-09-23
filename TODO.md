@@ -37,7 +37,7 @@ stale, trust the sections.
 | ~~8~~ | ~~Run `gislr.0.dataset.motion-energy.ipynb`~~ — **done 2026-09-21**: all three scopes, 0 failed units, results in `docs/reports/motion-energy.md` §5 | §1 | — |
 | 9 | **Run `gislr.1.models.training.ipynb` §§5b/6/7/8** (`gru_deep`/`lstm`/`bilstm`/`cnn1d` × 3 subsets, 12 runs) | §4.3 | closes the current-split benchmark gap — 52 of 55 registry runs are on the retired split, only `gru` has been re-run since the reset; no porting needed, the cells are already correct, just never executed |
 | ~~10~~ | ~~Run `gislr.1.models.five-arch-benchmark.ipynb`~~ — **done 2026-09-21**: `bilstm` 0.7392 (offline) > `gru` 0.7380 > `lstm` 0.7286 > `cnn` 0.6696 > `dnn` 0.6485; `dnn`'s mean true-class confidence (0.24) a quarter of the rest — results in `docs/reports/five-arch-benchmark.md` | §3.7 | — |
-| 12 | **Run `gislr.0.dataset.sentences.ipynb`**, review the sentence sample, pick float32/float16, upload (private) | §12.1 | first of the continuous-signing experiments; 12.2–12.4 all read this dataset |
+| 12 | **Run `gislr.0.dataset.sentences-kaggle.ipynb` on Kaggle**, then Output → New Dataset (private) | §12.1 | first of the continuous-signing experiments; 12.2–12.4 all read this dataset |
 | ~~11~~ | ~~Run `gislr.3.streaming.confidence-eval.ipynb`~~ — **done 2026-09-22**: fresh-start confidence is already well-calibrated (`gru` late-third 0.58); the blocker is un-reset state (bleed-through cut 96-98% by resetting), not the training objective — §11.2's retrain downgraded to optional. `docs/reports/streaming-confidence.md` | §11.1 | — |
 
 Decisions still owed by the user, blocking real work:
@@ -3030,11 +3030,23 @@ early-stopped on — 12.2's baselines carry that selection advantage, and
 - [x] Smoke test (40 sequences): every segment bit-identical to its source,
   rest frames hands-NaN/body present, null frames labelled −1; ~0.08 s per
   sequence.
-- [ ] **Run the notebook §1–§5**, then review the printed sentence sample.
-- [ ] **Size decision before upload**: ~16 GB at float32 (5.5 KB/frame, the
-  jittered rest frames and raw float32 barely compress). float16 would
-  halve it at the cost of bit-exact round-trip (the source is float32).
-- [ ] Set `UPLOAD = True`, run §6 (creates the private Kaggle dataset).
+- [x] ~~Local build + `kagglehub.dataset_upload`~~ — **uploading ~16 GB from
+  this machine was too slow (2026-09-23)**. Replaced by a Kaggle-side build:
+  `gislr.0.dataset.sentences-kaggle.ipynb`, **generated** by
+  `python -m sb.recognize.sequences.kaggle_notebook` from the exact source of
+  the five modules it needs (registered under their real names, so no
+  re-implementation), the config and the corpus files. Verified
+  end to end on a 40-sequence slice with every real `sb.*` import blocked:
+  identical plan (6,616 / 8.0% / 1,227), round-trip 20/20 at float32 and
+  float16. Regenerate it after changing any of those inputs.
+- [ ] **Run it on Kaggle** (GISLR_Stratified as input, CPU, Save & Run All),
+  then Output → New Dataset `GISLR-Sentences` (private). §3 stops early if
+  the projected size exceeds Kaggle's ~20 GB `/kaggle/working` limit
+  (~16 GB estimated at float32; `STORAGE_DTYPE = "float16"` halves it).
+- [ ] Review the printed sentence sample. Open question from the user
+  review: `minemy` (my/mine) is also used as "I" in sentences like
+  `MINEMY HUNGRY` because GISLR has no I/me sign. Rewrite those to
+  possessive-only, or keep them?
 - [ ] Follow-up, not blocking: synthesized null frames are not real
   transitions/rest — any 12.2–12.4 number is an upper bound on real
   continuous signing until validated on real multi-sign video.
