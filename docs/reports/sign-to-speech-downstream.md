@@ -1,8 +1,8 @@
 # Sign → speech after the recognizer: next-gloss prediction, gloss → English, speech
 
 **TODO §12.6** · 2026-09-24 · status: stage 2 **complete** (full sweep + evaluation
-signers, user run 2026-09-24, §2); floor-recall experiment run and refined on the
-selection signers, evaluation check pending (§2.2); stage 3 rules arm, stage 4 client voices, and the
+signers, user run 2026-09-24, §2); floor-recall experiment complete: the lag-2 lattice
+beats the plain floor on the evaluation signers (§2.2); stage 3 rules arm, stage 4 client voices, and the
 end-to-end integration check are run. The LLM arm and the Workers AI TTS arm are
 **pending** (§7).
 
@@ -38,13 +38,15 @@ Extraction and recognition run on the client (`deployment-research.md`).
   0.347), because it turns wrong signs into missed ones. The best noise-tuned setting
   (prior + floor) reaches 0.565 noisy / 0.326 clean. **The length gate does not help** once
   a floor is in place, and no selected setting uses it (§2).
-- **Waiting one sign before deciding recovers some of what the floor throws away.** A
-  fixed-lag lattice (hold an uncertain sign until the next one arrives, then pick the
-  best path over the top guesses or "skip" with the prior) misses **2.4 fewer signs per
-  100 on clean sentences and 1.6 fewer on noisy ones, at the floor's wrong-sign,
-  extra-sign and noise rates** (selection signers; evaluation check pending). It costs
-  about 20 frames of delay on uncertain signs. The limit is noise again: any method that
-  recovers real signs also lets more noise through (§2.2).
+- **Waiting before deciding beats the plain floor on every count, but only a little.**
+  - The method: a fixed-lag lattice holds an uncertain sign until two more have arrived,
+    then picks the best path over the top guesses or "skip" with the prior.
+  - On the evaluation signers, against the floor it misses **1.4 fewer signs per 100 on
+    clean sentences and 0.7 fewer on noisy ones**, says fewer wrong signs, and lets 2.1
+    points less noise through. All intervals exclude zero.
+  - GER goes 0.347 → 0.320 clean and 0.580 → 0.547 noisy.
+  - Costs: about 27 frames of delay, and +2 missed per 100 on random sequences.
+  - Noise is still the limit (§2.2).
 - **The "agree" rule does not lower GER. It trades wrong signs for missing ones.** The
   rule is the user's: accept a sign only when the prediction and the recognizer agree.
   At strict settings it cuts substitutions from 0.301 to 0.184, but deletions rise from
@@ -213,7 +215,7 @@ Sentence accuracy: clean 37.7% alone → **40.7%** with the prior; noisy 2.2% al
 
 ![Recognizer alone on noisy selection streams: confidence floor θ along each line, one line per length gate](assets/sign-to-speech-downstream/noise_tradeoff.png)
 
-### 2.2 Fewer missed signs at the floor's error rates (user run + refinement, 2026-09-24)
+### 2.2 Fewer missed signs at the floor's error rates (user runs + refinement, 2026-09-24; evaluation signers confirmed)
 
 **Question (the user's):** the floor turns wrong signs into missed ones. Can it miss fewer
 signs **without** more wrong signs, more extra signs, or more noise getting through?
@@ -279,8 +281,7 @@ The **lattice** still gave the best *overall* evaluation-signer GER of any setti
   (lattice, wait 1 sign), and 1.6 per 100 on noisy (2.0 when waiting 2 signs), at the floor's own wrong-sign,
   extra-sign and noise rates. The floor costs about 19 extra misses per 100 on clean
   sentences (0.064 → 0.252 on the evaluation signers), so this recovers about an eighth of
-  that. **These are selection-signer numbers. The evaluation-signer check for the refined
-  settings is pending** (the user re-runs the notebook; §1–§5b are cached).
+  that. These are selection-signer numbers; the evaluation signers below show about half.
 - **Waiting for the next sign is what helps, not the prior on its own.** With lag 0,
   the same lattice gains only about 1 point. Letting the next sign vouch for an uncertain
   one doubles it or better. The cost is a delay before the uncertain sign is spoken: a
@@ -301,6 +302,45 @@ The **lattice** still gave the best *overall* evaluation-signer GER of any setti
 - **On random sequences (`control`) the prior-based methods cost more.** Run 1: the
   lattice's control-clean GER was 0.385 vs the floor's 0.343. A sign the grammar doesn't
   expect needs more visual evidence, as in §2.1, but more so.
+
+**Evaluation signers (user re-run, 2026-09-24).** The families chosen after refinement,
+on the 16 evaluation signers. Δ vs the floor, with 95% intervals from resampling signers:
+
+| vs floor θ=0.3 | Δ missed | Δ wrong | Δ extra | Δ noise spoken | GER | sentences exact | delay (median) |
+|---|---|---|---|---|---|---|---|
+| **lattice, wait 2 signs** (k=5, λ=0.2, θ=0.269), clean | **−0.014** [−0.018, −0.009] | −0.012 | 0.000 | – | 0.320 (floor 0.347) | 34.3% (30.8%) | 27 frames |
+| same, noisy | **−0.007** [−0.011, −0.002] | −0.023 | −0.004 | **−2.1 pts** [−2.6, −1.5] | 0.547 (0.580) | 11.3% (8.3%) | 53 frames |
+| lattice, wait 1 sign (k=5, λ=0.3, θ=0.263), clean | −0.011 [−0.017, −0.006] | −0.013 | −0.001 | – | 0.321 | 34.7% | 18 frames |
+| same, noisy | +0.002 [−0.004, +0.007] | −0.031 | −0.008 | −2.9 pts | **0.543** | **11.9%** | 25 frames |
+| floor + prior (θ=0.3), clean | **−0.018** [−0.022, −0.013] | −0.003 | 0.000 | – | 0.326 | 33.7% | 0 |
+| same, noisy | −0.011 | −0.006 | +0.003 | **+0.7 pts** [+0.1, +1.2] | 0.565 | 9.6% | 0 |
+| learned accept/reject (λ=0), clean / noisy | +0.008 / −0.001 | −0.012 / −0.008 | −0.001 / −0.020 | −1.2 pts | 0.342 / 0.551 | – | 0 |
+
+On random sequences (`control`), every prior-based method misses more than the floor:
+- lattice lag 2: +0.020 missed, GER 0.363 vs 0.343;
+- lattice lag 1: +0.051, GER 0.391;
+- floor + prior: +0.004, GER 0.351.
+
+**What the evaluation signers say:**
+- **The lag-2 lattice is the one setting that meets the user's criterion on both clean and
+  noisy sentences.** It misses fewer signs, and says fewer wrong signs, no more extra
+  signs, and less noise, all with intervals that exclude zero. On clean sentences that is
+  1.4 fewer missed signs per 100. It also cuts wrong signs by 1.2 per 100, so GER drops
+  from 0.347 to 0.320 and 3.5 points more sentences come out exactly right.
+- **The gain roughly halves from selection to evaluation signers** (lag 1: −0.024 →
+  −0.011 on clean). This is the usual optimism of tuning to a tight budget on 5 signers.
+  The evaluation settings also sit *under* the floor's wrong-sign rate, so the budget is not
+  fully spent. Part of the real gain shows up as fewer wrong signs instead of fewer missed
+  ones.
+- **Lag 1 vs lag 2:**
+  - lag 1 has the lowest noisy GER (0.543) and lets through the least noise (−2.9 pts);
+  - but it does not miss fewer signs on noisy streams;
+  - and it costs twice as much on random sequences (+0.051 missed);
+  - lag 2 costs twice the delay (27 vs 18 frames on clean, about 0.9 vs 0.6 s at 30 fps).
+- **Floor + prior misses the fewest signs on clean sentences but speaks more noise** (+0.7
+  pts, interval above 0). It fails the noise limit.
+- **The learned accept/reject is a noise filter, not a recall fix:** −2.0 extra per 100
+  on noisy streams, but more missed signs on clean ones.
 
 ## 3. Stage 3: gloss → English
 
@@ -380,9 +420,14 @@ happened to be easier. 0.276 vs 0.293 is the like-for-like comparison.
 
 ## 6. Recommendations
 
-0. **If the evaluation signers confirm §2.2, replace the plain floor with the lag-1 lattice**
-   (k=5, λ=0.3, θ≈0.26). It gives fewer missed signs at the same wrong/extra/noise rates, for
-   about 20 frames of delay on uncertain signs. `OnlineDecoder` already runs it (`select.Lattice`).
+0. **Replace the plain floor with the lag-2 lattice (k=5, λ=0.2, θ=0.269).**
+   - The evaluation signers confirmed it (§2.2): fewer missed, wrong and extra signs and
+     less noise than the floor.
+   - The cost is about 27 frames of delay (median, clean) before an uncertain sign is
+     spoken, and more misses on sequences the grammar doesn't expect.
+   - If latency matters more than noisy-stream recall, use lag 1 (18 frames).
+   - `OnlineDecoder` already runs both (`select.Lattice`). The TypeScript port needs
+     `LatticeRunner` as well.
 1. **Ship the trigram prior with `rescore` λ=0.3** (−6% GER on sentences, confirmed on the
    evaluation signers). Expose the **confidence floor θ as the user-facing dial** between
    "say everything" (θ=0) and "say only what you're sure of" (θ≈0.3). `agree` adds nothing
@@ -407,7 +452,7 @@ happened to be easier. 0.276 vs 0.293 is the like-for-like comparison.
 | what | where | needs |
 |---|---|---|
 | ~~Full next-gloss sweep~~ | `gislr.4.downstream.next-gloss.ipynb` | **done 2026-09-24** (§2.1) |
-| Evaluation-signer check of the refined §2.2 settings | `gislr.4.downstream.acceptance.ipynb` (re-run top to bottom; §1–§5b cached) | the user runs it: about 25 min, almost all of it loading the evaluation streams |
+| ~~Evaluation-signer check of the refined §2.2 settings~~ | `gislr.4.downstream.acceptance.ipynb` | **done 2026-09-24**: lag-2 lattice wins on both sentence variants |
 | Retrain C1 with noise as null, then re-run the next-gloss notebook | `gislr.1.models.continuous.ipynb` + a composer change | a plan for review (TODO §12.6) |
 | LLM gloss → English (Llama 3.2-3B, 3.1-8B) | `gislr.4.downstream.gloss-to-english.ipynb` §2 | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` in `.env` |
 | Workers AI TTS (MeloTTS, Aura-1, Aura-2; about 1.6k neurons) | `gislr.4.downstream.tts.ipynb` §2 | the same credentials |

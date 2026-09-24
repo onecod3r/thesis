@@ -110,8 +110,10 @@ become confident English: `can dog jump high` → `can bye read high` → "The b
 
 **A. Settings and UI (no training, now):**
 1. **Turn the floor on in the demo and the client.**
-   - Use the lag-1 lattice (θ≈0.26; `sign-to-speech-downstream.md` §2.2, evaluation check
-     pending) or floor + prior (θ=0.3).
+   - Use the lag-2 lattice (k=5, λ=0.2, θ=0.269). It was confirmed on the evaluation signers
+     (`sign-to-speech-downstream.md` §2.2) and beats the floor on missed, wrong and extra signs
+     and on noise. The table above shows lag 1. Lag 2 was not scored in this analysis; on
+     the evaluation signers its wrong-sign rate is 0.079 per sign vs lag 1's 0.078.
    - Sentences with a wrong or invented gloss drop from **48% to 22%**, and displayed-gloss
      precision rises from 78% to 89%. The price is more missed signs.
    - The demo already picks the next-gloss sweep's best rule when that file exists. The
