@@ -1,0 +1,199 @@
+{
+ "name": "team30",
+ "version": "v1",
+ "source": "qualitative_30_unseen_sentences.csv from the team's Colab notebook chosen_merged_asl_pipeline_hybrid_1.ipynb (Maimuna/Raiyan, TODO §13)",
+ "hybrid_source": "the notebook's recorded STEP 11 batch output: rules_v1 -> fine-tuned T5 (checkpoint thesis_hybrid_dataset1/model, not yet received)",
+ "reference_status": "DRAFT, written by Claude on 2026-09-24 and not yet reviewed by the team or a signer. rules_v2 was written to the same conventions by the same author, so team30 is a development set for rules_v2, not a test set.",
+ "reference_conventions": [
+  "ASL gloss order, uppercase English labels, one token per sign; multi-word signs as separate tokens (WAKE UP, TURN OFF, NOT YET)",
+  "I/me -> ME; possessives MY/YOUR/HER",
+  "time words fronted (YESTERDAY, TOMORROW, NOW, THIS MORNING, day names, TIME + number for clock time)",
+  "FUTURE only when no time word marks the tense",
+  "wh-phrase last (TIME WHAT, WHERE, WHY); yes/no-question modal last (YOU HELP ME CAN)",
+  "copula, articles, do-support and most prepositions dropped; FOR kept for a beneficiary (FOR MY FATHER)",
+  "discourse words kept: IF BUT BECAUSE BEFORE PLEASE",
+  "plurals singular except lexical plurals (CHILDREN); names are glossed as words (fingerspelling is decided by the lexicon, not the gloss)"
+ ],
+ "items": [
+  {
+   "id": 1,
+   "english": "I am going home now.",
+   "hybrid_recorded": "ME NOW GO HOME",
+   "reference_draft": "NOW ME GO HOME"
+  },
+  {
+   "id": 2,
+   "english": "She likes coffee.",
+   "hybrid_recorded": "LIKE COFFEE",
+   "reference_draft": "SHE LIKE COFFEE"
+  },
+  {
+   "id": 3,
+   "english": "My brother works at a hospital.",
+   "hybrid_recorded": "MY BROTHER WORK HOSPITAL",
+   "reference_draft": "MY BROTHER WORK HOSPITAL"
+  },
+  {
+   "id": 4,
+   "english": "We bought a new car yesterday.",
+   "hybrid_recorded": "YESTERDAY BUY NEW CAR",
+   "reference_draft": "YESTERDAY WE BUY NEW CAR"
+  },
+  {
+   "id": 5,
+   "english": "The children are playing outside.",
+   "hybrid_recorded": "CHILDREN PLAY OUTSIDE",
+   "reference_draft": "CHILDREN PLAY OUTSIDE"
+  },
+  {
+   "id": 6,
+   "english": "I will visit my mother tomorrow.",
+   "hybrid_recorded": "ME FUTURE VISIT MY MOTHER TOMORROW",
+   "reference_draft": "TOMORROW ME VISIT MY MOTHER"
+  },
+  {
+   "id": 7,
+   "english": "John went to the market this morning.",
+   "hybrid_recorded": "JOHN GO TO MARKET THIS MORNING",
+   "reference_draft": "THIS MORNING JOHN GO MARKET"
+  },
+  {
+   "id": 8,
+   "english": "We have a meeting at three o'clock.",
+   "hybrid_recorded": "WE HAVE MEET THREE O'CLOCK",
+   "reference_draft": "TIME THREE WE HAVE MEETING"
+  },
+  {
+   "id": 9,
+   "english": "She will stay in Dhaka for two days.",
+   "hybrid_recorded": "FUTURE STAY DHAKA FOR TWO DAY",
+   "reference_draft": "SHE FUTURE STAY DHAKA TWO DAY"
+  },
+  {
+   "id": 10,
+   "english": "My appointment is on Friday morning.",
+   "hybrid_recorded": "APPOINTMENT FRIDAY MORNING",
+   "reference_draft": "FRIDAY MORNING MY APPOINTMENT"
+  },
+  {
+   "id": 11,
+   "english": "I do not like cold weather.",
+   "hybrid_recorded": "ME DO NOT LIKE COLD WEATHER",
+   "reference_draft": "ME NOT LIKE COLD WEATHER"
+  },
+  {
+   "id": 12,
+   "english": "She did not go to work yesterday.",
+   "hybrid_recorded": "YESTERDAY NOT WORK",
+   "reference_draft": "YESTERDAY SHE NOT GO WORK"
+  },
+  {
+   "id": 13,
+   "english": "I cannot find my phone.",
+   "hybrid_recorded": "ME CAN NOT FIND MY PHONE",
+   "reference_draft": "ME CAN'T FIND MY PHONE"
+  },
+  {
+   "id": 14,
+   "english": "He never drinks coffee at night.",
+   "hybrid_recorded": "HE NEVER DRINK COFFEE NIGHT",
+   "reference_draft": "NIGHT HE NEVER DRINK COFFEE"
+  },
+  {
+   "id": 15,
+   "english": "Please do not open the door.",
+   "hybrid_recorded": "PLEASE DO NOT OPEN DOOR",
+   "reference_draft": "PLEASE NOT OPEN DOOR"
+  },
+  {
+   "id": 16,
+   "english": "Where is the nearest hospital?",
+   "hybrid_recorded": "NEAR HOSPITAL WHERE",
+   "reference_draft": "NEAREST HOSPITAL WHERE"
+  },
+  {
+   "id": 17,
+   "english": "What time does the bus arrive?",
+   "hybrid_recorded": "TIME BUS ARRIVE WHAT",
+   "reference_draft": "BUS ARRIVE TIME WHAT"
+  },
+  {
+   "id": 18,
+   "english": "Why are you leaving early?",
+   "hybrid_recorded": "WHY LEAVE EARLY WHY",
+   "reference_draft": "YOU LEAVE EARLY WHY"
+  },
+  {
+   "id": 19,
+   "english": "Did you call your mother?",
+   "hybrid_recorded": "HE CALL MOTHER HE",
+   "reference_draft": "YOU CALL YOUR MOTHER"
+  },
+  {
+   "id": 20,
+   "english": "Can you help me tomorrow?",
+   "hybrid_recorded": "HE HE HE HE HE HE HE TO TOMORROW",
+   "reference_draft": "TOMORROW YOU HELP ME CAN"
+  },
+  {
+   "id": 21,
+   "english": "Please give me a glass of water.",
+   "hybrid_recorded": "PLEASE GIFT ME GLASS WATER",
+   "reference_draft": "PLEASE GIVE ME GLASS WATER"
+  },
+  {
+   "id": 22,
+   "english": "Call the doctor immediately.",
+   "hybrid_recorded": "CALL DOCTOR IMMEDIATE",
+   "reference_draft": "CALL DOCTOR NOW"
+  },
+  {
+   "id": 23,
+   "english": "Please wait here for five minutes.",
+   "hybrid_recorded": "PLEASE WAIT HERE FOR FIVE MINUTE",
+   "reference_draft": "PLEASE WAIT HERE FIVE MINUTE"
+  },
+  {
+   "id": 24,
+   "english": "I need to buy medicine for my father.",
+   "hybrid_recorded": "ME NEED BUY MEDICINE FOR FATHER",
+   "reference_draft": "ME NEED BUY MEDICINE FOR MY FATHER"
+  },
+  {
+   "id": 25,
+   "english": "Please tell her that I will come later.",
+   "hybrid_recorded": "TELL ME FUTURE COME LATER",
+   "reference_draft": "PLEASE TELL HER ME COME LATER"
+  },
+  {
+   "id": 26,
+   "english": "If it rains tomorrow, I will stay home.",
+   "hybrid_recorded": "IF RAIN TOMORROW ME FUTURE STAY HOME",
+   "reference_draft": "TOMORROW IF RAIN ME STAY HOME"
+  },
+  {
+   "id": 27,
+   "english": "I missed the bus because I woke up late.",
+   "hybrid_recorded": "ME MISS BUS ME WAKE UP LATE",
+   "reference_draft": "ME MISS BUS BECAUSE ME WAKE UP LATE"
+  },
+  {
+   "id": 28,
+   "english": "I wanted to go outside, but it was raining.",
+   "hybrid_recorded": "ME WANT GO OUTSIDE RAIN",
+   "reference_draft": "ME WANT GO OUTSIDE BUT RAIN"
+  },
+  {
+   "id": 29,
+   "english": "Before you leave, please turn off the light.",
+   "hybrid_recorded": "BEFORE YOU LEAVE TURN OFF LIGHT",
+   "reference_draft": "BEFORE YOU LEAVE PLEASE TURN OFF LIGHT"
+  },
+  {
+   "id": 30,
+   "english": "My sister gave me two books, but I have not read them yet.",
+   "hybrid_recorded": "MY SISTER GIFT ME TWO BOOK BUT ME HAVE NOT READ YET",
+   "reference_draft": "MY SISTER GIVE ME TWO BOOK BUT ME NOT YET READ"
+  }
+ ]
+}

@@ -1,10 +1,36 @@
 [project]
     name = "sb-synthesize"
     version = "0.1.0"
-    description = "Speech -> sign (future direction): text -> gloss -> pose sequence, emitting the same landmark tensor sb-core defines"
+    description = "Speech -> sign: speech -> English (ASR) -> ASL gloss (rules / T5 / guarded hybrid), plus text2gloss metrics and a sign lexicon. Pose rendering (gloss -> landmark tensor) is deferred"
     requires-python = ">=3.12"
     dependencies = [
         "sb-core",
+        "numpy>=2.5.1",
+        "pandas>=3.0.3",
+        "pyarrow>=24.0.0",
+        "tqdm>=4.67.0",
+        # English -> gloss. The rule engines need spaCy + its small English model;
+        # rules_v1 must stay byte-identical to the team's rule_engine.py, which was
+        # run with spaCy 3.8 / en_core_web_sm 3.8.0 (TODO §13), so both are pinned.
+        "spacy>=3.8.0,<3.9",
+        "en-core-web-sm",
+        # The team's fine-tuned T5 refiner (checkpoint not yet received).
+        "torch>=2.13.0",
+        "transformers>=4.46.0",
+        "sentencepiece>=0.2.0",
+        # Speech -> English.
+        "faster-whisper>=1.1.0",
+        # CTranslate2 (faster-whisper's backend) links CUDA 12 cuBLAS; torch here is
+        # cu130 and ships only cublas64_13. sb.synthesize.asr adds this DLL dir.
+        "nvidia-cublas-cu12>=12.4.5.8; sys_platform == 'win32'",
+        "soundfile>=0.12.1",
+        "sounddevice>=0.5.0",
+        # text2gloss metrics (BLEU-4 / chrF via sacrebleu, ROUGE-L, METEOR via nltk).
+        "sacrebleu>=2.4.0",
+        "rouge-score>=0.1.2",
+        "nltk>=3.9.0",
+        # ASLG-PC12 download (a single parquet on the Hugging Face hub).
+        "huggingface-hub>=0.26.0",
     ]
 
 [build-system]
@@ -17,4 +43,6 @@
     packages = ["src/sb"]
 
 [tool.uv.sources]
-    sb-core = { workspace = true }
+    sb-core        = { workspace = true }
+    torch          = { index = "pytorch-cuda" }
+    en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
