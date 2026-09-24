@@ -1,0 +1,34 @@
+{
+  "_comment": "TODO §12.5/§12.6 -- sign -> speech end to end, offline. gislr.5.pipeline.sign-to-speech.demo.ipynb. Recognizer = the browser export (sb.recognize.export.step) stepped frame by frame; decoder = sb.recognize.continuous.online. The rule is read from the next-gloss sweep when it exists (best selection GER, D3, rule_family, prior arm), else rule_default.",
+  "run": "C1",
+  "dataset_version": "v1",
+  "seed": 42,
+  "n_selection_signers": 5,
+  "prior": {
+    "arm": "trigram",
+    "order": 3,
+    "discount": 0.75,
+    "n_folds": 5
+  },
+  "rule_family": "sentence-fold",
+  "rule_default": {
+    "mode": "rescore",
+    "lam": 0.3,
+    "theta": 0.0,
+    "max_len": null
+  },
+  "sweep_dir": "gislr/downstream/results",
+  "demo_n_streams": 3,
+  "batch_n": 300,
+  "gloss2en": "rules_v1",
+  "llm_model": "@cf/meta/llama-3.1-8b-instruct-fp8",
+  "tts": "sapi",
+  "sapi_voice": "Microsoft Zira Desktop",
+  "workers_tts": {
+    "model": "@cf/myshell-ai/melotts",
+    "params": {
+      "lang": "en"
+    }
+  },
+  "_rule_default_note": "rescore lam=0.3: best of a quick selection-signer check (GER 0.401 vs D3 alone 0.413), 2026-09-24. The first default (agree k10 hi0.75) deleted most signs: GER 0.598 on 300 held-out streams."
+}

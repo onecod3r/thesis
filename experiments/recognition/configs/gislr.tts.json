@@ -1,0 +1,21 @@
+{
+  "_comment": "TODO §12.6 -- TTS for the sign -> speech output stage. gislr.4.downstream.tts.ipynb. Texts: first reference of each sb.rescore evalset gloss2en.v1 sentence. SAPI = the OS voices a browser's Web Speech API (speechSynthesis) uses on Windows: the free, client-side option. Workers AI prices read 2026-09-24.",
+  "evalset": "gloss2en.v1",
+  "sapi_voices": "all",
+  "workers_models": [
+    {"model": "@cf/myshell-ai/melotts", "params": {"lang": "en"}},
+    {"model": "@cf/deepgram/aura-1", "params": {"speaker": "asteria", "encoding": "mp3"}},
+    {"model": "@cf/deepgram/aura-2-en", "params": {"speaker": "luna", "encoding": "mp3"}}
+  ],
+  "workers_sample": 20,
+  "seed": 42,
+  "neuron_budget": 5000,
+  "usd_per_1k_neurons": 0.011,
+  "free_neurons_per_day": 10000,
+  "pricing_usd": {
+    "@cf/deepgram/aura-2-en": {"per_1k_chars": 0.030},
+    "@cf/deepgram/aura-1": {"per_1k_chars": 0.015},
+    "@cf/myshell-ai/melotts": {"per_audio_min": 0.0002}
+  },
+  "asr_model": "large-v3-turbo"
+}
