@@ -3,9 +3,10 @@
 Camera capture, MediaPipe landmarks and the streaming recognizer, all running
 per frame on the device. Also the capture flow for custom signs (TODO §12.7).
 
-**Open until §12.5 picks them:** the recognizer runtime (TF.js / ONNX Runtime
-Web / TFLite-wasm), the framework and bundler, and whether this is served as
-Workers static assets or Pages.
+**Decided 2026-09-24 (§12.5):** vanilla **TypeScript + Vite** (SolidJS or QwikCity
+later), recognizer on **LiteRT.js** (WASM) from `sb.recognize.export.step`, served as
+**Workers static assets**. The next-gloss prior (n-gram tables) and fusion rule also
+run here (§12.6).
 
 Responsibilities:
 - MediaPipe Holistic in `LIVE_STREAM` mode. This is a callback contract that

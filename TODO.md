@@ -29,8 +29,8 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 |---|---|---|---|
 | ~~0~~ | ~~Re-run `gislr.3.streaming.continuous-eval.ipynb`~~ — **done 2026-09-24**: C1 D3 c **GER 0.293** (eval signers) vs baseline 0.507, oracle 0.221 → `docs/reports/continuous-models.md`. Optional follow-up: D5 = D3 ∪ D1 decoder for hard-cut | §12.3 | — |
 | 0b | Plan §12.4 add-a-sign (enroll C-open's 20 held-out glosses from 1/5/10 examples) | §12.4 | C-open (`1790146838`) is trained and waiting; decides how custom signs (§12.7) work |
-| 0c | §12.5 research **done 2026-09-24** (`docs/reports/deployment-research.md`): extraction + recognition client-side (user decision), recognizer proven in-browser (LiteRT.js 0.20 ms/frame). **Next: user answers the report's 4 open questions (§9), then build step 1 = `apps/web` live prototype** (camera → Holistic → step model → D3 → glosses; measure fps and mirroring) | §12.5 | first time real webcam landmarks reach the model |
-| 0d | §12.6 downstream LLM (fused acceptance, gloss → English, TTS), offline notebook first | §12.6 | user's 2026-09-24 ask; needs 12.5's model choices |
+| 0c | §12.5 research **done 2026-09-24** (`docs/reports/deployment-research.md`): extraction + recognition client-side (user decision), recognizer proven in-browser (LiteRT.js 0.20 ms/frame). All 4 open questions answered 2026-09-24 (Workers RPC not needed · Free plan · vanilla TS + Vite · prior on the client). **Next: build step 1 = `apps/web` live prototype** (camera → Holistic → step model → D3 → glosses; measure fps and mirroring) | §12.5 | first time real webcam landmarks reach the model |
+| 0d | §12.6 **experiments built 2026-09-24**. **User: run `gislr.4.downstream.next-gloss.ipynb`** (it trains tiny GRU LMs), **add Cloudflare creds to `.env`** and re-run the gloss-to-English notebook's LLM section, **review the 132 draft references** | §12.6 | stage 2 (prediction + fusion + noise rejection) and stage 3 (gloss → English) have no numbers on real decoding yet |
 | 0e | §12.7 custom-sign feature | §12.7 | product layer over 12.4 + 12.5 |
 | 0f | §13 **speech → gloss**: **built 2026-09-24** (`sb-synthesize` + 4 notebooks; aslg.0/aslg.1 run). Next: user records the 30 sentences (`speech.2.asr.eval.ipynb`); team reviews draft refs + writes a held-out set; authors send the T5 checkpoint | §13 | rules_v2 beats the team's engine on ASLG-PC12 (BLEU 36.4 vs 26.3); the guard blocks every meaning-changing T5 output; report §9 |
 | ~~1~~ | ~~Restart the Jupyter kernels, then run one short training~~ — **effectively done**: the four §12.3 continuous runs trained end to end through the restructured stack on 2026-09-23 | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
@@ -3371,8 +3371,7 @@ are now installed** (§10.1 had them missing).
 - **§12.7: custom-sign prototypes** are 1 KB rows. DO storage or D1 plus an
   IndexedDB cache; R2 is not needed.
 
-**Open questions for the user (report §9):** ~~(1) which "remote functions"~~ — **answered 2026-09-24: the user meant Workers RPC, and agrees it isn't needed** since extraction + inference are client-side. The browser↔edge link is a plain WebSocket/HTTP to a Worker, and the browser can't call Workers RPC anyway. RPC only appears as the Worker → session-DO method call (`stub.method()`), which is the default DO API, not a design choice. (2) Free or Paid Workers plan; (3) web
-framework (default plain TS + Vite); (4) accept moving the prior to the client.
+**Open questions for the user (report §9):** ~~(1) which "remote functions"~~ — **answered 2026-09-24: the user meant Workers RPC, and agrees it isn't needed** since extraction + inference are client-side. The browser↔edge link is a plain WebSocket/HTTP to a Worker, and the browser can't call Workers RPC anyway. RPC only appears as the Worker → session-DO method call (`stub.method()`), which is the default DO API, not a design choice. ~~(2)–(4)~~ **answered 2026-09-24:** **Free** plan; **vanilla TypeScript + Vite** (SolidJS or QwikCity later); the prior moves to the client, and the stages stay separate (§12.6).
 
 **Build plan (report §9), nothing past step 0 built:**
 - [x] 0. Step export + LiteRT.js browser parity (2026-09-24).
@@ -3416,7 +3415,69 @@ for this was never written down — start fresh). Research questions:
   recommendation. Resolves §10.2's and §9.8's open "deployment target"
   question.
 
-### 12.6 Downstream LLM: fused acceptance, gloss → English, TTS (plan + review needed)
+### 12.6 Downstream: next-gloss prediction + fused acceptance + noise rejection, gloss → English, TTS — **experiments built 2026-09-24**
+
+**User decisions (2026-09-24, second round):**
+- **Stages stay separate:** MediaPipe extraction → **recognizer + next-gloss prediction**
+  (side by side) → **gloss → English** ("the opposite of the rule-based model") → TTS.
+  One layered video → text model is **future work** (Backlog).
+- Next-gloss prediction: after e.g. `minemy give`, predict every possible next gloss
+  with a value. **Accept a sign when the prediction and the current sign confidence
+  match.** The recognizer must **reject noise that spans a while.**
+- The prior runs **on the client** (accepted; this was the §12.5 proposal).
+- Workers **Free** plan; `apps/web` = **vanilla TypeScript + Vite** (SolidJS or
+  QwikCity later).
+
+**Built 2026-09-24:**
+- `sb.rescore.prior`: interpolated Kneser-Ney n-grams (uni/bi/tri/4-gram; torch-free,
+  `to_dict()` for a client port), `UniformLM`, theme-stratified sentence folds and
+  theme-out folds, `next_gloss_metrics`, `top_next`. `sb.rescore.neural.GRULM`: a small
+  GRU LM (`neural` extra).
+- `sb.recognize.continuous.fuse`: D3/D1 segments → recognizer vote `q` → rules `none`
+  (θ floor), `rescore` (`q·p^λ`), `agree` (the user's rule: fused top gloss in the
+  prior's top-k **and** `q ≥ θ_lo`, or `q ≥ θ_hi` alone), each with a `max_len` noise
+  gate. **Parity verified 2026-09-24:** no prior + no gate reproduces C1 D3 c exactly
+  on all 5,054 eval streams (GER 0.29338, float16 cache path included).
+- `sb.recognize.sequences.noise`: `fidget` / `hold` / `reverse` blocks from same-group
+  sign frames, inserted into gaps. `sb.recognize.continuous.cache`: chunked float16
+  forward cache.
+- `sb.rescore.gloss2en`: reverse rule engine (the inverse of `rules_v2`) + `to_gislr`
+  round-trip mapping. `sb.rescore.client`: Workers AI REST client with a JSONL cache.
+  `prompts/v1/gloss2en.txt`. `evalset/gloss2en.v1.jsonl`: 132 sentences with draft
+  references.
+- Notebooks: `experiments/recognition/gislr.4.downstream.next-gloss.ipynb` (config
+  `gislr.downstream.json`) and `gislr.4.downstream.gloss-to-english.ipynb` (config
+  `gislr.gloss2en.json`).
+
+**State (2026-09-24):**
+- `gislr.4.downstream.next-gloss.ipynb`: **built, smoke-tested (20 streams/group, no GRU),
+  not run.** It trains the GRU LMs (17 tiny fits, CPU), so **the user runs it**. Expected
+  cost: forward about 2–5 min GPU, then the sweep (about 5.5k decodes on about 1.6k
+  selection streams, roughly 20–40 min, resumable per part).
+- Count-based numbers seen in the smoke (held-out, pooled): the trigram predicts the next
+  gloss top-1 11.6%, **top-5 30%**, top-10 39% (sentence-fold), and 27.5% top-5
+  (theme-out). Perplexity is 52 vs 251 uniform. In-sample top-5 64% shows how much is
+  memorization. The GRU is not yet measured. Demo: `who` → have / that / finish;
+  `yesterday grandma` → give.
+- `gislr.4.downstream.gloss-to-english.ipynb`: **run 2026-09-24 without the LLM arm**
+  (no Cloudflare credentials in `.env`). Eval set (132): **rules_v1 BLEU 60.2 / chrF 75.0 /
+  exact 42%** vs identity 7.9 / 46.8 / 7%. Round trip (432 sentences): content recall
+  92.5% (identity 93.5%), invented content 5.5%. Caveat: the references and the rules
+  have the same author (Claude), so this is a development number until the user reviews
+  the references.
+
+**Next actions:**
+- [ ] **User: run `gislr.4.downstream.next-gloss.ipynb`**, then Claude writes
+  `docs/reports/downstream-next-gloss.md` (questions in the notebook's §7).
+- [ ] **User: add `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` (Workers AI: Read) to
+  `.env`**, then re-run the gloss-to-English notebook's §2–§4 (about 430 calls/model,
+  within the Free plan's 10k neurons/day).
+- [ ] **User: review `evalset/gloss2en.v1.jsonl` references** (Claude drafts); the
+  reviewed version becomes v2.
+- [ ] Follow-up: `hesheit` → "they" is a guess. GISLR has one he/she/it sign, and only
+  context (or the LLM) can pick.
+- [ ] Follow-up: port the winning prior (n-gram tables via `to_dict()`) and the fusion
+  rule to `apps/web` TypeScript, with a parity check.
 
 **User decision (2026-09-24), answers §8's scope question:** the roadmap
 *is* continuous/sentence-level. The LLM (1) keeps the session's accepted
@@ -3425,8 +3486,8 @@ combined with the recognizer's per-frame confidence and a sign is accepted
 when the combined score clears a threshold, (4) turns the accepted gloss
 sequence (ASL order, no inflection) into fluent English, (5) TTS speaks it.
 
-- **Proposed change (2026-09-24, §12.5 research; awaiting user OK):** the next-gloss prior runs **on the client** as an n-gram over gloss IDs (Workers AI documents no logprobs). The hosted LLM keeps only gloss → English. The item below would then compare n-gram vs LLM priors offline and ship the n-gram unless the gap is large.
-- [ ] **Fused acceptance, offline first** (notebook, on 12.1 streams with the
+- **Accepted 2026-09-24:** the next-gloss prior runs **on the client** (n-gram / small LM over gloss IDs). The hosted LLM keeps only gloss → English.
+- [~] **Fused acceptance, offline first** (built 2026-09-24 as n-gram/GRU priors, see above; awaiting the user's run). Original plan text: (notebook, on 12.1 streams with the
   12.3 decoders): LLM next-gloss distribution *constrained to the 250-gloss
   vocabulary* × recognizer confidence (shallow fusion, weight λ tuned on the
   selection signers). Compare GER against 12.3's best decoder (C1 D3). This
@@ -3434,9 +3495,9 @@ sequence (ASL order, no inflection) into fluent English, (5) TTS speaks it.
 - [ ] **Circularity risk**: 12.1's sentences were written by Claude, so a
   Claude/LLM prior will look better on them than on real signing. Hold out
   sentence *templates*/themes, and report the gain as an upper bound.
-- [ ] Compare a small n-gram LM over the 12.1 corpus as a baseline — if it
+- [~] (built: uni/bi/tri/4-gram + GRU arms, awaiting run) Compare a small n-gram LM over the 12.1 corpus as a baseline — if it
   gets most of the gain, the LLM earns its place only for step (4).
-- [ ] **Gloss → English**: prompt design + an eval set (`sb-rescore`'s
+- [~] (built + rules arm run 2026-09-24; LLM arm needs credentials) **Gloss → English**: prompt design + an eval set (`sb-rescore`'s
   `evalset/` and `prompts/` skeletons are the natural home). Handle GISLR
   gaps (no I/you, `minemy` doubling as "I" — §12.1).
 - [ ] **TTS**: pick a model per 12.5 (Workers AI vs external), measure
@@ -3613,6 +3674,12 @@ deployment covers both directions; `apps/` gains a speech → sign surface.
 
 ## Backlog / Someday
 
+- [ ] **Layered end-to-end model (user, 2026-09-24, future work):** group the recognizer and
+  the next-gloss predictor (and possibly gloss → English) into one model whose input is
+  the live video frame and whose output is text. For now the stages stay separate
+  (§12.6) so each can be measured and swapped.
+- [ ] `apps/web` framework upgrade: SolidJS or QwikCity, after the vanilla TS + Vite
+  prototype (§12.5 step 1).
 - [ ] (add unscoped ideas here as they come up, promote to a numbered section once
   they have a concrete plan)
 

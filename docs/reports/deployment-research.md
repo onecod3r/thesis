@@ -268,13 +268,11 @@ are edge/UX choices. The client-side recognizer is not a bottleneck.
 Step 1 is the next action. It is the first time real webcam landmarks reach the
 model, and risks 1–4 of §4 can only be answered there.
 
-**Open questions for you:**
+**Open questions — all answered 2026-09-24:**
 1. ~~"Cloudflare remote functions"~~: **answered**. The user meant Workers RPC. Not needed (§7).
-2. **Plan**: Free or Paid Workers plan? The Worker fits either. The Paid plan matters
-   for Workers AI volume beyond 10k neurons/day and for longer CPU if the edge grows.
-3. **Web framework** for `apps/web`: plain TS + Vite (my default, smallest), or
-   SvelteKit/React?
-4. **Moving the next-gloss prior to the client (§5)**: accept this change to §12.6?
+2. ~~Plan~~: **Workers Free.** The Worker's own CPU fits in 10 ms per request, since awaiting Workers AI is I/O. Workers AI is limited to 10k neurons/day, which covers development and a demo (about 2–10 neurons per sentence for LLM + TTS). Still to verify from the docs before building `apps/edge`: Durable Objects availability on Free (SQLite-backed DOs).
+3. ~~Web framework~~: **vanilla TypeScript + Vite** for now; SolidJS or QwikCity later.
+4. ~~Prior on the client~~: **accepted**, with the stages kept separate (recognizer + prediction side by side, then gloss → English). A layered video → text model is future work. Experiments: `gislr.4.downstream.*` notebooks (TODO §12.6).
 
 ## Sources
 
