@@ -27,12 +27,12 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 
 | # | next action | where | why now |
 |---|---|---|---|
-| **0** | **Finish `gislr.3.streaming.continuous-eval.ipynb` §§4–5 (user)**, then Claude writes `docs/reports/continuous-models.md` | §12.3 | §§1–3 done 2026-09-24 (parity passes, sweeps cached); §4 final eval was interrupted at 0% with nothing saved. Selection-signer GER already suggests C1 D3 **0.413** vs the best §12.2 baseline 0.507 |
+| **0** | **Re-run `gislr.3.streaming.continuous-eval.ipynb` (user)**: §4 is now resumable, and §3b extends the edge grids. Then Claude writes `docs/reports/continuous-models.md` | §12.3 | the 2026-09-24 run lost §4 to a disconnect (nothing saved). Selection-signer GER: C1 D3 **0.413** vs baseline **0.595** on the same signers |
 | 0b | Plan §12.4 add-a-sign (enroll C-open's 20 held-out glosses from 1/5/10 examples) | §12.4 | C-open (`1790146838`) is trained and waiting; decides how custom signs (§12.7) work |
 | 0c | §12.5 Cloudflare Workers deployment research → `docs/reports/deployment-research.md` | §12.5 | sets where each stage runs + latency budget before §12.6 picks an LLM/TTS |
 | 0d | §12.6 downstream LLM (fused acceptance, gloss → English, TTS), offline notebook first | §12.6 | user's 2026-09-24 ask; needs 12.5's model choices |
 | 0e | §12.7 custom-sign feature | §12.7 | product layer over 12.4 + 12.5 |
-| 0f | §13 speech → sign: get the missing files from the authors, then the integration plan review | §13 | audit done 2026-09-24 (`docs/reports/speech-to-sign-audit.md`); nothing can be built or scored without the checkpoint + training code |
+| 0f | §13 **speech → gloss** (current goal; rendering deferred): get the missing files from the authors, then Phase 1 plan review | §13 | audit done 2026-09-24 (`docs/reports/speech-to-sign-audit.md`); nothing can be built or scored without the checkpoint + training code |
 | ~~1~~ | ~~Restart the Jupyter kernels, then run one short training~~ — **effectively done**: the four §12.3 continuous runs trained end to end through the restructured stack on 2026-09-23 | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
 | 2 | ~~Run the first checkpoint backup~~ — **done 2026-09-04**: 42 on Kaggle, local copies pruned after hash verification. Model confirmed **private** 2026-09-24 | §9.3 | was the last single-copy risk |
 | 3 | **Notebook §5b: the three-arm AWP/LateDropout ablation** (~30 min) | §4.2 | the 1st-place port has collapsed at epoch 15 twice and neither switch has been run alone, so the recipe is still unmeasured |
@@ -3236,16 +3236,40 @@ The design brief comes from `docs/reports/sentence-baselines.md` §5.
   `1790144582`, C3 `1790142624`, C-open `1790146838`. Two orphan runs
   (`1790139949`, `1790141422`) exist with `eval: pending` — superseded by the
   fresh runs the training cells created, not on the leaderboard.
-- [~] **Eval notebook partial run (observed 2026-09-24).** Setup + §§1–3 ran:
-  parity C1 0/10 (+1 near-tie), C2 0/10, C3 0/10. Per-frame (16 eval signers,
-  `sentence`): frame acc C1 0.723 / C2 0.712 / C3 0.329; in-context vote acc
-  0.750 / 0.741 / 0.527; boundary F1 0.435 / 0.426 / 0.255 (precision ~0.33 —
-  the head over-fires). Sweeps cached (`sweep_C{1,2,3}.json`). Best
-  selection-signer GER: **C1 D3 collapsed 0.413**, C2 D3 0.437, C1 D2
-  collapsed 0.546, C3 D4 0.672 (vs §12.2 best streaming baseline 0.507).
-  D1 uncollapsed is poor (1.15). **§4 (final eval) was interrupted at 0% —
-  no `final_*` artifacts saved; §5 not run.** Next: re-run §§4–5 (user).
-  Check whether D1's chosen β=0.7 / min_mass=4.0 sit at the grid edge.
+- [~] **Eval notebook: §4 lost to a disconnect (2026-09-24).** The user's long run
+  was interrupted. **No §4 state was saved**: the old cell kept every result in
+  memory and wrote `final.json` only after all 120 decode loops, and it had
+  reached ~C2/D3 (~70 loops). On disk: `diag_C{1,2,3}.json` and
+  `sweep_C{1,2,3}.json` only.
+  - **Analysis from what survived** (5 selection signers, `sentence` split):
+    best is **C1 D3 collapsed, GER 0.413** (sub 0.301 / del 0.084 / ins 0.029;
+    sentence acc 0.223; median latency +2 frames after sign end). The best
+    §12.2 baseline on the same signers is 0.595 (`gru` B4 collapsed), so **~30%
+    fewer errors**. C2 D3 0.437. The user's literal loop on the new model
+    (D2 collapsed) gets 0.546, still deletion-heavy (0.36). C3 (CTC) is best at
+    0.672 (D4).
+  - **The error type changed.** The baselines lost signs (deletions 0.30–0.47).
+    C1 D3 finds them (del 0.084), and what remains is **substitutions ~0.30**,
+    close to the isolated classifier's ~25% error. Segmentation is largely
+    solved; the rest is classification accuracy, which points back to §7.
+  - Reset-on-commit (D1r) hurts C1/C2 (insertions 0.36–0.54). That is
+    expected: they were trained on streams without a reset. D4 (CTC decoding)
+    on the frame-loss models is meaningless (GER 3.5–4.2).
+  - **Grid edges:** C1/C2 D1 picked β=0.7 and min_mass=4 (both the maximum);
+    D3 picked ν=0.7 (the maximum). C3 D2 picked τ=0.4, hold=1 (minimum).
+  - **Fixed in the notebook (2026-09-24):**
+    - §4 rewritten to be **resumable**: one part file per (run, split, frames) in
+      `final_parts/`, skip-if-exists, headline part first.
+    - One forward pass per sequence now feeds all of a run's chosen settings, so
+      §4 is ~10x less work.
+    - New **§3b** sweeps `decoders_ext` (D1 β up to 0.9 × min_mass up to 16; D3 ν
+      0.8/0.9) and skips combinations §3 already scored.
+    - Smoke-tested end to end on 3 sequences per group (120 final rows, 12
+      parts + reference; smoke output deleted).
+    - Outputs cleared.
+  - **Next (user):** re-run the notebook. §§1–3 are cached, so §3b and §4 do the
+    work, and an interruption now loses at most one part. Then Claude writes
+    `docs/reports/continuous-models.md`.
 - [x] **Parity fixed; the run itself is tracked by the partial-run item above (2026-09-24).** **Run the eval notebook** — first attempt 2026-09-23 stopped at the §1
   parity cell (C1: 1/10 D2-vs-live-loop mismatches). **Not a decoder bug**
   (diagnosed 2026-09-23): a float tie at the threshold. At frame 347 of
@@ -3366,7 +3390,7 @@ mechanism), §10.2 (livestream mode).
 
 ---
 
-## 13. Speech → Sign: the merged Maimuna/Raiyan pipeline (2026-09-24, new)
+## 13. Speech → Sign: the merged Maimuna/Raiyan pipeline (2026-09-24, new) — current goal: speech → gloss
 
 The user brought in the team's Colab notebook
 `chosen_merged_asl_pipeline_hybrid_1.ipynb`: Whisper large-v3 → rule engine +
@@ -3404,33 +3428,82 @@ research first, then integrate it as its own pipeline.
   back-scored by our recognizer) as the research arm (recommended); host
   `sb-synthesize` as the package (recommended).
 
-**Integration (plan + review first, per report §5):**
-- [ ] `sb.synthesize`: `asr.py`, `gloss/{rules_v1,rules_v2,t5,hybrid}.py`,
-  `lexicon.py`, `metrics.py`. `rules_v1` stays byte-identical (it is T5's
-  training input). `rules_v2` fixes ME, conjunctions/PLEASE, particles,
-  time-fronting and negation coverage.
-- [ ] **Guarded hybrid**: accept T5 only when it keeps the rule gloss's content
-  words and pronoun identity, else fall back; `no_repeat_ngram_size` /
-  `repetition_penalty` in `generate()`. Target: #19/#20/#25 fixed.
-- [ ] `wlasl.0.dataset.lexicon.ipynb`: WLASL via kagglehub (not Drive), clips
-  trimmed at 25 fps, preferred-signer choice, a synonym/lemma/embedding
-  fallback, coverage vs GISLR's 250 glosses.
-- [ ] `aslg.1.models.text2gloss.ipynb`: rules-v1 / rules-v2 / T5 / guarded
-  hybrid on held-out ASLG-PC12 **and** NCSLGR + the 30 sentences. Metrics:
-  BLEU-4 (for comparability with the literature), chrF, ROUGE-L, METEOR, gloss
-  WER; video coverage (exact / fuzzy / fingerspelled / missing).
-- [ ] `speech.3.pipeline.demo.ipynb`: local Jupyter, no Colab APIs.
-- [ ] T5 checkpoint → Kaggle via `sb-sync`. A `task` field in `meta.json`
-  (schema v5) if text2gloss runs get registry records.
-- [ ] Renderer B (landmark avatar): WLASL/GISLR clips → `sb-extract`
-  landmarks → browser skeleton, §12.1-style interpolated transitions; score
-  with our recognizer (back-recognition accuracy).
+**Vocabulary (2026-09-24, report §8):** GISLR-250 covers 47% of the gloss tokens in
+the team's 30 test sentences, and only 1 of 30 sentences completely. Decision
+implied: **do not restrict text → gloss to the 250.** Add a lexicon-coverage
+metric (ASL-LEX 2,723 / WLASL 2,000 / fingerspell / no sign) instead. The
+vocabulary limit only matters for rendering (deferred) and recognition (§12).
+
+**Implementation plan: speech → gloss** (report §5; rendering deferred). Each phase
+needs a plan + the user's review before it is built.
+
+*Phase 0 — inputs (blocked on the authors, see above).* Nothing below can be
+scored until the checkpoint, the training code and the 30-sentence references
+exist.
+
+*Phase 1 — `sb-synthesize` package skeleton → code (no training):*
+- [ ] `sb.synthesize.gloss.rules_v1`: the frozen engine, **byte-identical** to
+  `rule_engine.py` (T5's training input). A test pins it to the 30
+  rule-only outputs recorded in report §2.
+- [ ] `sb.synthesize.gloss.rules_v2`: the fixed engine: `I`/`me` → `ME`; keep
+  `IF`/`BUT`/`BECAUSE`/`BEFORE`/`PLEASE`; keep phrasal particles; front time words;
+  cover `never`/`no`/`can't`/`won't`; one spaCy parse per sentence; tokenize commas
+  properly.
+- [ ] `sb.synthesize.gloss.t5`: load from a local dir or Kaggle
+  (`ensure_local`-style); `generate()` with `no_repeat_ngram_size` +
+  `repetition_penalty`; hyperparameters in a config, not code.
+- [ ] `sb.synthesize.gloss.hybrid`: the **guarded hybrid**. Accept T5 only if
+  it keeps the rule gloss's content words and pronoun identity (no you → HE),
+  with no n-gram repeated; otherwise use rules_v2. Target: report §2's #19/#20/#25
+  fixed, with the T5 wins (#1/#26/#29) kept.
+- [ ] `sb.synthesize.asr`: faster-whisper wrapper with the notebook's
+  parameters, the normalization bug fixed, `best_of` dropped; model size in
+  the config (large-v3 locally; turbo is what Workers AI hosts).
+- [ ] `sb.synthesize.metrics`: BLEU-4, chrF, ROUGE-L, METEOR, gloss WER, ASR WER,
+  plus **lexicon coverage** (ASL-LEX/WLASL sign · fingerspell · no-sign).
+- [ ] Declare deps in `packages/sb-synthesize/pyproject.toml` (spacy +
+  `en_core_web_sm`, transformers, sentencepiece, faster-whisper, sacrebleu,
+  rouge-score, nltk). **Not via `uv pip install`.** Check that `.venvs/<stage>`
+  isolation still holds.
+
+*Phase 2 — data + evaluation notebooks:*
+- [ ] `experiments/synthesis/aslg.0.dataset.text2gloss.ipynb`: ASLG-PC12
+  (HF, 82,709 training pairs) and NCSLGR (1,888 utterances) into
+  `data/raw/<dataset>/`, fixed held-out splits, plus the 30 sentences with
+  hand-written references (user + team), and an ASL-LEX/WLASL gloss list for the
+  coverage metric.
+- [ ] `experiments/synthesis/aslg.1.models.text2gloss.ipynb`: rules-v1 /
+  rules-v2 / T5 / guarded hybrid on every test set, with a per-sentence error table.
+  Config `experiments/synthesis/configs/aslg.text2gloss.json`.
+- [ ] `experiments/synthesis/speech.2.asr.eval.ipynb`: Whisper large-v3 vs
+  turbo WER on our own recordings of the 30 sentences (sentence-level speech with
+  transcripts; Speech Commands can't do this).
+
+*Phase 3 — training (user runs it):*
+- [ ] Only if Phase 2 says T5 is worth it: retrain T5 on
+  (English, rules_v2) → gloss, from the team's `step7_aslg_transfer.py`, via
+  the repo's driver pattern (config, auto-resume, registry run). Registry
+  records for text2gloss need a `task` field → `meta.json` schema v5
+  (`sb.mlops.registry::FIELDS`, then `sb-docs`).
+- [ ] T5 checkpoint to Kaggle via `sb-sync`
+  (`signbridge-<dataset>/transformers/t5-text2gloss/…` — slug to confirm).
+
+*Phase 4 — demo + deployment:*
+- [ ] `experiments/synthesis/speech.3.pipeline.demo.ipynb`: record → ASR → gloss,
+  local Jupyter, no Colab APIs.
+- [ ] Cloudflare path (§12.5): Workers AI `whisper-large-v3-turbo` for ASR;
+  gloss in the Worker (rules port) or T5 via ONNX/transformers.js. §12.5 decides.
+  An `apps/` speech → gloss surface.
+
+**Deferred — rendering** (resumes after speech → gloss): renderer research in
+report §7.2 (`spoken-to-signed-translation` + our own lexicon); WLASL clip
+fixes (trimming, signer choice, no scraping); back-recognition scoring.
 
 **User questions answered 2026-09-24** (report §7):
-- [x] Google Speech Commands v0.02: **not useful**. Keyword spotting over 35 words,
+- [x] **Dropped (user, 2026-09-24).** Google Speech Commands v0.02: **not useful**. Keyword spotting over 35 words,
   12 of them GISLR glosses; Whisper is already open-vocabulary. At most, its noise
   files could be used for an ASR robustness check. Awaiting the user's agreement.
-- [ ] **Renderer: use a ready-made library instead of clips** (user's idea).
+- [-] **Set aside (user, 2026-09-24): the current goal is speech → gloss; rendering waits.** When it resumes, start here. **Renderer: use a ready-made library instead of clips** (user's idea).
   Recommended: `spoken-to-signed-translation` (MIT, MediaPipe-Holistic poses,
   pluggable lexicon, fingerspelling fallback) + **our own ASL lexicon built from
   GISLR npz** (best exemplar per gloss by recognizer confidence) + a browser skeleton

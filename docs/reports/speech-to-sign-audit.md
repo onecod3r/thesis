@@ -1,7 +1,17 @@
-# Speech → ASL gloss → sign video pipeline: audit and integration plan
+# Speech → ASL gloss: audit of the team pipeline, and the integration plan
 
 **Date:** 2026-09-24 · **Subject:** `chosen_merged_asl_pipeline_hybrid_1.ipynb` (the merged
 Maimuna/Raiyan Colab notebook, 12 cells) · **TODO:** §13
+
+## Status and decisions (2026-09-24)
+
+- **Current goal: speech → ASL gloss.** Sign rendering (WLASL clips, or a
+  pose/avatar renderer, §7.2) is **set aside** by the user's decision, not dropped.
+- **Google Speech Commands: dropped** (§7.1).
+- **Vocabulary:** GISLR's 250 glosses are nowhere near enough for ASL output, but the
+  text → gloss stage doesn't need to be limited to them (§8).
+- Implementation is planned in phases in TODO §13. Phase 0 is blocked on files from
+  the notebook's authors (§6).
 
 This pipeline runs in the **opposite direction** to the rest of the repo. The repo
 recognizes signs and turns them into English. This notebook turns speech into signs.
@@ -234,3 +244,49 @@ Caveats:
 Sources: [spoken-to-signed-translation](https://github.com/sign-language-processing/spoken-to-signed-translation) ·
 [its paper (arXiv 2305.17714)](https://arxiv.org/abs/2305.17714) ·
 [CWASA](https://vh.cmp.uea.ac.uk/index.php/CWA_Signing_Avatars)
+
+## 8. Is a 250-gloss vocabulary enough? (2026-09-24)
+
+**No, not for output.** It also isn't the right limit to put on this stage.
+
+**Measured on the team's 30 test sentences** (the hybrid glosses from the notebook,
+counted against GISLR's 250 glosses, with `ME`/`MY` mapped to `minemy`):
+
+| | covered by GISLR-250 |
+|---|---|
+| gloss tokens (154) | **47%** |
+| distinct glosses (94) | **38%** (36) |
+| sentences with every gloss covered | **1 of 30** |
+
+Missing are everyday words: `YOU`, `WE`, `WHAT`, `WANT`, `NEED`, `WORK`, `COME`, `TELL`,
+`CALL`, `BUY`, `DOCTOR`, `HOSPITAL`, all numbers, days of the week. A few are only naming
+differences: GISLR has `dad`, `mom`, `hesheit` and `callonphone`, so an alias table
+helps slightly.
+
+**Why GISLR is small:** it was built for PopSign, a game for young children, so its
+250 signs are early-childhood vocabulary (`mitten`, `fireman`, `sleepy`, `grandma`).
+That makes it a sensible recognition benchmark, but not a general ASL lexicon.
+
+**What ASL needs:**
+- **Lexical signs:** research lexicons have low thousands of entries. ASL-LEX 2.0
+  describes **2,723** signs; WLASL has **2,000** glosses. That is the right scale for
+  everyday topics.
+- **Fingerspelling** for names, places and anything else without a sign (`JOHN`, `DHAKA`).
+- **Productive forms a word list can't hold:** numbers, time and date signs,
+  classifiers, and verb agreement through space (`GIVE` moving from giver to receiver).
+
+**What this means for each stage:**
+- **Text → gloss (this goal): don't restrict the output.** The rule engine and T5 emit
+  English-based gloss labels for any word, and fixing the output to 250 words would make
+  most sentences untranslatable. Instead, add a **lexicon check** as an evaluation
+  metric: the share of output glosses that are real ASL signs in ASL-LEX/WLASL, the
+  share that should be fingerspelled (names, places), and the share that are English
+  words with no sign. That catches output like `O'CLOCK`, `TO` or `THIS`.
+- **Rendering (deferred):** here vocabulary really is a hard limit. GISLR-250 is a
+  demo; a usable renderer needs a WLASL- or ASL-LEX-scale lexicon plus fingerspelling.
+- **Recognition (§12):** the 250 set limits what the recognizer can hear. That limit
+  is separate from, and larger than, anything in this pipeline, and §12.4/§12.7's
+  add-a-sign work is the route to extending it.
+
+Sources: [ASL-LEX 2.0 (2,723 signs)](https://academic.oup.com/jdsde/article/26/2/263/6142509) ·
+[WLASL](https://github.com/dxli94/WLASL)
