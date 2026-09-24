@@ -1,0 +1,48 @@
+{
+  "_comment": "TODO §12.6 stage 2 -- next-gloss prediction fused with the C1 recognizer, plus noise rejection. gislr.4.downstream.next-gloss.ipynb. Same signer protocol as gislr.continuous-eval.json: settings chosen on the 5 seeded selection signers, reported on the other 16.",
+  "run": "C1",
+  "dataset_version": "v1",
+  "corpus_version": "v1",
+  "seed": 42,
+  "n_selection_signers": 5,
+  "continuous_eval_results": "gislr/continuous_eval/results",
+  "segmenters": ["D3", "D1"],
+  "lm": {
+    "n_folds": 5,
+    "discount": 0.75,
+    "ngram_orders": {"unigram": 1, "bigram": 2, "trigram": 3, "4gram": 4},
+    "gru": {"emb": 64, "hidden": 128, "dropout": 0.3, "epochs": 60, "lr": 0.003, "batch_size": 64, "patience": 6, "val_fraction": 0.1}
+  },
+  "families": ["sentence-fold", "theme-out", "in-sample"],
+  "fusion_families": ["sentence-fold", "theme-out"],
+  "noise": {
+    "kinds": ["fidget", "hold", "reverse"],
+    "blocks_per_stream": [1, 2],
+    "length": [40, 150],
+    "frag_len": [3, 8],
+    "hold_jitter": 0.002,
+    "interp": 3,
+    "seed": 7,
+    "slack": 15
+  },
+  "rules": {
+    "none": {"theta": [0.0, 0.2, 0.3, 0.4, 0.5, 0.6]},
+    "rescore": {"lam": [0.1, 0.2, 0.3, 0.5, 0.75, 1.0], "theta": [0.0, 0.3, 0.5]},
+    "agree": {"lam": [0.5, 1.0], "k": [3, 5, 10, 20], "theta_lo": [0.0, 0.1, 0.2], "theta_hi": [0.6, 0.75, 0.9]}
+  },
+  "max_len": [null, 80, 100, 130, 160, 220],
+  "max_len_fusion": [null, 100, 160],
+  "collapse": true,
+  "selection_variant": "sentence-noisy",
+  "demo_histories": [
+    ["minemy", "give"],
+    ["minemy"],
+    ["mom"],
+    ["hello"],
+    ["tomorrow", "weus"],
+    ["who"],
+    ["dog"],
+    ["yesterday", "grandma"]
+  ],
+  "forward_chunk": 400
+}

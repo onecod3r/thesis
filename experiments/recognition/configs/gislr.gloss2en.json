@@ -1,0 +1,11 @@
+{
+  "_comment": "TODO §12.6 stage 3 -- gloss -> English. gislr.4.downstream.gloss-to-english.ipynb. Engines: identity (lower bound), sb.rescore.gloss2en rules v1, Workers AI LLMs with prompts/v1/gloss2en.txt.",
+  "corpus_version": "v1",
+  "evalset": "gloss2en.v1",
+  "prompt_version": "v1",
+  "models": ["@cf/meta/llama-3.2-3b-instruct", "@cf/meta/llama-3.1-8b-instruct-fp8"],
+  "roundtrip_sample": 300,
+  "seed": 42,
+  "max_tokens": 80,
+  "fewshot_ids": ["animals-000", "body-035", "body-052", "food-029", "home-157", "weather_time-108"]
+}
