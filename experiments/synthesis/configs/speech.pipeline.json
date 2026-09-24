@@ -1,0 +1,21 @@
+{
+  "_comment": "TODO §13 -- speech -> English (faster-whisper) for speech.2.asr.eval.ipynb and speech.3.pipeline.demo.ipynb. Transcribe settings are the team notebook's, minus best_of (inert at temperature 0).",
+  "asr": {
+    "model": "large-v3",
+    "compare_models": ["large-v3", "large-v3-turbo"],
+    "transcribe": {
+      "language": "en",
+      "beam_size": 5,
+      "temperature": 0.0,
+      "condition_on_previous_text": true,
+      "vad_filter": true,
+      "vad_parameters": {"min_silence_duration_ms": 500, "speech_pad_ms": 400}
+    }
+  },
+  "engine": "hybrid_guarded",
+  "recording": {
+    "seconds": 8,
+    "dir": "data/raw/speech30",
+    "_dir_comment": "one <id>.wav per team30 sentence, 16 kHz mono; recorded by speech.2.asr.eval.ipynb §1"
+  }
+}

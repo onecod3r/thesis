@@ -32,7 +32,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 | 0c | §12.5 Cloudflare Workers deployment research → `docs/reports/deployment-research.md` | §12.5 | sets where each stage runs + latency budget before §12.6 picks an LLM/TTS |
 | 0d | §12.6 downstream LLM (fused acceptance, gloss → English, TTS), offline notebook first | §12.6 | user's 2026-09-24 ask; needs 12.5's model choices |
 | 0e | §12.7 custom-sign feature | §12.7 | product layer over 12.4 + 12.5 |
-| 0f | §13 **speech → gloss** (current goal; rendering deferred): get the missing files from the authors, then Phase 1 plan review | §13 | audit done 2026-09-24 (`docs/reports/speech-to-sign-audit.md`); nothing can be built or scored without the checkpoint + training code |
+| 0f | §13 **speech → gloss**: **built 2026-09-24** (`sb-synthesize` + 4 notebooks; aslg.0/aslg.1 run). Next: user records the 30 sentences (`speech.2.asr.eval.ipynb`); team reviews draft refs + writes a held-out set; authors send the T5 checkpoint | §13 | rules_v2 beats the team's engine on ASLG-PC12 (BLEU 36.4 vs 26.3); the guard blocks every meaning-changing T5 output; report §9 |
 | ~~1~~ | ~~Restart the Jupyter kernels, then run one short training~~ — **effectively done**: the four §12.3 continuous runs trained end to end through the restructured stack on 2026-09-23 | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
 | 2 | ~~Run the first checkpoint backup~~ — **done 2026-09-04**: 42 on Kaggle, local copies pruned after hash verification. Model confirmed **private** 2026-09-24 | §9.3 | was the last single-copy risk |
 | 3 | **Notebook §5b: the three-arm AWP/LateDropout ablation** (~30 min) | §4.2 | the 1st-place port has collapsed at epoch 15 twice and neither switch has been run alone, so the recipe is still unmeasured |
@@ -3469,45 +3469,47 @@ vocabulary limit only matters for rendering (deferred) and recognition (§12).
 **Implementation plan: speech → gloss** (report §5; rendering deferred). Each phase
 needs a plan + the user's review before it is built.
 
-*Phase 0 — inputs (blocked on the authors, see above).* Nothing below can be
-scored until the checkpoint, the training code and the 30-sentence references
-exist.
+*Phase 0 — inputs (still owed by the authors, see above).* **Updated 2026-09-24:**
+the user asked to integrate the pipeline without waiting, so Phases 1–2 were built
+from the uploaded notebook alone. The rule engines, the guard (on T5's *recorded*
+outputs) and ASLG-PC12 are scored now; T5 itself waits for the checkpoint, and team30
+uses **draft** references (written by Claude) until the team supplies real ones.
 
 *Phase 1 — `sb-synthesize` package skeleton → code (no training):*
-- [ ] `sb.synthesize.gloss.rules_v1`: the frozen engine, **byte-identical** to
-  `rule_engine.py` (T5's training input). A test pins it to the 30
-  rule-only outputs recorded in report §2.
-- [ ] `sb.synthesize.gloss.rules_v2`: the fixed engine: `I`/`me` → `ME`; keep
+- [x] **Done 2026-09-24.** `sb.synthesize.gloss.rules_v1`: the frozen engine, **byte-identical** to
+  `rule_engine.py` (T5's training input). `aslg.0` §4 pins it to the 12
+  rule-only outputs recorded in report §2 (12/12).
+- [x] **Done 2026-09-24** (27/30 exact on team30's draft refs — a development score, same author). `sb.synthesize.gloss.rules_v2`: the fixed engine: `I`/`me` → `ME`; keep
   `IF`/`BUT`/`BECAUSE`/`BEFORE`/`PLEASE`; keep phrasal particles; front time words;
   cover `never`/`no`/`can't`/`won't`; one spaCy parse per sentence; tokenize commas
   properly.
-- [ ] `sb.synthesize.gloss.t5`: load from a local dir or Kaggle
+- [x] **Done 2026-09-24** (local dir only; Kaggle via `sb-sync` once the checkpoint exists; code path smoke-tested with public `t5-small`). `sb.synthesize.gloss.t5`: load from a local dir or Kaggle
   (`ensure_local`-style); `generate()` with `no_repeat_ngram_size` +
   `repetition_penalty`; hyperparameters in a config, not code.
-- [ ] `sb.synthesize.gloss.hybrid`: the **guarded hybrid**. Accept T5 only if
+- [x] **Done 2026-09-24**: keeps 19/30 recorded T5 outputs, rejects all of #19/#20/#25/#2/#4/#12/#21/#30, keeps #1/#26/#29/#27. `sb.synthesize.gloss.hybrid`: the **guarded hybrid**. Accept T5 only if
   it keeps the rule gloss's content words and pronoun identity (no you → HE),
   with no n-gram repeated; otherwise use rules_v2. Target: report §2's #19/#20/#25
   fixed, with the T5 wins (#1/#26/#29) kept.
-- [ ] `sb.synthesize.asr`: faster-whisper wrapper with the notebook's
+- [x] **Done 2026-09-24** (+ CUDA-12 cuBLAS shim: CTranslate2 needs `cublas64_12.dll`, torch is cu130; `nvidia-cublas-cu12` declared for win32). `sb.synthesize.asr`: faster-whisper wrapper with the notebook's
   parameters, the normalization bug fixed, `best_of` dropped; model size in
   the config (large-v3 locally; turbo is what Workers AI hosts).
-- [ ] `sb.synthesize.metrics`: BLEU-4, chrF, ROUGE-L, METEOR, gloss WER, ASR WER,
+- [x] **Done 2026-09-24** (coverage lives in `sb.synthesize.lexicon`). `sb.synthesize.metrics`: BLEU-4, chrF, ROUGE-L, METEOR, gloss WER, ASR WER,
   plus **lexicon coverage** (ASL-LEX/WLASL sign · fingerspell · no-sign).
-- [ ] Declare deps in `packages/sb-synthesize/pyproject.toml` (spacy +
+- [x] **Done 2026-09-24** (+ `sounddevice`, `soundfile`, `huggingface-hub`, `nvidia-cublas-cu12`; spaCy pinned <3.9 with `en_core_web_sm` 3.8.0 by URL; `ty check packages/sb-synthesize` clean; `.venvs/<stage>` isolation not re-checked). Declare deps in `packages/sb-synthesize/pyproject.toml` (spacy +
   `en_core_web_sm`, transformers, sentencepiece, faster-whisper, sacrebleu,
   rouge-score, nltk). **Not via `uv pip install`.** Check that `.venvs/<stage>`
   isolation still holds.
 
 *Phase 2 — data + evaluation notebooks:*
-- [ ] `experiments/synthesis/aslg.0.dataset.text2gloss.ipynb`: ASLG-PC12
+- [x] **Built + run 2026-09-24** (ASLG split v1: 81,088 unique texts → 64,870/8,109/8,109, 0 train/test overlap; WLASL index 2,000 glosses; NCSLGR absent). `experiments/synthesis/aslg.0.dataset.text2gloss.ipynb`: ASLG-PC12
   (HF, 82,709 training pairs) and NCSLGR (1,888 utterances) into
   `data/raw/<dataset>/`, fixed held-out splits, plus the 30 sentences with
   hand-written references (user + team), and an ASL-LEX/WLASL gloss list for the
   coverage metric.
-- [ ] `experiments/synthesis/aslg.1.models.text2gloss.ipynb`: rules-v1 /
+- [x] **Built + run 2026-09-24** — results in report §9. `experiments/synthesis/aslg.1.models.text2gloss.ipynb`: rules-v1 /
   rules-v2 / T5 / guarded hybrid on every test set, with a per-sentence error table.
   Config `experiments/synthesis/configs/aslg.text2gloss.json`.
-- [ ] `experiments/synthesis/speech.2.asr.eval.ipynb`: Whisper large-v3 vs
+- [~] **Built 2026-09-24; needs the user's recordings** (§1 recorder, `RECORD = True`). `experiments/synthesis/speech.2.asr.eval.ipynb`: Whisper large-v3 vs
   turbo WER on our own recordings of the 30 sentences (sentence-level speech with
   transcripts; Speech Commands can't do this).
 
@@ -3521,11 +3523,26 @@ exist.
   (`signbridge-<dataset>/transformers/t5-text2gloss/…` — slug to confirm).
 
 *Phase 4 — demo + deployment:*
-- [ ] `experiments/synthesis/speech.3.pipeline.demo.ipynb`: record → ASR → gloss,
+- [x] **Built 2026-09-24**, smoke-tested (Windows TTS wav → `tiny.en` on GPU → `TOMORROW IF RAIN ME STAY HOME | YOU HELP ME CAN`). `experiments/synthesis/speech.3.pipeline.demo.ipynb`: record → ASR → gloss,
   local Jupyter, no Colab APIs.
 - [ ] Cloudflare path (§12.5): Workers AI `whisper-large-v3-turbo` for ASR;
   gloss in the Worker (rules port) or T5 via ONNX/transformers.js. §12.5 decides.
   An `apps/` speech → gloss surface.
+
+**Results + state (2026-09-24, report §9):**
+- ASLG-PC12 test (2,000, independent of our refs): **rules_v2 BLEU 36.4 / WER 0.303 vs
+  rules_v1 26.3 / 0.347**. team30 (draft refs): team T5 recorded 36.0 / 0.414 — no better
+  than its own rules_v1 input (39.3 / 0.428); guard on it 66.3 / 0.224.
+- **Provenance clue:** the team's T5 output has no `DESC-`/`X-`/`BE`, which are 21%/5% of
+  ASLG tokens, so the checkpoint wasn't trained on raw ASLG-PC12 glosses (NCSLGR, or ASLG
+  stripped). Still to confirm with the authors.
+- [ ] **User:** record the 30 sentences in `speech.2.asr.eval.ipynb` §1, then run §2–§3.
+- [ ] **User/team:** review team30's draft references (`evalsets/team30.v1.json`), and
+  write a **held-out sentence set not authored by Claude** — rules_v2's team30 score is
+  circular until then.
+- [ ] When the T5 checkpoint arrives: put it at
+  `data/external/t5-text2gloss/thesis_hybrid_dataset1/model/`, delete
+  `data/cache/synthesis/text2gloss/aslg_test_hybrid_*.parquet`, re-run `aslg.1`.
 
 **Deferred — rendering** (resumes after speech → gloss): renderer research in
 report §7.2 (`spoken-to-signed-translation` + our own lexicon); WLASL clip

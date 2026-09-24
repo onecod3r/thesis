@@ -10,8 +10,10 @@ Maimuna/Raiyan Colab notebook, 12 cells) · **TODO:** §13
 - **Google Speech Commands: dropped** (§7.1).
 - **Vocabulary:** GISLR's 250 glosses are nowhere near enough for ASL output, but the
   text → gloss stage doesn't need to be limited to them (§8).
-- Implementation is planned in phases in TODO §13. Phase 0 is blocked on files from
-  the notebook's authors (§6).
+- Implementation is planned in phases in TODO §13. **Phases 1–2 and the demo are built
+  (2026-09-24, §9)** from the uploaded notebook. The T5 checkpoint, its training code and
+  the reference glosses are still owed by the authors (§6), so the hybrids fall back
+  to rules until they arrive.
 
 This pipeline runs in the **opposite direction** to the rest of the repo. The repo
 recognizes signs and turns them into English. This notebook turns speech into signs.
@@ -290,3 +292,90 @@ That makes it a sensible recognition benchmark, but not a general ASL lexicon.
 
 Sources: [ASL-LEX 2.0 (2,723 signs)](https://academic.oup.com/jdsde/article/26/2/263/6142509) ·
 [WLASL](https://github.com/dxli94/WLASL)
+
+## 9. Built: `sb-synthesize` and the first numbers (2026-09-24)
+
+The pipeline is now library code plus four notebooks, built from the uploaded notebook
+alone. Nothing below uses the T5 checkpoint, which is still missing (§6).
+
+| module | what it does |
+|---|---|
+| `asr.py` | faster-whisper with the team's settings. Peak normalization now actually reaches Whisper. `best_of` is dropped. A CUDA-12 cuBLAS shim is needed because torch here is cu130 |
+| `gloss/rules_v1.py` | the team's engine, verbatim. `aslg.0` checks that it reproduces §2's recorded rule-only outputs (12/12) |
+| `gloss/rules_v2.py` | every §2 defect fixed, one spaCy parse per sentence |
+| `gloss/t5.py` | the team's prompt and limits. Presets: `team` (exact `generate()`) and `guarded` (`no_repeat_ngram_size` 2, `repetition_penalty` 1.3) |
+| `gloss/hybrid.py` | **meaning guard**: rejects a T5 output on repetition, a change of grammatical person, a polarity flip, lost content words, or invented words; then falls back to rules_v2 |
+| `metrics.py` | BLEU-4, chrF, ROUGE-L, METEOR, gloss WER (S/D/I), ASR WER |
+| `lexicon.py` | GISLR + WLASL coverage with longest-match segmentation (WLASL has `NOT YET` and `WAKE UP`); trimmed WLASL clips; no scraping |
+| `data.py` | ASLG-PC12 with a fixed split by unique text (6,587 texts repeat); NCSLGR from a manual export |
+| `evalsets/team30.v1.json` | the 30 sentences, the team's recorded T5 output, **draft** references |
+
+Notebooks in `experiments/synthesis/`: `aslg.0.dataset.text2gloss` (run), `aslg.1.models.text2gloss`
+(run), `speech.2.asr.eval` (needs our recordings), `speech.3.pipeline.demo` (smoke-tested
+with synthesized speech on GPU).
+
+### 9.1 ASLG-PC12 test: the independent comparison
+
+2,000 seeded sentences from the fixed test split. References have `DESC-`/`X-` stripped.
+Neither engine was written against these glosses.
+
+| engine | BLEU-4 | chrF | ROUGE-L | METEOR | gloss WER | sub | del | ins |
+|---|---|---|---|---|---|---|---|---|
+| rules_v1 (team) | 26.3 | 71.0 | 76.6 | 63.6 | 0.347 | 0.059 | 0.284 | 0.004 |
+| **rules_v2** | **36.4** | **77.0** | **78.7** | **70.0** | **0.303** | 0.085 | 0.212 | 0.007 |
+
+rules_v2 is better on every metric, mostly through fewer deletions: it keeps conjunctions,
+particles and discourse words. Both are far from matching ASLG, because ASLG's rule system
+keeps `BE`, articles-as-`DESC-` and English word order. **ASLG-PC12 measures agreement with
+one synthetic convention, not ASL quality.**
+
+**Provenance clue.** ASLG glosses are 21% `DESC-`/`X-`-marked tokens and 5% `BE`. The team's
+recorded T5 output has **none** of either. Their checkpoint was not trained on raw ASLG-PC12
+glosses. It was trained on NCSLGR, or on ASLG with the markers stripped (§6 question 3).
+
+### 9.2 team30: the guard on the team's recorded T5 outputs
+
+| engine | BLEU-4 | chrF | gloss WER | exact |
+|---|---|---|---|---|
+| rules_v1 | 39.3 | 70.2 | 0.428 | 0.17 |
+| team T5 (recorded) | 36.0 | 72.2 | 0.414 | 0.07 |
+| **guard on recorded T5** (fallback rules_v2) | 66.3 | 85.5 | 0.224 | 0.40 |
+| rules_v2 | 96.7 | 98.2 | 0.020 | 0.90 |
+
+- **The guard keeps 19 of 30 T5 outputs and rejects 11.** Reasons: grammatical person 10,
+  invented word 4, repetition 3, content 1. Every meaning-changing case in §2 is rejected:
+  #19 you → HE, #25 her → ME, #20 `HE HE HE…`, the dropped subjects #2/#4/#12, and GIVE →
+  GIFT #21/#30. T5's wins are kept: #1 `ME NOW GO HOME`, #26 `IF RAIN TOMORROW …`,
+  #29 `BEFORE YOU LEAVE TURN OFF LIGHT`, #27 `WAKE UP`.
+- **On these references the team's T5 is no better than its own input** (BLEU 36.0 vs 39.3,
+  WER 0.41 vs 0.43).
+- **The rules_v2 row is not a test result.** Claude wrote both rules_v2 and the draft
+  references, to the same conventions, so 0.90 exact is a development score. The team, and
+  ideally a signer, need to review the references, and a **separate held-out set written by
+  someone else** is needed before any rules_v2-vs-T5 claim. The guard's decisions don't
+  depend on the references; the guarded row's score does, through the rules_v2 fallback.
+- Smoke check of the T5 code path with the public `t5-small`, which has no gloss training:
+  `hybrid_team` passes its German/echoed-prompt output straight through, while the guard
+  rejects all of it.
+
+### 9.3 Coverage
+
+| set | units that are signs | WLASL | GISLR-250 | fingerspelled | sentences all signs | all GISLR |
+|---|---|---|---|---|---|---|
+| team30, draft references | 98% | 98% | 56% | 2% | 93% | 7% |
+| team30, rules_v2 | 97% | 97% | 55% | 3% | 90% | 7% |
+| team30, team T5 | 95% | 95% | 56% | 5% | 77% | 7% |
+| ASLG test, rules_v2 | 61% | 60% | 13% | 39% | 6% | 0% |
+
+With WLASL-2000 almost every team30 gloss is a real sign. GISLR's 250 still covers only 7% of
+the sentences completely, which confirms §8. On Europarl text (`EUROPEAN`, `COMMISSION`,
+`PARLIAMENT`) 39% would be fingerspelled: that is the domain, not the engine.
+
+### 9.4 Still owed / next
+
+1. From the authors: the T5 checkpoint (→ `data/external/t5-text2gloss/thesis_hybrid_dataset1/model/`),
+   `training_metadata.json`, the training corpus, and review of the draft references.
+2. A held-out sentence set not written by Claude, for a fair rules_v2 vs guarded-hybrid test.
+3. Recordings of the 30 sentences → `speech.2.asr.eval.ipynb` (ASR WER, large-v3 vs turbo).
+4. NCSLGR export (licence form) → `data/raw/ncslgr/ncslgr.csv`: the only real-signing test set here.
+

@@ -1,0 +1,24 @@
+{
+  "_comment": "TODO §13 -- English -> ASL gloss. Read by aslg.0.dataset.text2gloss.ipynb and aslg.1.models.text2gloss.ipynb (and the speech notebooks, for the T5 block). Hyperparameters live here only.",
+  "splits": {
+    "version": "v1",
+    "seed": 42,
+    "fractions": {"train": 0.8, "val": 0.1, "test": 0.1}
+  },
+  "eval": {
+    "engines": ["rules_v1", "rules_v2", "hybrid_team", "hybrid_guarded"],
+    "aslg_test_sample": 2000,
+    "aslg_sample_seed": 0,
+    "team30_version": "v1"
+  },
+  "t5": {
+    "_comment": "The team's checkpoint (thesis_hybrid_dataset1/model). Not received yet: until it is on disk the hybrids fall back to rules. Limits copied from the team notebook / training_metadata.json.",
+    "model_dir": "data/external/t5-text2gloss/thesis_hybrid_dataset1/model",
+    "max_input_len": 128,
+    "generate": {
+      "team": {"max_length": 64, "num_beams": 4},
+      "guarded": {"max_length": 64, "num_beams": 4, "no_repeat_ngram_size": 2, "repetition_penalty": 1.3}
+    },
+    "guard": {"min_content_recall": 0.6}
+  }
+}
