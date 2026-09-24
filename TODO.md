@@ -33,7 +33,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 | 0d | §12.6 downstream LLM (fused acceptance, gloss → English, TTS), offline notebook first | §12.6 | user's 2026-09-24 ask; needs 12.5's model choices |
 | 0e | §12.7 custom-sign feature | §12.7 | product layer over 12.4 + 12.5 |
 | ~~1~~ | ~~Restart the Jupyter kernels, then run one short training~~ — **effectively done**: the four §12.3 continuous runs trained end to end through the restructured stack on 2026-09-23 | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
-| 2 | ~~Run the first checkpoint backup~~ — **done 2026-09-04**: 42 on Kaggle, local copies pruned after hash verification. Remaining: confirm the model is **private** | §9.3 | was the last single-copy risk |
+| 2 | ~~Run the first checkpoint backup~~ — **done 2026-09-04**: 42 on Kaggle, local copies pruned after hash verification. Model confirmed **private** 2026-09-24 | §9.3 | was the last single-copy risk |
 | 3 | **Notebook §5b: the three-arm AWP/LateDropout ablation** (~30 min) | §4.2 | the 1st-place port has collapsed at epoch 15 twice and neither switch has been run alone, so the recipe is still unmeasured |
 | ~~4~~ | ~~Install deno + ffmpeg, then run the TS extractor once~~ — **deprecated 2026-09-22**: POPSIGN (the only workload this parity check gates) is deprecated; see §2/§10.1 | §10.1 | — |
 | ~~4b~~ | ~~Regenerate the POPSIGN train manifest, then `popsign_cycle run --part test`~~ — **deprecated 2026-09-22**: POPSIGN deprecated, extracted data deleted from disk; see §2 | §2.2, §10.3 | — |
@@ -53,16 +53,9 @@ Decisions still owed by the user, blocking real work:
 - **§4.1**: BiLSTM is the accuracy leader (0.7569) but can never ship. Is the
   goal understanding the causality gap, or a deployable model? The section
   flags this conflict and it is still unresolved.
-- **Stale questions surfaced by the 2026-09-24 audit** (each waiting on the user):
-  - §3.0.1 — where is the draft paper (Google Doc / Overleaf)? Open since 2026-07-22.
-  - §4.3 — re-benchmark `gru` × `xyz` on the current split, or accept "xy wins" as settled?
-  - §5 (spectrogram CNN/ViT arm) — untouched since July. Keep or drop?
-  - §7.2–§7.7 (normalization, motion, augmentation) — the evidence-backed accuracy
-    levers, never started. Still wanted alongside the §12 continuous work, or paused?
-  - §6.3 — **rotate the Kaggle API token** pasted into a chat on 2026-07-19 (security,
-    still open).
-  - §9.3 — confirm the `signbridge-gislr` Kaggle model is **private**.
-  - §12.1 — `minemy` used as "I": rewrite or keep?
+- ~~Stale questions from the 2026-09-24 audit~~ — **all answered by the user 2026-09-24**: Kaggle token
+  rotated; model private; paper = https://docs.google.com/document/d/12TNIMaL1yvOGZKazzSWrYWmiOuMg8gsneShv1_e228o; §5 re-scoped as a GISLR_Stratified
+  spectrogram experiment; §7 kept; xy wins (no xyz re-benchmark); `minemy` kept.
 
 ---
 
@@ -846,8 +839,8 @@ Placeholder filed so it isn't lost — fill in the URL/doc and re-derive this
 item once available, since the actual next steps may differ once the paper's
 existing content is known:
 
-- [ ] Get the draft paper location (Google Doc / Overleaf / other) from the
-  user, then reconcile its landmark-reduction section against what's already
+- [~] **Location given 2026-09-24: https://docs.google.com/document/d/12TNIMaL1yvOGZKazzSWrYWmiOuMg8gsneShv1_e228o** (Google Doc). Next: read it and
+  reconcile its landmark-reduction section against what's already
   written here (`docs/reports/motion-energy.md`, `docs/reports/subset-comparison.md`)
   before drafting anything new, so the write-up doesn't contradict or duplicate
   decisions already locked in.
@@ -1707,7 +1700,7 @@ subsets=None)`). Current status:
   independently of the split reset; its next run (once that's fixed) will
   land on the current split automatically like everything else, so no
   separate porting action is needed here, only the §4.2 fix.
-- [?] `gru` × `xyz` (any subset) — existed pre-reset (52-run legacy set
+- [-] **Decided by the user 2026-09-24: xy wins — no xyz re-benchmark.** `gru` × `xyz` (any subset) — existed pre-reset (52-run legacy set
   includes xyz variants) but `gislr.training.json` only configures `xy`.
   **Decision needed, not silently resolved**: the whole point of the ME-126
   subset work was "xy beats xyz" (`docs/reports/motion-energy.md` §2.3,
@@ -1725,12 +1718,39 @@ just a stale-split artifact.
 
 ---
 
-## 5. Spectrogram-Format Checkpoint (CNN/ViT arm)
+## 5. Spectrogram experiment on GISLR_Stratified (CNN/ViT arm) — re-scoped 2026-09-24
 
-- [ ] xyz-as-RGB channels, landmarks on y-axis, frames on x-axis
-- [ ] Linear interpolation to fixed frame count
-- [ ] Scoped only to this benchmarking arm — image quantization deferred to
-  spectrogram-build time, not baked into the shared checkpoint format
+**User decision 2026-09-24: keep it, as a real experiment on `gislr-stratified`**
+(it had sat untouched since July as a format note). Each landmark sequence
+becomes an image: landmarks on the y-axis, frames on the x-axis, coordinates
+as channels. Train image models on those images and compare them with the
+recurrent models on the canonical split. Needs a plan + user review before it
+is built.
+
+- [ ] **Plan** (for review). Decisions to put to the user:
+  - channels: xy only (consistent with "xy wins", §4.3) vs xyz-as-RGB (the
+    original idea) vs xy + speed;
+  - landmark subset/ordering on the y-axis (ME-126, grouped by region so
+    neighbouring rows are anatomically related);
+  - fixed width: linear interpolation to T frames (T = 64/128?), and how
+    NaN/undetected is encoded (0 plus a mask channel?);
+  - models: a small CNN from scratch, a pretrained ResNet/EfficientNet
+    (ImageNet stats don't match landmark images, so test both), and a
+    small ViT;
+  - augmentation that makes sense on these images (time-crop/stretch is
+    fine; flips on the landmark axis are not).
+- [ ] Build the images from `gislr_dir()` npz into a content-addressed cache
+  under `data/cache/gislr/features/spectrogram_v1/` (the existing
+  `features/cache.py` pattern). Quantization happens at build time and is
+  not baked into the shared format (the original §5 note).
+- [ ] Notebook `experiments/recognition/gislr.1.models.spectrogram.ipynb`, with
+  hyperparameters in `configs/gislr.spectrogram.json`, never in cells. The
+  model classes go in `architectures.py`, `streaming: false`.
+- [ ] Canonical eval (18,896-video val split, `sb-evaluate`) and a
+  comparison with the registry's recurrent models.
+- [ ] Framing: fixed-width interpolation needs the whole clip, so this is an
+  **offline accuracy reference** like BiLSTM, not a deployment candidate,
+  unless a causal sliding-window variant is added later.
 
 ---
 
@@ -1935,13 +1955,15 @@ record rather than something remembered by hand.
   - [-] **Obsolete, see parent.** Once proven, decide whether the (since-deleted, 2026-09-19) `submit_run`
     keeps shelling out to the CLI or the notebook drives the MCP tools instead;
     the queue query and `mark_tested` bookkeeping are unaffected either way.
-- [ ] **Security**: an API token was pasted in plaintext into a chat transcript
+- [x] **Rotated by the user 2026-09-24.** **Security**: an API token was pasted in plaintext into a chat transcript
   on 2026-07-19 and must be treated as compromised — rotate it (Kaggle
   Settings → Generate New Token) and never commit one.
 
 ---
 
 ## 7. Breaking the ~73% Accuracy Plateau
+
+**User decision 2026-09-24: keep §7.2–§7.7**, running alongside the §12 continuous work.
 
 **Context:** GRU, 1D-CNN, LSTM and BiLSTM all converge to ~70–74% on the FP_118
 subset. Architecture-independent ⇒ the ceiling is upstream, in
@@ -2419,7 +2441,7 @@ be completed.
 - [x] Round trip proven from a cold cache: pulled `1784447175` back from Kaggle,
   sha256 verified, and `torch.load` returned the expected bilstm/ME_126/xy at
   0.7569 with 22 state-dict tensors — then re-pruned.
-- [ ] **Check the model's visibility on Kaggle.** `kagglehub.model_upload` does
+- [x] **Confirmed private by the user 2026-09-24.** **Check the model's visibility on Kaggle.** `kagglehub.model_upload` does
   not expose a visibility argument and the API does not report one back, so
   whether `signbridge-gislr` was created public or private is unverified from
   here. These are unpublished thesis weights — confirm on the model page.
@@ -2640,7 +2662,7 @@ Still open, and deliberately so:
 - [-] **Rejected (recorded 2026-09-24).** **DVC.** Rejected in §9.3 and unchanged: its one advantage over the current
   setup — stage DAGs catching stale derived artifacts — is what §9.2's content
   addressing buys directly.
-- [~] **Partly answered (2026-09-24): §8 resolved as in scope, so `sb-rescore` is §12.6's home. `sb-synthesize` (speech → sign) still has no scope, and `apps/` does not exist on disk although README's tree lists it.** **`sb-rescore` and `sb-synthesize` are skeletons with no implementation**,
+- [~] **Partly answered (2026-09-24): §8 resolved as in scope, so `sb-rescore` is §12.6's home. `sb-synthesize` (speech → sign) still has no scope. `apps/` was scaffolded 2026-09-24 (web/ · edge/ · shared-ts/, README contracts only, for §12.5's Cloudflare deployment).** **`sb-rescore` and `sb-synthesize` are skeletons with no implementation**,
   and `apps/*` is empty. That is the known cost of building the full tree before
   the code exists (§9.9's "empty scaffolding rots" argument). Each carries a
   docstring saying what is fixed regardless of the open scope question, so the
@@ -3087,7 +3109,8 @@ early-stopped on — 12.2's baselines carry that selection advantage, and
   then Output → New Dataset `GISLR-Sentences` (private). §3 stops early if
   the projected size exceeds Kaggle's ~20 GB `/kaggle/working` limit
   (~16 GB estimated at float32; `STORAGE_DTYPE = "float16"` halves it).
-- [ ] Review the printed sentence sample. Open question from the user
+- [x] **Decided by the user 2026-09-24: keep the gloss `minemy` as is** (no possessive-only
+  rewrite). Review the printed sentence sample. Open question from the user
   review: `minemy` (my/mine) is also used as "I" in sentences like
   `MINEMY HUNGRY` because GISLR has no I/me sign. Rewrite those to
   possessive-only, or keep them?
@@ -3234,7 +3257,7 @@ The design brief comes from `docs/reports/sentence-baselines.md` §5.
   wrong. Unblocked — re-run the notebook (user), then write
   `docs/reports/continuous-models.md`. `docs/logs/daily/2026-09-23.md` §8.
 - [ ] Follow-up: GISLR-Sentences v2 with the realistic lowered rest
-  (pose down, hands out of frame), plus the `minemy` rewrite.
+  (pose down, hands out of frame). (`minemy` stays as is — user, 2026-09-24.)
 
 ### 12.4–12.7 — the user's three new asks (filed 2026-09-24)
 
@@ -3272,7 +3295,8 @@ duplicates.
 
 ### 12.5 Pipeline + Cloudflare Workers deployment research (plan + review needed)
 
-Write up as `docs/reports/deployment-research.md` (the 2026-09-23 chat plan
+`apps/` was scaffolded 2026-09-24 (READMEs fix the web/edge/shared-ts split and the
+contracts; tooling is left to this research). Write up as `docs/reports/deployment-research.md` (the 2026-09-23 chat plan
 for this was never written down — start fresh). Research questions:
 
 - [ ] **Where does each stage run?** Camera + MediaPipe landmarks almost
