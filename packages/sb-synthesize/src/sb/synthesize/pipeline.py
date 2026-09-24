@@ -15,7 +15,7 @@ from pathlib import Path
 
 import numpy as np
 
-from sb.synthesize.asr import Transcriber
+from sb.synthesize.asr import Transcriber, spell_numbers
 from sb.synthesize.gloss import GlossEngine, GlossResult
 
 
@@ -41,5 +41,6 @@ class SpeechToGloss:
     def __call__(self, audio: np.ndarray | str | Path) -> PipelineResult:
         tr = self.asr(audio)
         t0 = time.perf_counter()
-        g = self.engine(tr.text) if tr.text else GlossResult("", "", self.engine.name)
-        return PipelineResult(tr.text, g, tr.seconds, time.perf_counter() - t0, tr.audio_seconds)
+        english = spell_numbers(tr.text)  # Whisper writes digits; the gloss engines expect words
+        g = self.engine(english) if english else GlossResult("", "", self.engine.name)
+        return PipelineResult(english, g, tr.seconds, time.perf_counter() - t0, tr.audio_seconds)

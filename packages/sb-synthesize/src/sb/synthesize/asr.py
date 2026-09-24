@@ -52,14 +52,87 @@ def peak_normalize(audio: np.ndarray) -> np.ndarray:
     return (audio / m).astype(np.float32) if m > 0 else audio.astype(np.float32)
 
 
+def microphone() -> str | None:
+    """The default input device's name, or ``None`` when there is none (a
+    remote or headless machine: PortAudio reports the default input as -1,
+    and ``sd.rec`` then fails with ``Error querying device -1``)."""
+    try:
+        import sounddevice as sd
+
+        idx = sd.default.device[0]
+        if idx is None or idx < 0:
+            return None
+        return str(sd.query_devices(idx)["name"])
+    except Exception:
+        return None
+
+
 def record(seconds: float, sample_rate: int = SAMPLE_RATE) -> np.ndarray:
     """Record from the default microphone (local Jupyter; replaces the
-    notebook's Colab ``eval_js`` recorder)."""
+    notebook's Colab ``eval_js`` recorder). Raises a clear error when the
+    machine has no default input device; check :func:`microphone` first."""
     import sounddevice as sd
 
+    if microphone() is None:
+        raise RuntimeError("no default input device (remote/headless machine?). Use an audio file, "
+                           "or synthesized speech from sb.synthesize.tts.")
     audio = sd.rec(int(seconds * sample_rate), samplerate=sample_rate, channels=1, dtype="float32")
     sd.wait()
     return audio[:, 0]
+
+
+def model_dir(model: str) -> str:
+    """A faster-whisper model name -> a local directory holding it, downloaded
+    once into ``data/external/whisper/<model>``.
+
+    The default Hugging Face cache stores files as symlinks. On Windows
+    without Developer Mode, creating one fails with ``WinError 1314`` for some
+    repos (seen 2026-09-24 with ``large-v3-turbo``). A plain ``local_dir``
+    download writes real files. A path that already exists is used as is.
+    """
+    if Path(model).exists():
+        return model
+    from faster_whisper.utils import download_model
+
+    from sb.core.paths import EXTERNAL_DIR
+
+    out = EXTERNAL_DIR / "whisper" / model
+    if not (out / "model.bin").exists():
+        download_model(model, output_dir=str(out))
+    return str(out)
+
+
+_ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven",
+         "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"]
+_TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"]
+
+
+def _words(n: int) -> str:
+    if n < 20:
+        return _ONES[n]
+    if n < 100:
+        return _TENS[n // 10] + ("" if n % 10 == 0 else " " + _ONES[n % 10])
+    if n < 1000:
+        return _ONES[n // 100] + " hundred" + ("" if n % 100 == 0 else " " + _words(n % 100))
+    if n < 1_000_000:
+        return _words(n // 1000) + " thousand" + ("" if n % 1000 == 0 else " " + _words(n % 1000))
+    return str(n)
+
+
+def spell_numbers(text: str) -> str:
+    """Whole numbers written as digits -> words (``3 o'clock`` -> ``three
+    o'clock``, ``2,000`` -> ``two thousand``). Whisper writes most numbers as
+    digits, while the gloss engines expect words (``TIME THREE``, not
+    ``TIME 3``), and a digit can't be matched to a sign in the lexicon. Found
+    2026-09-24: on synthesized speech, the only errors left on clean audio were
+    digits. Times like ``3:30`` become ``three thirty``. Decimals are left as
+    they are."""
+    import re
+
+    text = re.sub(r"\b(\d{1,2}):(\d{2})\b",
+                  lambda m: _words(int(m[1])) + ("" if m[2] == "00" else " " + _words(int(m[2]))), text)
+    return re.sub(r"(?<![\d.])(\d{1,3}(?:,\d{3})+|\d+)(?![\d.]|\.\d)",
+                  lambda m: _words(int(m[1].replace(",", ""))), text)
 
 
 @dataclass
@@ -81,7 +154,7 @@ class Transcriber:
         device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         compute_type = compute_type or ("float16" if device == "cuda" else "int8")
         self.model_name, self.device, self.compute_type = model, device, compute_type
-        self.model = WhisperModel(model, device=device, compute_type=compute_type)
+        self.model = WhisperModel(model_dir(model), device=device, compute_type=compute_type)
         self.kwargs = dict(transcribe_kwargs or {})
 
     @classmethod
