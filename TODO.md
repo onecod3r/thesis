@@ -3371,9 +3371,7 @@ are now installed** (§10.1 had them missing).
 - **§12.7: custom-sign prototypes** are 1 KB rows. DO storage or D1 plus an
   IndexedDB cache; R2 is not needed.
 
-**Open questions for the user (report §9):** (1) which "remote functions" was meant:
-Workers RPC / remote bindings / Cap'n Web / Agents SDK `@callable` / SvelteKit
-(recommendation: Agents SDK `Agent`); (2) Free or Paid Workers plan; (3) web
+**Open questions for the user (report §9):** ~~(1) which "remote functions"~~ — **answered 2026-09-24: the user meant Workers RPC, and agrees it isn't needed** since extraction + inference are client-side. The browser↔edge link is a plain WebSocket/HTTP to a Worker, and the browser can't call Workers RPC anyway. RPC only appears as the Worker → session-DO method call (`stub.method()`), which is the default DO API, not a design choice. (2) Free or Paid Workers plan; (3) web
 framework (default plain TS + Vite); (4) accept moving the prior to the client.
 
 **Build plan (report §9), nothing past step 0 built:**

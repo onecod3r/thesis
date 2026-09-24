@@ -237,8 +237,7 @@ account as of 2026-09-04, §9.3). A client-side IndexedDB copy is the offline ca
 **Recommendation:** an Agents SDK `Agent` per session. The client calls
 `acceptSign(gloss, confidence, t)` and `endSentence()`. The Agent keeps the history,
 calls Workers AI and streams TTS audio back. If the Agents SDK turns out to be too
-heavy, Cap'n Web over a WebSocket to a plain DO does the same job. **Which one you
-meant decides this row; see §9.**
+heavy, Cap'n Web over a WebSocket to a plain DO does the same job. **Resolved 2026-09-24:** the user meant Workers RPC. It is not needed as a design element. The browser can't call it, and with the recognizer on the client the only browser↔edge traffic is one message per accepted sign plus the audio back. That is a plain WebSocket (or HTTP) to the Worker. Workers RPC survives only as the ordinary way the Worker calls its session Durable Object's methods.
 
 ## 8. Latency budget (sign accepted → audio)
 
@@ -270,8 +269,7 @@ Step 1 is the next action. It is the first time real webcam landmarks reach the
 model, and risks 1–4 of §4 can only be answered there.
 
 **Open questions for you:**
-1. **"Cloudflare remote functions"**: which of §7's meanings did you mean? The
-   Agents-SDK recommendation assumes an RPC-from-the-browser transport.
+1. ~~"Cloudflare remote functions"~~: **answered**. The user meant Workers RPC. Not needed (§7).
 2. **Plan**: Free or Paid Workers plan? The Worker fits either. The Paid plan matters
    for Workers AI volume beyond 10k neurons/day and for longer CPU if the edge grows.
 3. **Web framework** for `apps/web`: plain TS + Vite (my default, smallest), or
