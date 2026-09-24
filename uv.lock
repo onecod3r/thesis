@@ -3648,11 +3648,22 @@ name = "sb-rescore"
 version = "0.1.0"
 source = { editable = "packages/sb-rescore" }
 dependencies = [
+    { name = "numpy" },
     { name = "sb-core" },
 ]
 
+[package.optional-dependencies]
+neural = [
+    { name = "torch" },
+]
+
 [package.metadata]
-requires-dist = [{ name = "sb-core", editable = "packages/sb-core" }]
+requires-dist = [
+    { name = "numpy" },
+    { name = "sb-core", editable = "packages/sb-core" },
+    { name = "torch", marker = "extra == 'neural'", index = "https://download.pytorch.org/whl/cu130" },
+]
+provides-extras = ["neural"]
 
 [[package]]
 name = "sb-synthesize"

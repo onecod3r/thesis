@@ -1,11 +1,16 @@
 [project]
     name = "sb-rescore"
     version = "0.1.0"
-    description = "Top-k gloss hypotheses -> sentence. Versioned prompts, a frozen eval set, and the model client"
+    description = "Downstream of the recognizer: next-gloss prediction (n-gram / GRU LM) and gloss -> English (rules, Workers AI). Versioned prompts, a frozen eval set"
     requires-python = ">=3.12"
     dependencies = [
         "sb-core",
+        "numpy",
     ]
+
+[project.optional-dependencies]
+    # the GRU language model arm (sb.rescore.neural); the n-gram needs none of it
+    neural = ["torch"]
 
 [build-system]
     requires      = ["hatchling"]
