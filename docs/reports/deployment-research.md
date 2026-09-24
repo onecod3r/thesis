@@ -211,7 +211,13 @@ billed separately.
 | (free tier) | 10,000 neurons/day, then $0.011/1k neurons | |
 
 A 60-character spoken sentence costs about **$0.0018 with `aura-2-en`** and about
-$0.0001 with MeloTTS. The LLM share is under $0.0001. **Which LLM:** pick it on
+$0.00001 with MeloTTS. The LLM share is under $0.0001. **On the Free plan that is the
+binding limit (corrected 2026-09-24):** $0.0018 is about 160 neurons, so the 10,000/day
+allowance covers only about **60–80 Aura-2 sentences a day** (Aura-1 twice that). MeloTTS is
+under 1 neuron per sentence. The free, zero-latency default is therefore the **browser's own
+`speechSynthesis`** (Web Speech API; on Windows these are the OS voices that
+`gislr.4.downstream.tts.ipynb` measures as SAPI: Whisper WER 0–0.3%, about 0.2 s). Workers AI
+TTS is then an opt-in "natural voice". **Which LLM:** pick it on
 `sb-rescore`'s eval set (§12.6). Don't choose it here. Gloss → English is a small
 rewriting task, so start with the 3B/8B models and only move up if they fail the eval.
 
@@ -270,7 +276,7 @@ model, and risks 1–4 of §4 can only be answered there.
 
 **Open questions — all answered 2026-09-24:**
 1. ~~"Cloudflare remote functions"~~: **answered**. The user meant Workers RPC. Not needed (§7).
-2. ~~Plan~~: **Workers Free.** The Worker's own CPU fits in 10 ms per request, since awaiting Workers AI is I/O. Workers AI is limited to 10k neurons/day, which covers development and a demo (about 2–10 neurons per sentence for LLM + TTS). Still to verify from the docs before building `apps/edge`: Durable Objects availability on Free (SQLite-backed DOs).
+2. ~~Plan~~: **Workers Free.** The Worker's own CPU fits in 10 ms per request, since awaiting Workers AI is I/O. Workers AI is limited to 10k neurons/day. The LLM costs a few neurons per sentence, but Aura TTS costs about 60–160 (see §6), so speech defaults to the browser's `speechSynthesis`. Still to verify from the docs before building `apps/edge`: Durable Objects availability on Free (SQLite-backed DOs).
 3. ~~Web framework~~: **vanilla TypeScript + Vite** for now; SolidJS or QwikCity later.
 4. ~~Prior on the client~~: **accepted**, with the stages kept separate (recognizer + prediction side by side, then gloss → English). A layered video → text model is future work. Experiments: `gislr.4.downstream.*` notebooks (TODO §12.6).
 

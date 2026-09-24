@@ -30,9 +30,9 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 | ~~0~~ | ~~Re-run `gislr.3.streaming.continuous-eval.ipynb`~~ — **done 2026-09-24**: C1 D3 c **GER 0.293** (eval signers) vs baseline 0.507, oracle 0.221 → `docs/reports/continuous-models.md`. Optional follow-up: D5 = D3 ∪ D1 decoder for hard-cut | §12.3 | — |
 | 0b | Plan §12.4 add-a-sign (enroll C-open's 20 held-out glosses from 1/5/10 examples) | §12.4 | C-open (`1790146838`) is trained and waiting; decides how custom signs (§12.7) work |
 | 0c | §12.5 research **done 2026-09-24** (`docs/reports/deployment-research.md`): extraction + recognition client-side (user decision), recognizer proven in-browser (LiteRT.js 0.20 ms/frame). All 4 open questions answered 2026-09-24 (Workers RPC not needed · Free plan · vanilla TS + Vite · prior on the client). **Next: build step 1 = `apps/web` live prototype** (camera → Holistic → step model → D3 → glosses; measure fps and mirroring) | §12.5 | first time real webcam landmarks reach the model |
-| 0d | §12.6 **experiments built 2026-09-24**. **User: run `gislr.4.downstream.next-gloss.ipynb`** (it trains tiny GRU LMs), **add Cloudflare creds to `.env`** and re-run the gloss-to-English notebook's LLM section, **review the 132 draft references** | §12.6 | stage 2 (prediction + fusion + noise rejection) and stage 3 (gloss → English) have no numbers on real decoding yet |
+| 0d | §12.6: all experiments built; demo/TTS/gloss→English run 2026-09-24 (end-to-end GER 0.245 on 300 held-out streams, streaming = offline). **User: run `gislr.4.downstream.next-gloss.ipynb`** (trains tiny GRU LMs; widened grid), **add Cloudflare creds to `.env`** and re-run the LLM/TTS sections, **review the 132 draft references** | §12.6 | stage 2 (prediction + fusion + noise rejection) and stage 3 (gloss → English) have no numbers on real decoding yet |
 | 0e | §12.7 custom-sign feature | §12.7 | product layer over 12.4 + 12.5 |
-| 0f | §13 **speech → gloss**: **built 2026-09-24** (`sb-synthesize` + 4 notebooks; aslg.0/aslg.1 run). Next: user records the 30 sentences (`speech.2.asr.eval.ipynb`); team reviews draft refs + writes a held-out set; authors send the T5 checkpoint | §13 | rules_v2 beats the team's engine on ASLG-PC12 (BLEU 36.4 vs 26.3); the guard blocks every meaning-changing T5 output; report §9 |
+| 0f | §13 **speech → gloss**: all 4 notebooks run 2026-09-24. No mic on the remote PC, so ASR is measured on synthesized speech (WER about 1%, turbo 1.7× faster; digit fix added). Next: human recordings when a mic exists; team reviews draft refs + writes a held-out set; authors send the T5 checkpoint | §13 | rules_v2 beats the team's engine on ASLG-PC12 (BLEU 36.4 vs 26.3); the guard blocks every meaning-changing T5 output; report §9 |
 | ~~1~~ | ~~Restart the Jupyter kernels, then run one short training~~ — **effectively done**: the four §12.3 continuous runs trained end to end through the restructured stack on 2026-09-23 | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
 | 2 | ~~Run the first checkpoint backup~~ — **done 2026-09-04**: 42 on Kaggle, local copies pruned after hash verification. Model confirmed **private** 2026-09-24 | §9.3 | was the last single-copy risk |
 | 3 | **Notebook §5b: the three-arm AWP/LateDropout ablation** (~30 min) | §4.2 | the 1st-place port has collapsed at epoch 15 twice and neither switch has been run alone, so the recipe is still unmeasured |
@@ -3466,6 +3466,33 @@ for this was never written down — start fresh). Research questions:
   have the same author (Claude), so this is a development number until the user reviews
   the references.
 
+**Second pass (2026-09-24, "create the experiments if necessary"):**
+- **First real fusion numbers** (quick check, selection signers, clean, trigram
+  sentence-fold, D3): recognizer alone GER 0.4133 (= the continuous eval's selection
+  value), **rescore λ=0.3 0.401 (best, −3%)**, λ=1.0 0.477. `agree`: k=10 θ_hi=0.3 0.470,
+  θ_hi=0.75 **0.730**. `agree` swaps substitutions for deletions (sub 0.301 → 0.184, del
+  0.084 → 0.542). It is a **precision mode** ("say nothing rather than a wrong word"), not a
+  GER win. The sweep grid is widened to reach its best point (θ_hi down to 0.2, k up to 50;
+  λ down to 0.05).
+- **New: `sb.recognize.continuous.online.OnlineDecoder`**, the client's frame-by-frame
+  D3 + fused-acceptance loop (the reference `apps/web` ports). Parity with
+  `fuse.decode_fused`: 0 mismatches over 2,400 random streams (all rules, gate, collapse).
+- **New: `gislr.5.pipeline.sign-to-speech.demo.ipynb`, run 2026-09-24**: held-out streams (or
+  a video file via the new `sb.extract.holistic.extract_video`) → **browser TFLite step
+  model** → `OnlineDecoder` (trigram prior) → rules English → SAPI speech. **Integration
+  check on 300 held-out streams: streaming = offline on 293, 7 float near-ties, 0
+  unexplained. GER 0.245, sentence accuracy 47%** (rescore λ=0.3). Recognizer 0.06 ms/frame,
+  decoder 2 µs/frame, English about 0.01 ms, speech about 0.2 s. The first default rule
+  (agree k10 θ_hi .75) gave GER 0.598, which is what triggered the check above.
+- **New: `gislr.4.downstream.tts.ipynb`, run 2026-09-24 (SAPI arm)**: both OS voices, Whisper WER
+  0.0% / 0.3%, 0.2 s to synthesize 2.2 s of audio (RTF 0.09). The Workers AI arm (MeloTTS,
+  Aura-1, Aura-2 on 20 sentences, about 1.6k neurons estimated) needs credentials.
+  **Finding:** Aura-2 costs about 120 neurons per sentence, so the Free plan allows about 80 a
+  day. **Default speech = the browser's `speechSynthesis`** (free, client-side). Report
+  corrected.
+- Fixed in `gloss2en`: a leading `if`/`because` ("The if will rain…" → "If it is raining,
+  we stay home.").
+
 **Next actions:**
 - [ ] **User: run `gislr.4.downstream.next-gloss.ipynb`**, then Claude writes
   `docs/reports/downstream-next-gloss.md` (questions in the notebook's §7).
@@ -3619,6 +3646,25 @@ uses **draft** references (written by Claude) until the team supplies real ones.
 - [~] **Built 2026-09-24; needs the user's recordings** (§1 recorder, `RECORD = True`). `experiments/synthesis/speech.2.asr.eval.ipynb`: Whisper large-v3 vs
   turbo WER on our own recordings of the 30 sentences (sentence-level speech with
   transcripts; Speech Commands can't do this).
+  - **2026-09-24, second pass: the user runs Jupyter on a remote PC with no mic.** The user's
+    run of `speech.3` crashed (`PortAudioError: Error querying device -1`: no default
+    input device), and `speech.2` ran with 0/30 recordings. **Fixed:**
+    `asr.microphone()` + a clear error in `asr.record`. Both notebooks skip recording when
+    there is no mic. New `sb.synthesize.tts` (Windows SAPI via PowerShell, no deps, plus
+    `add_noise`). `speech.2` §1b speaks team30 with both voices (David, Zira) × clean/20/10/5/0
+    dB and scores every source separately. `speech.3` §2b: typed text → speech → ASR →
+    gloss.
+  - **Second bug found and fixed:** downloading `large-v3-turbo` failed with WinError 1314
+    (HF cache symlinks without Developer Mode). `asr.model_dir` now downloads into plain
+    `data/external/whisper/<model>/` (large-v3 2.9 GB, turbo 1.6 GB).
+  - **Results (synthetic speech: an optimistic bound, run 2026-09-24):** WER about 1% for both
+    models from clean down to 10 dB, 1.3–1.8% at 5 dB, 2.8–3.1% at 0 dB. **turbo is 1.7×
+    faster** (0.12 s vs 0.20 s median per sentence), at equal accuracy. The only
+    clean-audio errors were **digits** ("three o'clock" → "3 o'clock"), and `rules_v2` passed
+    them through (`TIME 3`). **Fixed:** `asr.spell_numbers` in `SpeechToGloss` before
+    glossing. On clean synthetic speech the ASR cost to gloss WER drops from 0.013 to 0.000.
+    The raw transcript is kept for WER.
+  - Still open: human recordings (when a mic is available) for the real number.
 
 *Phase 3 — training (user runs it):*
 - [ ] Only if Phase 2 says T5 is worth it: retrain T5 on
@@ -3631,7 +3677,11 @@ uses **draft** references (written by Claude) until the team supplies real ones.
 
 *Phase 4 — demo + deployment:*
 - [x] **Built 2026-09-24**, smoke-tested (Windows TTS wav → `tiny.en` on GPU → `TOMORROW IF RAIN ME STAY HOME | YOU HELP ME CAN`). `experiments/synthesis/speech.3.pipeline.demo.ipynb`: record → ASR → gloss,
-  local Jupyter, no Colab APIs.
+  local Jupyter, no Colab APIs. **Re-run 2026-09-24 with the no-mic fixes:** §1 skips cleanly,
+  and §2b gives "Yesterday my brother and I went to the store. Where is the cat?" →
+  `YESTERDAY MY BROTHER AND ME GO STORE | CAT WHERE` (large-v3 0.5 s for 4.9 s of audio).
+  Also: the aslg.0/aslg.1 re-run by the user reproduces report §9 exactly (T5 still missing, so
+  the hybrids equal the rules).
 - [ ] Cloudflare path (§12.5): Workers AI `whisper-large-v3-turbo` for ASR;
   gloss in the Worker (rules port) or T5 via ONNX/transformers.js. §12.5 decides.
   An `apps/` speech → gloss surface.
@@ -3643,7 +3693,7 @@ uses **draft** references (written by Claude) until the team supplies real ones.
 - **Provenance clue:** the team's T5 output has no `DESC-`/`X-`/`BE`, which are 21%/5% of
   ASLG tokens, so the checkpoint wasn't trained on raw ASLG-PC12 glosses (NCSLGR, or ASLG
   stripped). Still to confirm with the authors.
-- [ ] **User:** record the 30 sentences in `speech.2.asr.eval.ipynb` §1, then run §2–§3.
+- [ ] **User (when a mic is available):** record the 30 sentences in `speech.2.asr.eval.ipynb` §1, then run §2–§3. Until then §1b's synthetic speech stands in (optimistic).
 - [ ] **User/team:** review team30's draft references (`evalsets/team30.v1.json`), and
   write a **held-out sentence set not authored by Claude** — rules_v2's team30 score is
   circular until then.
