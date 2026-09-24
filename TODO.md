@@ -29,7 +29,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 |---|---|---|---|
 | ~~0~~ | ~~Re-run `gislr.3.streaming.continuous-eval.ipynb`~~ — **done 2026-09-24**: C1 D3 c **GER 0.293** (eval signers) vs baseline 0.507, oracle 0.221 → `docs/reports/continuous-models.md`. Optional follow-up: D5 = D3 ∪ D1 decoder for hard-cut | §12.3 | — |
 | 0b | Plan §12.4 add-a-sign (enroll C-open's 20 held-out glosses from 1/5/10 examples) | §12.4 | C-open (`1790146838`) is trained and waiting; decides how custom signs (§12.7) work |
-| 0c | §12.5 Cloudflare Workers deployment research → `docs/reports/deployment-research.md` | §12.5 | sets where each stage runs + latency budget before §12.6 picks an LLM/TTS |
+| 0c | §12.5 research **done 2026-09-24** (`docs/reports/deployment-research.md`): extraction + recognition client-side (user decision), recognizer proven in-browser (LiteRT.js 0.20 ms/frame). **Next: user answers the report's 4 open questions (§9), then build step 1 = `apps/web` live prototype** (camera → Holistic → step model → D3 → glosses; measure fps and mirroring) | §12.5 | first time real webcam landmarks reach the model |
 | 0d | §12.6 downstream LLM (fused acceptance, gloss → English, TTS), offline notebook first | §12.6 | user's 2026-09-24 ask; needs 12.5's model choices |
 | 0e | §12.7 custom-sign feature | §12.7 | product layer over 12.4 + 12.5 |
 | 0f | §13 **speech → gloss**: **built 2026-09-24** (`sb-synthesize` + 4 notebooks; aslg.0/aslg.1 run). Next: user records the 30 sentences (`speech.2.asr.eval.ipynb`); team reviews draft refs + writes a held-out set; authors send the T5 checkpoint | §13 | rules_v2 beats the team's engine on ASLG-PC12 (BLEU 36.4 vs 26.3); the guard blocks every meaning-changing T5 output; report §9 |
@@ -3043,7 +3043,7 @@ own plan and the user's review *before* it is built. Order agreed 2026-09-23
 | 12.2 | 3 (baselines) | existing isolated models on 12.1 | **run 2026-09-23** — `docs/reports/sentence-baselines.md` |
 | 12.3 | 1 + 4 | continuous frame-level model (null class, add-a-sign head) | **trained 2026-09-23** (C1/C2/C3 + C-open); final eval (§4) re-running 2026-09-24 |
 | 12.4 | 3 (rerun) + 4 | 12.3 on 12.1; teach held-out signs (model side of custom signs) | plan pending — **do 1st** |
-| 12.5 | — | pipeline structure + **Cloudflare Workers** deployment research | plan pending — **do 2nd** |
+| 12.5 | — | pipeline structure + **Cloudflare Workers** deployment research | **research done 2026-09-24**; build plan awaiting review |
 | 12.6 | — (2026-09-24) | downstream LLM: next-gloss prior fused with recognizer confidence, gloss → fluent English, TTS | plan pending — **do 3rd** |
 | 12.7 | — (2026-09-24) | user-facing custom-sign feature (capture → enroll → persist) | plan pending — **do 4th** |
 
@@ -3344,30 +3344,77 @@ duplicates.
   whether a *new signer's* few examples transfer (enroll with one signer,
   test on others vs same signer).
 
-### 12.5 Pipeline + Cloudflare Workers deployment research (plan + review needed)
+### 12.5 Pipeline + Cloudflare Workers deployment research — **research done 2026-09-24**, build plan awaiting review
+
+**User decision (2026-09-24):** landmark extraction **and** inference run on the
+client. The user asked to "prepare the full sign to speech pipeline" and to research
+TFLite exports, Cloudflare Workers and "Cloudflare remote functions".
+
+**Done 2026-09-24:** `docs/reports/deployment-research.md`, plus
+`sb.recognize.export.step` (`export_web(run_dir)`), a single-frame, stateful,
+**Flex-free** TFLite export of `gru_continuous`. The existing Kaggle export can't
+serve live use: it takes the whole clip, its WHILE loop needs Flex, and it has no
+continuous heads. C1 `1790143122` → 3.46 MB, 17 builtin ops. TFLite vs PyTorch
+prob diff 2.4e-6. **LiteRT.js 2.5.3 in headless Chrome (WASM): 0.20 ms/frame
+median, p95 0.30 ms, diff 6e-7.** WebGPU failed to compile headless (no adapter,
+probably); not needed. LiteRT.js is browser-only (fails in Node: needs `document`).
+The export is at `registry/runs/1790143122/export/web/` (gitignored, not registered
+in meta.json). The cosine class matrix is kept out of the graph (`classes.f32`), so
+custom signs are a client-side row append. Also observed: **deno 2.9.6 and node 26
+are now installed** (§10.1 had them missing).
+
+**Findings that change other sections:**
+- **§12.6: the next-gloss prior should run on the client** (n-gram over gloss IDs).
+  Workers AI documents no logprobs, so a hosted-LLM prior means k round trips or
+  uncalibrated ranking on every sign's accept path. The LLM keeps only gloss →
+  English. *Awaiting user confirmation.*
+- **§12.7: custom-sign prototypes** are 1 KB rows. DO storage or D1 plus an
+  IndexedDB cache; R2 is not needed.
+
+**Open questions for the user (report §9):** (1) which "remote functions" was meant:
+Workers RPC / remote bindings / Cap'n Web / Agents SDK `@callable` / SvelteKit
+(recommendation: Agents SDK `Agent`); (2) Free or Paid Workers plan; (3) web
+framework (default plain TS + Vite); (4) accept moving the prior to the client.
+
+**Build plan (report §9), nothing past step 0 built:**
+- [x] 0. Step export + LiteRT.js browser parity (2026-09-24).
+- [ ] 1. `apps/web` live prototype: camera → HolisticLandmarker (LIVE_STREAM) →
+  `frameToRows` → LiteRT.js step model → D3 → on-screen glosses. **Measure the
+  achieved fps, check mirroring/handedness on known signs**, then do a small live
+  accuracy A/B vs the eval numbers (report §4 risks 1–4).
+- [ ] 2. `apps/shared-ts`: generated gloss list / ME_132 rows / manifest schema, plus
+  a parity script against `sb.core.*`.
+- [ ] 3. n-gram prior + fused acceptance, offline notebook on 12.1 streams vs C1 D3
+  (→ §12.6).
+- [ ] 4. `apps/edge`: Agent (DO) session, Workers AI gloss → English
+  (versioned prompt), TTS stream back (→ §12.6).
+- [ ] 5. Custom signs, client-side enroll (→ §12.4/§12.7).
+- [ ] Follow-up: try fp16 weights for the step model (≈1.7 MB), re-check parity.
+
+Original research questions (answered in the report):
 
 `apps/` was scaffolded 2026-09-24 (READMEs fix the web/edge/shared-ts split and the
 contracts; tooling is left to this research). Write up as `docs/reports/deployment-research.md` (the 2026-09-23 chat plan
 for this was never written down — start fresh). Research questions:
 
-- [ ] **Where does each stage run?** Camera + MediaPipe landmarks almost
+- [x] **Where does each stage run?** Camera + MediaPipe landmarks almost
   certainly in the browser (MediaPipe Tasks for Web); the recognizer in the
   browser (TF.js / ONNX Runtime Web / TFLite-wasm) vs in a Worker; LLM + TTS
   on Workers AI or via an external API. Per-frame recognition over the
   network costs a round trip every frame — quantify it.
-- [ ] **Workers constraints** (verify from current Cloudflare docs, don't
+- [x] **Workers constraints** (verify from current Cloudflare docs, don't
   assume): CPU-time and memory limits, bundle size, WASM support, whether
   ONNX Runtime can run inside a Worker, cold starts.
-- [ ] **Workers AI catalogue**: which LLMs and TTS models are available,
+- [x] **Workers AI catalogue**: which LLMs and TTS models are available,
   their latency/pricing, and whether constrained or streaming output is
   supported (12.6 needs a next-gloss distribution over 250 glosses).
-- [ ] **Session state**: Durable Objects for per-session LLM context and
+- [x] **Session state**: Durable Objects for per-session LLM context and
   WebSocket streaming; where custom-sign prototypes live (KV / D1 / R2 — R2
   was not activated on this account as of 2026-09-04, §9.3).
-- [ ] **Export path**: the StreamingGRU/`ContinuousGRU` → browser format.
+- [x] **Export path**: the StreamingGRU/`ContinuousGRU` → browser format.
   TFLite export already exists (`sb.recognize.export.keras`); check it
   covers the continuous heads and the cosine head's `class_mask`.
-- [ ] Output: an architecture diagram, a latency budget per stage, and a
+- [x] Output: an architecture diagram, a latency budget per stage, and a
   recommendation. Resolves §10.2's and §9.8's open "deployment target"
   question.
 
@@ -3380,6 +3427,7 @@ combined with the recognizer's per-frame confidence and a sign is accepted
 when the combined score clears a threshold, (4) turns the accepted gloss
 sequence (ASL order, no inflection) into fluent English, (5) TTS speaks it.
 
+- **Proposed change (2026-09-24, §12.5 research; awaiting user OK):** the next-gloss prior runs **on the client** as an n-gram over gloss IDs (Workers AI documents no logprobs). The hosted LLM keeps only gloss → English. The item below would then compare n-gram vs LLM priors offline and ship the n-gram unless the gap is large.
 - [ ] **Fused acceptance, offline first** (notebook, on 12.1 streams with the
   12.3 decoders): LLM next-gloss distribution *constrained to the 250-gloss
   vocabulary* × recognizer confidence (shallow fusion, weight λ tuned on the

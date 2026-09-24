@@ -50,7 +50,7 @@ candidates cross the network. §12.5 quantifies this.
 
 | part | TODO | state |
 |---|---|---|
-| deployment research | §12.5 | plan pending |
+| deployment research | §12.5 | **done 2026-09-24**: `docs/reports/deployment-research.md`. Recognizer confirmed client-side (LiteRT.js, step export). Build plan awaiting review |
 | LLM + TTS | §12.6 | plan pending |
 | custom signs | §12.4 / §12.7 | plan pending |
 | live MediaPipe mode | §10.2 | folded into §12.5 |
