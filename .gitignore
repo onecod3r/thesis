@@ -29,3 +29,6 @@ final_saved_model/
 # graphify
 graphify-out/cache/
 graphify-out/.graphify_*
+
+# headroom runtime lock
+.claude/.headroom_wrap_settings.lock
