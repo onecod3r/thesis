@@ -27,7 +27,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 
 | # | next action | where | why now |
 |---|---|---|---|
-| **0** | **Re-run `gislr.3.streaming.continuous-eval.ipynb` (user)**: §4 is now resumable, and §3b extends the edge grids. Then Claude writes `docs/reports/continuous-models.md` | §12.3 | the 2026-09-24 run lost §4 to a disconnect (nothing saved). Selection-signer GER: C1 D3 **0.413** vs baseline **0.595** on the same signers |
+| ~~0~~ | ~~Re-run `gislr.3.streaming.continuous-eval.ipynb`~~ — **done 2026-09-24**: C1 D3 c **GER 0.293** (eval signers) vs baseline 0.507, oracle 0.221 → `docs/reports/continuous-models.md`. Optional follow-up: D5 = D3 ∪ D1 decoder for hard-cut | §12.3 | — |
 | 0b | Plan §12.4 add-a-sign (enroll C-open's 20 held-out glosses from 1/5/10 examples) | §12.4 | C-open (`1790146838`) is trained and waiting; decides how custom signs (§12.7) work |
 | 0c | §12.5 Cloudflare Workers deployment research → `docs/reports/deployment-research.md` | §12.5 | sets where each stage runs + latency budget before §12.6 picks an LLM/TTS |
 | 0d | §12.6 downstream LLM (fused acceptance, gloss → English, TTS), offline notebook first | §12.6 | user's 2026-09-24 ask; needs 12.5's model choices |
@@ -3236,7 +3236,7 @@ The design brief comes from `docs/reports/sentence-baselines.md` §5.
   `1790144582`, C3 `1790142624`, C-open `1790146838`. Two orphan runs
   (`1790139949`, `1790141422`) exist with `eval: pending` — superseded by the
   fresh runs the training cells created, not on the leaderboard.
-- [~] **Eval notebook: §4 lost to a disconnect (2026-09-24).** The user's long run
+- [x] **Eval notebook: §4 lost to a disconnect (2026-09-24) — re-run finished the same day; results below.** The user's long run
   was interrupted. **No §4 state was saved**: the old cell kept every result in
   memory and wrote `final.json` only after all 120 decode loops, and it had
   reached ~C2/D3 (~70 loops). On disk: `diag_C{1,2,3}.json` and
@@ -3270,6 +3270,22 @@ The design brief comes from `docs/reports/sentence-baselines.md` §5.
   - **Next (user):** re-run the notebook. §§1–3 are cached, so §3b and §4 do the
     work, and an interruption now loses at most one part. Then Claude writes
     `docs/reports/continuous-models.md`.
+  - **Re-run finished 2026-09-24 (all 13 parts + `final.json`). Report:
+    `docs/reports/continuous-models.md`.** Evaluation signers, `sentence` split:
+    **C1 D3 c GER 0.293** (sub 0.213 / del 0.064 / ins 0.017, sentence acc 0.377,
+    median latency +1 frame) vs best streaming baseline `gru` B4 c 0.507 (−42%),
+    `lstm` B2 c 0.659 (−56%), oracle `gru_reg` B1 0.221. C2 D3 c 0.298, C3 best
+    0.546 (D4). Substitutions are at oracle level → classification is the limit.
+    Hard-cut flips the decoder: D3 0.546, D1 c 0.486–0.491 (best). Reset decoders
+    (D1r/D2) insert on transitions (3.4–5.7 / 1k frames). Signs < 12 frames (25%)
+    recognized 54% vs 77–82% for longer.
+  - [ ] **Follow-up: D5 = D3 ∪ D1 decoder** (commit at the end of a non-null run
+    *or* at a high-β boundary crossing inside one), swept on cached forwards in
+    the same notebook — targets hard-cut without losing D3's paused-signing result.
+  - [ ] **Follow-up: short signs** (< 12 frames, 46% missed) — feed into §7's
+    normalization/augmentation ablations.
+  - **Deployment choice (recommendation, not yet user-confirmed):** C1 + D3 c
+    (ν=0.7, min_len 4), no state resets.
   - **Re-run in progress (observed 2026-09-24 ~08:48).** §1 parity passes (C1 has 1
     float near-tie at τ, tolerated). §2 diag and §3 sweeps load from cache. §3b ran.
     §4 had just started (`final C1 sentence with-null` 0/5054). §§5–6 have not run.
