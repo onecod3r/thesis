@@ -30,7 +30,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 | ~~0~~ | ~~Re-run `gislr.3.streaming.continuous-eval.ipynb`~~ — **done 2026-09-24**: C1 D3 c **GER 0.293** (eval signers) vs baseline 0.507, oracle 0.221 → `docs/reports/continuous-models.md`. Optional follow-up: D5 = D3 ∪ D1 decoder for hard-cut | §12.3 | — |
 | 0b | Plan §12.4 add-a-sign (enroll C-open's 20 held-out glosses from 1/5/10 examples) | §12.4 | C-open (`1790146838`) is trained and waiting; decides how custom signs (§12.7) work |
 | 0c | §12.5 research **done 2026-09-24** (`docs/reports/deployment-research.md`): extraction + recognition client-side (user decision), recognizer proven in-browser (LiteRT.js 0.20 ms/frame). All 4 open questions answered 2026-09-24 (Workers RPC not needed · Free plan · vanilla TS + Vite · prior on the client). **Next: build step 1 = `apps/web` live prototype** (camera → Holistic → step model → D3 → glosses; measure fps and mirroring) | §12.5 | first time real webcam landmarks reach the model |
-| 0d | §12.6: next-gloss sweep **done 2026-09-24**: the trigram prior gives −6% GER (0.293 → 0.276); **noise is the real problem** (0.982 unfiltered; the confidence floor → 0.580 but 39% of noise still spoken). **Decide: retrain C1 with noise as null?** **Floor-recall experiment built (2026-09-24): user runs `gislr.4.downstream.acceptance.ipynb` (about 10–20 min)** Clean floor deletes 511 correct signs (10.4%); `peak` scoring recovers +122 at equal errors on clean but not noisy Also: **add Cloudflare creds to `.env`** for the LLM/TTS arms; **review the 132 draft references** | §12.6 | stage 2 (prediction + fusion + noise rejection) and stage 3 (gloss → English) have no numbers on real decoding yet |
+| 0d | §12.6: next-gloss sweep **done 2026-09-24**: the trigram prior gives −6% GER (0.293 → 0.276); **noise is the real problem** (0.982 unfiltered; the confidence floor → 0.580 but 39% of noise still spoken). **Decide: retrain C1 with noise as null?** **Floor-recall experiment run + refined (2026-09-24): waiting 1 sign (lattice lag 1) → −2.4 missed/100 clean, −1.6 noisy at the floor's error rates (selection signers); user re-runs the acceptance notebook for the evaluation check (about 25 min)** Clean floor deletes 511 correct signs (10.4%); `peak` scoring recovers +122 at equal errors on clean but not noisy Also: **add Cloudflare creds to `.env`** for the LLM/TTS arms; **review the 132 draft references** | §12.6 | stage 2 (prediction + fusion + noise rejection) and stage 3 (gloss → English) have no numbers on real decoding yet |
 | 0e | §12.7 custom-sign feature | §12.7 | product layer over 12.4 + 12.5 |
 | 0f | §13 **speech → gloss**: all 4 notebooks run 2026-09-24. No mic on the remote PC, so ASR is measured on synthesized speech (WER about 1%, turbo 1.7× faster; digit fix added). Next: human recordings when a mic exists; team reviews draft refs + writes a held-out set; authors send the T5 checkpoint | §13 | rules_v2 beats the team's engine on ASLG-PC12 (BLEU 36.4 vs 26.3); the guard blocks every meaning-changing T5 output; report §9 |
 | ~~1~~ | ~~Restart the Jupyter kernels, then run one short training~~ — **effectively done**: the four §12.3 continuous runs trained end to end through the restructured stack on 2026-09-23 | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
@@ -3545,9 +3545,44 @@ D3, trigram, sentence-fold):**
       references and budget (§1), arms §2–§5, budget-matched choice + eval + per-signer bootstrap (§6),
       figures (§7).
     - Smoke run (30 streams/group, 21 s) passed end to end; smoke outputs deleted.
-  - [ ] **Next: the user runs `gislr.4.downstream.acceptance.ipynb`** (about 10–20 min, CPU, no model
-    runs; §5 fits the logistic regression). Then Claude writes report §2.2. Phase 3 (the noise-as-null
-    retrain) waits for these results; that was the recommendation, and the user did not override it.
+  - [x] **User ran `gislr.4.downstream.acceptance.ipynb` (2026-09-24, run 1, committed c60c5a4).**
+    **The θ grid was too coarse** for the 0.002 budget tolerance, so every family was chosen inside the
+    budget, with *more* deletions than the floor (e.g. lattice lag 1: selection clean del 0.377 vs 0.368).
+    Run-1 evaluation-signer GER (sentence clean / noisy / control clean / control noisy; noise accepted):
+    - floor: 0.347 / 0.580 / 0.343 / 0.580; 39%;
+    - floor+prior: 0.326 / 0.565 / 0.351 / 0.586; 40%;
+    - lattice lag 1: 0.336 / 0.545 / 0.385 / 0.589; 34%;
+    - lattice lag 2: 0.335 / 0.542 / 0.384 / 0.591; 33%;
+    - linear λ0: 0.348 / 0.548 / 0.368 / 0.565; 36%.
+    Run-1 results are saved as `results/final_run1.json` and `deltas_run1.csv`.
+  - Corrections to the diagnostic above, from alignment labels:
+    - rejected clean segments: 530 correct (33%), 939 wrong, 151 extra;
+    - a rejected *wrong* segment has its true gloss in the top 5 only 37% of the time on clean
+      (24% noisy). The overlap-based "60%" included correct segments.
+  - Linear selector: held-out-signer AUC 0.844 vs `q` 0.816 in-sample. Its weights are margin, log q,
+    log peak and (negatively) the null share; the prior features add little.
+  - **Refinement (Claude, 2026-09-24):**
+    - The notebook gained §5b: two rounds of 9 θ values at each family's budget edge. It ran on
+      the selection signers: 612 settings, about 7 min, `sweep_refine0/1.json`.
+    - Also in the notebook: shared `eligible()`/`all_sweeps()`; the choice is per family (lattice:
+      best k and λ per lag); the per-stream cache is keyed by a rule hash (it was keyed by label,
+      which would have gone stale).
+    - The binding limit is extra signs on noisy streams (0.0529).
+    - Budget-matched Δ missed signs vs the floor (selection signers, clean / noisy):
+      - **lattice lag 1** (k5, λ0.3, θ0.263): **−0.024 / −0.016**, 20 frames median delay;
+      - lattice lag 2 (k3, λ0.2, θ0.269): −0.022 / −0.020, 35 frames;
+      - linear λ0 (θ0.38): −0.006 / −0.028;
+      - per-sign floor: −0.011 / −0.010;
+      - floor+prior: −0.011 / −0.003;
+      - lag 0: −0.010 / −0.004;
+      - qp, margin, peak: worse (peak +0.15 clean).
+    - Report: `sign-to-speech-downstream.md` §2.2, figure `acceptance_tradeoff.png`.
+  - [ ] **Next: the user re-runs `gislr.4.downstream.acceptance.ipynb` top to bottom** (§1–§5b are
+    cached; about 25 min, almost all of it loading evaluation streams). This is the evaluation-signer
+    check of the refined settings. If lattice lag 1 holds, it replaces the plain floor (report §6
+    recommendation 0).
+  - [ ] Phase 3 (retrain C1 with noise as null) still pending the user's go. §2.2 again shows noise is
+    the ceiling: any method that recovers real signs also admits more noise.
 - **GRU LM result (§1, complete):** lowest held-out perplexity (51.3 vs trigram 52.1), but
   worse ranking (top-5 25.3% vs 30.0%, MRR 0.185 vs 0.207) and worse on unseen topics
   (perplexity 89.1 vs 74.5). **The n-gram is the predictor to ship.**
