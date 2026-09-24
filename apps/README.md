@@ -1,10 +1,17 @@
 # apps/ — deployment surfaces
 
 The live pipeline: camera → landmarks → recognizer → LLM → English → speech.
-Target platform: **Cloudflare Workers** (TODO §12.5). Nothing here runs yet.
-This tree fixes the *split* and the *contracts*. The tooling (bundler,
-`wrangler` config, which inference runtime) is chosen by the §12.5 research, not
-before it.
+Target platform: **Cloudflare Workers** (TODO §12.5).
+
+**Sign → speech runs in the browser as of 2026-09-24** (`web/`, see its README):
+- camera or video → Holistic → C1 step model (LiteRT.js) → lattice decoder + trigram
+  prior → rule-based English → `speechSynthesis`;
+- every Python-derived piece has a parity check, and a headless Chrome replay of 24
+  held-out streams matches Python exactly;
+- `edge/` serves it as static assets, with an optional LLM English route.
+
+Speech → sign is not in the app yet (user decision, 2026-09-24). Its gloss engine needs spaCy,
+and there are no sign videos to play.
 
 ```
 apps/
@@ -50,7 +57,9 @@ candidates cross the network. §12.5 quantifies this.
 
 | part | TODO | state |
 |---|---|---|
-| deployment research | §12.5 | **done 2026-09-24**: `docs/reports/deployment-research.md`. Recognizer confirmed client-side (LiteRT.js, step export). Build plan awaiting review |
-| LLM + TTS | §12.6 | plan pending |
+| deployment research | §12.5 | **done 2026-09-24**: `docs/reports/deployment-research.md`. Recognizer confirmed client-side (LiteRT.js, step export) |
+| **web app, sign → speech** | §12.5 step 1, §12.6 | **built 2026-09-24** (`web/`): parity tests pass, browser replay 24/24 identical to Python. **Not yet tried on a camera** |
+| edge Worker | §12.5 step 4 | **built 2026-09-24** (`edge/`): static assets + `/api/english` (Workers AI, prompt v1). Verified offline; LLM route and deploy need Cloudflare credentials |
+| LLM + TTS | §12.6 | rules English + browser voices in the app; LLM route in `edge/`; Workers AI TTS not wired |
 | custom signs | §12.4 / §12.7 | plan pending |
 | live MediaPipe mode | §10.2 | folded into §12.5 |

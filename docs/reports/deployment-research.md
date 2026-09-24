@@ -160,6 +160,10 @@ avoids ONNX, which this repo abandoned in §6.2.
    landmarks come from Tasks HolisticLandmarker. Any systematic difference (smoothing,
    the z scale; z is unused here since C1 is xy) is a domain shift. Worth one small
    A/B: record a few signs, compare live accuracy with the eval numbers.
+5. **Nobody in view (found 2026-09-24).** On an all-NaN frame the recognizer gives
+   p(null) ≈ 0.01, i.e. it is sure a sign is happening. Training frames always contain a
+   body, so an empty frame is outside its training data. The app treats "no pose detected"
+   as null and resets the state. A retrain with empty frames as null would fix it in the model.
 4. **The rest pose.** C1 was trained with synthetic rest and transition frames (§12.1:
    `p_lowered_rest` 0.7). A real user's hands-down rest may not look like them. D3
    depends on those null frames. GISLR-Sentences v2's "realistic lowered rest" follow-up
@@ -265,10 +269,10 @@ are edge/UX choices. The client-side recognizer is not a bottleneck.
 | step | what | output | TODO |
 |---|---|---|---|
 | **0 (done)** | step export + LiteRT.js browser parity | `sb.recognize.export.step`, this report | §12.5 |
-| 1 | **`apps/web` live prototype**: camera → HolisticLandmarker → `frameToRows` → LiteRT.js step model → D3 → on-screen glosses. Measure achieved fps and check mirroring on known signs | a page served by `wrangler dev` | §12.5, §10.2 |
+| 1 | **`apps/web` live prototype**: camera → HolisticLandmarker → `frameToRows` → LiteRT.js step model → D3 → on-screen glosses. Measure achieved fps and check mirroring on known signs. **Built 2026-09-24**, with the lattice, prior, rule English and browser speech. Parity: `npm test` (decoder 60 streams × 6 rules, prior, gloss → English 5,724 sequences) and a headless Chrome replay of 24 held-out streams, **identical to Python**. Holistic loads and runs headless (GPU delegate). **fps and mirroring still need a camera and a signer** | a page served by `wrangler dev` | §12.5, §10.2 |
 | 2 | `apps/shared-ts`: generated ports of the gloss list, ME_132 rows and the manifest schema, plus a parity script against Python (`sb.core.*`) | TS module + check | §12.5 |
 | 3 | n-gram gloss prior + fused acceptance, **offline first** in a notebook on 12.1's streams, compared against C1 D3's GER. **Built; selection check run** (rescore λ=0.3: 0.401 vs 0.413), full sweep pending. Also built: `OnlineDecoder` (the client loop) and an end-to-end demo, GER 0.245 on 300 held-out streams, streaming = offline (`sign-to-speech-downstream.md`) | notebook + GER table | §12.6 |
-| 4 | `apps/edge`: DO session, gloss → English on Workers AI with a versioned prompt (`prompts/v1/gloss2en.txt`). **Speech defaults to the browser's `speechSynthesis`**; Workers AI TTS opt-in (Free-plan cost, §6) | Worker + `wrangler.jsonc` | §12.6 |
+| 4 | `apps/edge`: DO session, gloss → English on Workers AI with a versioned prompt (`prompts/v1/gloss2en.txt`). **Speech defaults to the browser's `speechSynthesis`**; Workers AI TTS opt-in (Free-plan cost, §6). **Partly built 2026-09-24**: static assets + `/api/english` + `/api/health` (prompt hash = Python's). No DO session yet. Verified with `wrangler dev --env offline`; the LLM route needs credentials | Worker + `wrangler.jsonc` | §12.6 |
 | 5 | custom signs: capture → embed with the step model → append a row to `W`, persisted per user | web + edge | §12.4 → §12.7 |
 
 Step 1 is the next action. It is the first time real webcam landmarks reach the

@@ -29,8 +29,8 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 |---|---|---|---|
 | ~~0~~ | ~~Re-run `gislr.3.streaming.continuous-eval.ipynb`~~ — **done 2026-09-24**: C1 D3 c **GER 0.293** (eval signers) vs baseline 0.507, oracle 0.221 → `docs/reports/continuous-models.md`. Optional follow-up: D5 = D3 ∪ D1 decoder for hard-cut | §12.3 | — |
 | 0b | Plan §12.4 add-a-sign (enroll C-open's 20 held-out glosses from 1/5/10 examples) | §12.4 | C-open (`1790146838`) is trained and waiting; decides how custom signs (§12.7) work |
-| 0c | §12.5 research **done 2026-09-24** (`docs/reports/deployment-research.md`): extraction + recognition client-side (user decision), recognizer proven in-browser (LiteRT.js 0.20 ms/frame). All 4 open questions answered 2026-09-24 (Workers RPC not needed · Free plan · vanilla TS + Vite · prior on the client). **Next: build step 1 = `apps/web` live prototype** (camera → Holistic → step model → D3 → glosses; measure fps and mirroring) | §12.5 | first time real webcam landmarks reach the model |
-| 0d | §12.6: next-gloss sweep **done 2026-09-24**: the trigram prior gives −6% GER (0.293 → 0.276); **noise is the real problem** (0.982 unfiltered; the confidence floor → 0.580 but 39% of noise still spoken). **Decide: retrain C1 with noise as null?** **Floor-recall experiment done (2026-09-24): on the evaluation signers the lag-2 lattice beats the floor on missed (−1.4/100 clean, −0.7 noisy), wrong and extra signs, and noise (−2.1 pts); GER 0.347→0.320 clean; about 27 frames delay. Next: pin it in the demo/client** Clean floor deletes 511 correct signs (10.4%); `peak` scoring recovers +122 at equal errors on clean but not noisy Also: **add Cloudflare creds to `.env`** for the LLM/TTS arms; **review the 132 draft references** | §12.6 | stage 2 (prediction + fusion + noise rejection) and stage 3 (gloss → English) have no numbers on real decoding yet |
+| 0c | §12.5 **web app built 2026-09-24** (`apps/web`, `apps/edge`): sign → speech runs in the browser (Holistic → LiteRT.js step model → lag-2 lattice + trigram → rule English → browser voice). Parity tests pass and a headless Chrome replay of 24 held-out streams is identical to Python. **Next (user): first camera test**: `cd apps/web && npm run dev`; check mirroring, fps, a few known sentences | §12.5 | first time real webcam landmarks reach the model |
+| 0d | §12.6: next-gloss sweep **done 2026-09-24**: the trigram prior gives −6% GER (0.293 → 0.276); **noise is the real problem** (0.982 unfiltered; the confidence floor → 0.580 but 39% of noise still spoken). **Decide: retrain C1 with noise as null?** **Floor-recall experiment done (2026-09-24): on the evaluation signers the lag-2 lattice beats the floor on missed (−1.4/100 clean, −0.7 noisy), wrong and extra signs, and noise (−2.1 pts); GER 0.347→0.320 clean; about 27 frames delay. Now the web app's default rule** Clean floor deletes 511 correct signs (10.4%); `peak` scoring recovers +122 at equal errors on clean but not noisy Also: **add Cloudflare creds to `.env`** for the LLM/TTS arms; **review the 132 draft references** | §12.6 | stage 2 (prediction + fusion + noise rejection) and stage 3 (gloss → English) have no numbers on real decoding yet |
 | 0e | §12.7 custom-sign feature | §12.7 | product layer over 12.4 + 12.5 |
 | 0f | §13 **speech → gloss**: all 4 notebooks run 2026-09-24. No mic on the remote PC, so ASR is measured on synthesized speech (WER about 1%, turbo 1.7× faster; digit fix added). Next: human recordings when a mic exists; team reviews draft refs + writes a held-out set; authors send the T5 checkpoint | §13 | rules_v2 beats the team's engine on ASLG-PC12 (BLEU 36.4 vs 26.3); the guard blocks every meaning-changing T5 output; report §9 |
 | ~~1~~ | ~~Restart the Jupyter kernels, then run one short training~~ — **effectively done**: the four §12.3 continuous runs trained end to end through the restructured stack on 2026-09-23 | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
@@ -3345,6 +3345,36 @@ duplicates.
   test on others vs same signer).
 
 ### 12.5 Pipeline + Cloudflare Workers deployment research — **research done 2026-09-24**, build plan awaiting review
+
+**Web app built (2026-09-24, the user's request "prepare the web app for the pipelines").**
+- **Scope:** sign → speech only. The user chose that; speech → sign stays out until its gloss
+  engine (spaCy-bound `rules_v2`) and a sign-video source are decided.
+- **`apps/web`** (Vite + TS):
+  - camera / video file / held-out replay → Holistic (VIDEO mode) → LiteRT.js step model → TS
+    ports of `OnlineDecoder` + `decide` + `Lattice`, and of the KN n-gram and `gloss2en` →
+    `speechSynthesis`;
+  - UI: uncertain glosses greyed out (< 0.5), auto-speak only when every gloss is ≥ 0.5, the
+    lattice's "waiting" shown, sentence end after 45 null frames, a 30 fps resampling clock, a
+    mirror toggle, live fps and ms.
+- **`apps/web/tools/export.py`** writes the assets and parity fixtures from Python.
+  `pipeline.config.json` holds the deployed rule: the lag-2 lattice from §12.6.
+- **Parity, all passing:**
+  - `npm test`: decoder 60 streams × 6 rules identical; prior max diff 3e-15; gloss → English
+    5,724/5,724 identical;
+  - `scripts/browser-check.ts` (headless Chrome over CDP): **24/24 replay streams identical to
+    Python's TFLite + OnlineDecoder**, GER 0.219 on those 73 signs; Holistic loads and runs
+    (GPU delegate).
+- **Finding:** an all-NaN frame (nobody in view) gives p(null) ≈ 0.01. The app treats frames
+  with no pose as null and resets the state. Filed as deployment-research §4 risk 5.
+- **`apps/edge`:**
+  - Worker serving `web/dist` as static assets, `/api/health`, and `/api/english` (Workers AI,
+    prompt v1, hash = Python's);
+  - verified with `wrangler dev --env offline`; the AI route needs `CLOUDFLARE_API_TOKEN`;
+  - not deployed.
+- [ ] **Next (user):** open `npm run dev` with a camera. Check mirroring on a one-handed sign,
+  note the achieved fps, and try a few known sentences. That is the first real-signing test.
+- [ ] Credentials → `npm run dev` in `apps/edge` for the LLM English route; then `npm run deploy`.
+- [ ] Later: Durable Object session, custom signs (§12.7), speech → sign page.
 
 **User decision (2026-09-24):** landmark extraction **and** inference run on the
 client. The user asked to "prepare the full sign to speech pipeline" and to research
