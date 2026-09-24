@@ -121,3 +121,70 @@ def clean_sentence(text: str) -> str:
         if line.startswith(prefix):
             line = line[len(prefix):]
     return line.strip().strip('"').strip()
+
+
+class WorkersAITTS:
+    """Text -> speech on a Workers AI TTS model, cached as audio files.
+
+    The request body differs per model family (read 2026-09-24): Deepgram
+    Aura takes ``{"text", "speaker", "encoding", ...}`` and answers with raw
+    MPEG audio; MeloTTS takes ``{"prompt", "lang"}`` and may answer with
+    JSON carrying base64 audio. Both are handled. The format is sniffed from
+    the bytes. One file per (model, params, text) under ``cache_dir``.
+    """
+
+    def __init__(self, model: str, cache_dir: Path, timeout: float = 60.0, **params):
+        creds = credentials()
+        if creds is None:
+            raise RuntimeError("set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN (env or repo .env)")
+        self.account, self.token = creds
+        self.model, self.cache_dir, self.timeout, self.params = model, Path(cache_dir), timeout, params
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+    def _body(self, text: str) -> dict:
+        if "melotts" in self.model:
+            return {"prompt": text, "lang": self.params.get("lang", "en")}
+        return {"text": text, **self.params}
+
+    def speak(self, text: str, retries: int = 3) -> dict:
+        """-> ``{"path", "cached", "latency_s", "bytes"}``. ``latency_s`` is
+        the time to the complete audio (the REST call is not streamed)."""
+        import base64
+
+        body = self._body(text)
+        key = hashlib.sha256(json.dumps([self.model, body], sort_keys=True).encode()).hexdigest()[:24]
+        hit = next((p for ext in (".mp3", ".wav", ".ogg") if (p := self.cache_dir / f"{key}{ext}").exists()), None)
+        if hit is not None:
+            meta = json.loads(hit.with_suffix(".json").read_text()) if hit.with_suffix(".json").exists() else {}
+            return {"path": str(hit), "cached": True, "latency_s": meta.get("latency_s"), "bytes": hit.stat().st_size}
+        req = urllib.request.Request(API.format(account=self.account, model=self.model),
+                                     data=json.dumps(body).encode(),
+                                     headers={"Authorization": f"Bearer {self.token}",
+                                              "Content-Type": "application/json"})
+        err: Exception | None = None
+        for attempt in range(retries):
+            t0 = time.perf_counter()
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                    ctype = resp.headers.get("Content-Type", "")
+                    data = resp.read()
+                latency = time.perf_counter() - t0
+                if "json" in ctype or data[:1] == b"{":
+                    payload = json.loads(data)
+                    r = payload.get("result", payload)
+                    audio = r.get("audio") if isinstance(r, dict) else None
+                    if not audio:
+                        raise ValueError(f"no audio in Workers AI TTS response: {str(payload)[:300]}")
+                    data = base64.b64decode(audio)
+                ext = ".wav" if data[:4] == b"RIFF" else ".ogg" if data[:4] == b"OggS" else ".mp3"
+                path = self.cache_dir / f"{key}{ext}"
+                tmp = path.with_name(path.name + ".tmp")
+                tmp.write_bytes(data)
+                os.replace(tmp, path)
+                path.with_suffix(".json").write_text(json.dumps({"model": self.model, "body": body,
+                                                                 "latency_s": round(latency, 3)}))
+                return {"path": str(path), "cached": False, "latency_s": round(latency, 3), "bytes": len(data)}
+            except (urllib.error.URLError, TimeoutError, ValueError) as e:
+                err = e
+                time.sleep(2 ** attempt)
+        raise RuntimeError(f"Workers AI TTS call failed after {retries} tries: {err}")

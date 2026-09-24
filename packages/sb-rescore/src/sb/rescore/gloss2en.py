@@ -398,12 +398,15 @@ def convert(glosses: Sequence[str], lexicon: Mapping[str, Sequence[str]]) -> str
     sentence_no = False
     if len(toks) > 1 and toks[-1] == "no":
         toks, sentence_no = toks[:-1], True
+    lead_conj = toks.pop(0) if len(toks) > 1 and toks[0] in CONJ else None  # "if rain ..." -> "If ..."
     tense = "past" if PAST & set(toks) else "future" if FUTURE & set(toks) else "present"
     front = [t for t in toks if t in TIME_FRONT and toks.index(t) == 0]
     toks = [t for t in toks if t not in front]
     # clauses split at conjunctions
     parts: list[list[str]] = [[]]
     joins: list[str] = []
+    if lead_conj and len(toks) > 1 and toks[0] in {"rain", "snow"}:  # "if rain ..." -> "if it rains, ..."
+        parts, joins, toks = [[toks[0]], []], [","], toks[1:]
     for t in toks:
         if t in CONJ and parts[-1]:
             parts.append([])
@@ -419,9 +422,11 @@ def convert(glosses: Sequence[str], lexicon: Mapping[str, Sequence[str]]) -> str
             question = question or q
     body = texts[0] if texts else ""
     for j, t in zip(joins, texts[1:]):
-        body += f" {j} {t}"
+        body += f"{j} {t}" if j == "," else f" {j} {t}"
     if sentence_no:
         body = "no " + body
+    if lead_conj:
+        body = f"{lead_conj} {body}"
     pieces = [" ".join(_surface(t) for t in lead)] if lead else []
     head = " ".join(_surface(t) for t in front)
     if head:
