@@ -32,6 +32,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 | 0c | §12.5 Cloudflare Workers deployment research → `docs/reports/deployment-research.md` | §12.5 | sets where each stage runs + latency budget before §12.6 picks an LLM/TTS |
 | 0d | §12.6 downstream LLM (fused acceptance, gloss → English, TTS), offline notebook first | §12.6 | user's 2026-09-24 ask; needs 12.5's model choices |
 | 0e | §12.7 custom-sign feature | §12.7 | product layer over 12.4 + 12.5 |
+| 0f | §13 speech → sign: get the missing files from the authors, then the integration plan review | §13 | audit done 2026-09-24 (`docs/reports/speech-to-sign-audit.md`); nothing can be built or scored without the checkpoint + training code |
 | ~~1~~ | ~~Restart the Jupyter kernels, then run one short training~~ — **effectively done**: the four §12.3 continuous runs trained end to end through the restructured stack on 2026-09-23 | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
 | 2 | ~~Run the first checkpoint backup~~ — **done 2026-09-04**: 42 on Kaggle, local copies pruned after hash verification. Model confirmed **private** 2026-09-24 | §9.3 | was the last single-copy risk |
 | 3 | **Notebook §5b: the three-arm AWP/LateDropout ablation** (~30 min) | §4.2 | the 1st-place port has collapsed at epoch 15 twice and neither switch has been run alone, so the recipe is still unmeasured |
@@ -2662,7 +2663,7 @@ Still open, and deliberately so:
 - [-] **Rejected (recorded 2026-09-24).** **DVC.** Rejected in §9.3 and unchanged: its one advantage over the current
   setup — stage DAGs catching stale derived artifacts — is what §9.2's content
   addressing buys directly.
-- [~] **Partly answered (2026-09-24): §8 resolved as in scope, so `sb-rescore` is §12.6's home. `sb-synthesize` (speech → sign) still has no scope. `apps/` was scaffolded 2026-09-24 (web/ · edge/ · shared-ts/, README contracts only, for §12.5's Cloudflare deployment).** **`sb-rescore` and `sb-synthesize` are skeletons with no implementation**,
+- [~] **Partly answered (2026-09-24): §8 resolved as in scope, so `sb-rescore` is §12.6's home. `sb-synthesize` (speech → sign) is now scoped by §13 (2026-09-24). `apps/` was scaffolded 2026-09-24 (web/ · edge/ · shared-ts/, README contracts only, for §12.5's Cloudflare deployment).** **`sb-rescore` and `sb-synthesize` are skeletons with no implementation**,
   and `apps/*` is empty. That is the known cost of building the full tree before
   the code exists (§9.9's "empty scaffolding rots" argument). Each carries a
   docstring saying what is fixed regardless of the open scope question, so the
@@ -3362,6 +3363,73 @@ sequence (ASL order, no inflection) into fluent English, (5) TTS speaks it.
 Related: §8 (sentence-level data for an LLM — 12.1's corpus is the first
 sentence-level artifact in the repo, though synthetic), §11 (reset
 mechanism), §10.2 (livestream mode).
+
+---
+
+## 13. Speech → Sign: the merged Maimuna/Raiyan pipeline (2026-09-24, new)
+
+The user brought in the team's Colab notebook
+`chosen_merged_asl_pipeline_hybrid_1.ipynb`: Whisper large-v3 → rule engine +
+fine-tuned T5 → WLASL / signasl.org video / fingerspelling. It is the reverse
+direction to the rest of the repo, and it is the scope `sb-synthesize` and
+`experiments/synthesis/` were reserved for. **Audit + integration plan:
+`docs/reports/speech-to-sign-audit.md`.** The user's instruction: plan and
+research first, then integrate it as its own pipeline.
+
+**Audit findings (2026-09-24):**
+- [x] Inventory of what actually runs, plus the dead code (ASR normalization
+  unused; `best_of` ignored at temperature 0; `jiwer`/BLEU imported but unused;
+  the "3-stage evaluation" is not in the notebook).
+- [x] Rule engine run alone on the 30 batch sentences (isolated spaCy 3.8
+  env). **The T5 refinement causes the worst errors**: #19 you → HE, #25
+  her → ME (meaning flips), #20 `HE HE HE HE HE HE HE`, subjects dropped (#2,
+  #4, #12). The rule engine alone has none of these. T5 is better at ME,
+  time-fronting, IF/BUT/BEFORE/PLEASE, and phrasal verbs.
+- [x] Other issues: WLASL clips played untrimmed (`frame_start`/`frame_end`
+  ignored) and first-instance only; exact-match lexicon lookup; signasl.org
+  scraping (copyright/ToS, spoofed UA); WLASL is C-UDA non-commercial; no
+  reference glosses; Colab-only APIs; conflicting checkpoint provenance
+  (NCSLGR vs ASLG-PC12).
+
+**Blocked on the authors / user (report §6):**
+- [ ] Get `rule_engine.py`, `run_inference.py`, `step7_aslg_transfer.py`,
+  `training_metadata.json`, the T5 checkpoint, and the second dataset's
+  notebook/model.
+- [ ] Which corpus trained the checkpoint (NCSLGR / ASLG-PC12 / both), and
+  which split was held out?
+- [ ] The 30-sentence CSV. Do reference glosses exist? If not, write them
+  (with the user) so it becomes a scored test set.
+- [ ] Decisions for the user: drop signasl.org scraping (recommended); renderer
+  **A** (fixed WLASL video) first, then **B** (landmark avatar,
+  back-scored by our recognizer) as the research arm (recommended); host
+  `sb-synthesize` as the package (recommended).
+
+**Integration (plan + review first, per report §5):**
+- [ ] `sb.synthesize`: `asr.py`, `gloss/{rules_v1,rules_v2,t5,hybrid}.py`,
+  `lexicon.py`, `metrics.py`. `rules_v1` stays byte-identical (it is T5's
+  training input). `rules_v2` fixes ME, conjunctions/PLEASE, particles,
+  time-fronting and negation coverage.
+- [ ] **Guarded hybrid**: accept T5 only when it keeps the rule gloss's content
+  words and pronoun identity, else fall back; `no_repeat_ngram_size` /
+  `repetition_penalty` in `generate()`. Target: #19/#20/#25 fixed.
+- [ ] `wlasl.0.dataset.lexicon.ipynb`: WLASL via kagglehub (not Drive), clips
+  trimmed at 25 fps, preferred-signer choice, a synonym/lemma/embedding
+  fallback, coverage vs GISLR's 250 glosses.
+- [ ] `aslg.1.models.text2gloss.ipynb`: rules-v1 / rules-v2 / T5 / guarded
+  hybrid on held-out ASLG-PC12 **and** NCSLGR + the 30 sentences. Metrics:
+  BLEU-4 (for comparability with the literature), chrF, ROUGE-L, METEOR, gloss
+  WER; video coverage (exact / fuzzy / fingerspelled / missing).
+- [ ] `speech.3.pipeline.demo.ipynb`: local Jupyter, no Colab APIs.
+- [ ] T5 checkpoint → Kaggle via `sb-sync`. A `task` field in `meta.json`
+  (schema v5) if text2gloss runs get registry records.
+- [ ] Renderer B (landmark avatar): WLASL/GISLR clips → `sb-extract`
+  landmarks → browser skeleton, §12.1-style interpolated transitions; score
+  with our recognizer (back-recognition accuracy).
+
+**Links to other work:** §12.6's gloss → English is the reverse of this
+section's English → gloss (same corpora, one text↔gloss module); §12.5: Workers
+AI hosts both `whisper-large-v3-turbo` (ASR) and `melotts` (TTS), so one
+deployment covers both directions; `apps/` gains a speech → sign surface.
 
 ---
 
