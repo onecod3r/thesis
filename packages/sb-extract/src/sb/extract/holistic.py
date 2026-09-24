@@ -208,6 +208,34 @@ def _result_to_frame(result) -> np.ndarray:
     return frame
 
 
+def extract_video(video_path: str | Path, model_path: str | Path = DEFAULT_MODEL_PATH,
+                  confidence: dict | None = None) -> tuple[np.ndarray, float]:
+    """One video file -> ``((T, 543, 3) float32 landmarks, NaN where
+    undetected; fps)``, in this process. For demos and single files (e.g. the
+    sign -> speech demo, TODO §12.6). Bulk extraction is
+    :func:`extract_dataset`. Not paused with POPSIGN: this is the path any
+    future raw-video input takes."""
+    import cv2
+    import mediapipe as mp
+
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        raise IOError(f"cannot open video: {video_path}")
+    fps = cap.get(cv2.CAP_PROP_FPS) or DEFAULT_FPS
+    frames: list[np.ndarray] = []
+    with _make_landmarker(str(model_path), confidence) as lm:
+        ts_ms = 0.0
+        while True:
+            ok, bgr = cap.read()
+            if not ok:
+                break
+            image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
+            frames.append(_result_to_frame(lm.detect_for_video(image, round(ts_ms))))
+            ts_ms += 1000.0 / fps
+    cap.release()
+    return (np.stack(frames) if frames else np.empty((0, N_LANDMARKS, 3), np.float32)), float(fps)
+
+
 def _extract_one(job: tuple[str, str, str]) -> dict:
     """(video_path, out_path, video_id) → status dict. Runs in a worker process.
 
