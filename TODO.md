@@ -30,7 +30,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 | ~~0~~ | ~~Re-run `gislr.3.streaming.continuous-eval.ipynb`~~ — **done 2026-09-24**: C1 D3 c **GER 0.293** (eval signers) vs baseline 0.507, oracle 0.221 → `docs/reports/continuous-models.md`. Optional follow-up: D5 = D3 ∪ D1 decoder for hard-cut | §12.3 | — |
 | 0b | Plan §12.4 add-a-sign (enroll C-open's 20 held-out glosses from 1/5/10 examples) | §12.4 | C-open (`1790146838`) is trained and waiting; decides how custom signs (§12.7) work |
 | 0c | §12.5 research **done 2026-09-24** (`docs/reports/deployment-research.md`): extraction + recognition client-side (user decision), recognizer proven in-browser (LiteRT.js 0.20 ms/frame). All 4 open questions answered 2026-09-24 (Workers RPC not needed · Free plan · vanilla TS + Vite · prior on the client). **Next: build step 1 = `apps/web` live prototype** (camera → Holistic → step model → D3 → glosses; measure fps and mirroring) | §12.5 | first time real webcam landmarks reach the model |
-| 0d | §12.6: all experiments built; demo/TTS/gloss→English run 2026-09-24 (end-to-end GER 0.245 on 300 held-out streams, streaming = offline). **User: run `gislr.4.downstream.next-gloss.ipynb`** (trains tiny GRU LMs; widened grid), **add Cloudflare creds to `.env`** and re-run the LLM/TTS sections, **review the 132 draft references** | §12.6 | stage 2 (prediction + fusion + noise rejection) and stage 3 (gloss → English) have no numbers on real decoding yet |
+| 0d | §12.6: next-gloss sweep **done 2026-09-24**: the trigram prior gives −6% GER (0.293 → 0.276); **noise is the real problem** (0.982 unfiltered; the confidence floor → 0.580 but 39% of noise still spoken). **Decide: retrain C1 with noise as null?** Also: **add Cloudflare creds to `.env`** for the LLM/TTS arms; **review the 132 draft references** | §12.6 | stage 2 (prediction + fusion + noise rejection) and stage 3 (gloss → English) have no numbers on real decoding yet |
 | 0e | §12.7 custom-sign feature | §12.7 | product layer over 12.4 + 12.5 |
 | 0f | §13 **speech → gloss**: all 4 notebooks run 2026-09-24. No mic on the remote PC, so ASR is measured on synthesized speech (WER about 1%, turbo 1.7× faster; digit fix added). Next: human recordings when a mic exists; team reviews draft refs + writes a held-out set; authors send the T5 checkpoint | §13 | rules_v2 beats the team's engine on ASLG-PC12 (BLEU 36.4 vs 26.3); the guard blocks every meaning-changing T5 output; report §9 |
 | ~~1~~ | ~~Restart the Jupyter kernels, then run one short training~~ — **effectively done**: the four §12.3 continuous runs trained end to end through the restructured stack on 2026-09-23 | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
@@ -3493,10 +3493,24 @@ for this was never written down — start fresh). Research questions:
 - Fixed in `gloss2en`: a leading `if`/`because` ("The if will rain…" → "If it is raining,
   we stay home.").
 
-**Next-gloss notebook: user run in progress (observed 2026-09-24 ~17:20).** §1–§3 finished
-(`lm_eval.json`, `demo.json`, forward cache for all 4 variants × 2 groups, `noise_summary.json`).
-The §4 sweep is writing part files (D1/D3 `none`, D3 sentence-fold uni/bi/trigram so far).
-Do not commit the notebook until it finishes.
+**Next-gloss notebook: run complete (user, finished ~17:50 2026-09-24).** The notebook was
+re-executed from cache by Claude to save complete outputs, since Jupyter had last saved
+mid-run. Parity: D3 baseline 0.2934 = the continuous eval. **Results (evaluation signers,
+D3, trigram, sentence-fold):**
+- **Prior, clean-tuned (rescore λ=0.3, no floor): sentence GER 0.293 → 0.276** (−6%,
+  sentence accuracy 37.7% → 40.7%). Control (no grammar) 0.289 → 0.298 (+3%). theme-out shrinks
+  the gain to about a third. Bigram, trigram and 4-gram are equal; GRU slightly worse; unigram gives nothing.
+- **Noise: recognizer alone 0.982 on noisy sentences (75% of blocks accepted).** A
+  confidence floor θ=0.3 gives 0.580 (39% accepted; fidget 46%, reverse 41%, hold 30%) but
+  costs clean 0.293 → 0.347 (sub 0.213 → 0.091, del 0.064 → 0.252). Noise-tuned best (prior +
+  floor): 0.565 noisy / 0.326 clean. **The prior does nothing against noise. The length gate
+  never helps** (no chosen setting uses it). D1 is worse everywhere (best 0.480 clean).
+- `agree` ≈ `rescore` once tuned (0.327 vs 0.326 clean): no gain over rescore + floor.
+- The demo's 0.245 was an easy 300-stream sample; the same rule on all 5,054 streams is 0.276.
+- Report: `docs/reports/sign-to-speech-downstream.md` §2.1 (+2 figures).
+- [ ] **Next (proposal, needs the user's OK): retrain C1 with non-sign activity as null**
+  (fidget/hold segments in the training composer), then re-run this notebook. 39% noise
+  acceptance under the best decoder is too high for a product. A decoder cannot fix it.
 - **GRU LM result (§1, complete):** lowest held-out perplexity (51.3 vs trigram 52.1), but
   worse ranking (top-5 25.3% vs 30.0%, MRR 0.185 vs 0.207) and worse on unseen topics
   (perplexity 89.1 vs 74.5). **The n-gram is the predictor to ship.**
@@ -3507,7 +3521,7 @@ Do not commit the notebook until it finishes.
   deployment-research and speech-to-sign-audit reports).
 
 **Next actions:**
-- [~] **User: run `gislr.4.downstream.next-gloss.ipynb`** (running), then Claude writes
+- [x] **User: run `gislr.4.downstream.next-gloss.ipynb`**: done 2026-09-24, results above, then Claude writes
   `docs/reports/downstream-next-gloss.md` (questions in the notebook's §7).
 - [ ] **User: add `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` (Workers AI: Read) to
   `.env`**, then re-run the gloss-to-English notebook's §2–§4 (about 430 calls/model,

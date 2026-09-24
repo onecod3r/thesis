@@ -1,8 +1,9 @@
 # Sign → speech after the recognizer: next-gloss prediction, gloss → English, speech
 
-**TODO §12.6** · 2026-09-24 · status: **partial**. The stage 2 selection check, stage 3
-(rules arm), stage 4 (client voices) and the end-to-end integration check are run. The
-full next-gloss sweep, the LLM arm and the Workers AI TTS arm are **pending** (§7).
+**TODO §12.6** · 2026-09-24 · status: stage 2 **complete** (full sweep + evaluation
+signers, user run 2026-09-24, §2), stage 3 rules arm, stage 4 client voices, and the
+end-to-end integration check are run. The LLM arm and the Workers AI TTS arm are
+**pending** (§7).
 
 **Question.** C1 turns landmarks into glosses (GER 0.293, `continuous-models.md`). What
 has to happen after that to *speak* a sentence, and how good is each step?
@@ -21,17 +22,27 @@ Extraction and recognition run on the client (`deployment-research.md`).
 - **The whole chain runs, and the streaming path is the evaluated path.** On 300
   held-out streams, the browser's TFLite step model feeding the new frame-by-frame
   `OnlineDecoder` emits the same signs as the offline PyTorch + batch decoder on 293. The
-  other 7 are float near-ties, and there are **0 unexplained** mismatches. End to end:
-  **GER 0.245, 47% of sentences exactly right**. The recognizer takes 0.06 ms/frame, the
+  other 7 are float near-ties, and there are **0 unexplained** mismatches. On that sample,
+  end to end: **GER 0.245, 47% of sentences exactly right** (0.276 on all 5,054
+  evaluation streams with the same rule). The recognizer takes 0.06 ms/frame, the
   decoder 2 µs/frame, English about 0.01 ms and speech about 0.2 s (§5).
-- **A next-gloss prior helps a little, and only when blended gently.** On the selection
-  signers, a held-out trigram fused as `q·p^0.3` lowers GER from **0.413 to 0.401**
-  (−3%). Weighting it fully (λ=1) hurts, at 0.477 (§2).
+- **A next-gloss prior helps real sentences: GER 0.293 → 0.276 on the 16 evaluation
+  signers** (−6%, sentence accuracy 37.7% → 40.7%). It is a held-out trigram fused as
+  `q·p^0.3`, chosen on the selection signers. On random gloss sequences (`control`) it
+  costs 3% (0.289 → 0.298). Weighting it fully (λ=1) hurts (§2).
+- **Noise is the bigger problem, and the prior does not touch it.** With synthetic
+  non-sign activity inserted (1–2 blocks per sentence), GER goes from 0.293 to **0.982**:
+  75% of noise blocks come out as a sign. Only a **recognizer-confidence floor** (θ=0.3)
+  rejects noise: GER 0.580, 39% of blocks accepted. It costs clean accuracy (0.293 →
+  0.347), because it turns wrong signs into missed ones. The best noise-tuned setting
+  (prior + floor) reaches 0.565 noisy / 0.326 clean. **The length gate does not help** once
+  a floor is in place, and no selected setting uses it (§2).
 - **The "agree" rule does not lower GER. It trades wrong signs for missing ones.** The
   rule is the user's: accept a sign only when the prediction and the recognizer agree.
-  It cuts substitutions from 0.301 to 0.184, but deletions rise from 0.084 to 0.542. It
-  is a **precision mode** ("say nothing rather than a wrong word"), which may still be
-  the right UX choice for speech, but GER cannot show that (§2).
+  At strict settings it cuts substitutions from 0.301 to 0.184, but deletions rise from
+  0.084 to 0.542. Tuned on the full grid, it lands next to `rescore` (0.327 vs 0.326
+  clean). It is a **precision mode** ("say nothing rather than a wrong word"), which may
+  still be the right UX choice for speech, but GER cannot show that (§2).
 - **Predicting the next gloss is hard on this corpus, and counts beat a neural LM.** The
   best n-gram (trigram) ranks the true next gloss first 11–12% of the time, and in its
   top 5 30% of the time (vs 2% for a uniform guess). The GRU LM ranks worse (25% top-5). In-sample the 4-gram reaches
@@ -140,12 +151,59 @@ evaluation-signer results:
   0.598 on held-out streams, which is what prompted it. The full sweep's grid now reaches
   θ_hi 0.2 and k 50.
 
-**Noise rejection** is built and its streams are cached, but it is not yet scored. The
-evaluation signers' noisy sentence streams hold 2,410 `fidget` (median 94 frames), 2,600
-`hold` (96) and 2,535 `reverse` (21) blocks; the selection signers 797/715/778. `sb.recognize.sequences.noise`
-inserts `fidget`, `hold` and `reverse` blocks, and a `max_len` gate rejects long
-segments. The full sweep reports the noise false-accept rate per kind and what the gate
-costs in real signs (pending, §7).
+### 2.1 Full sweep and the evaluation signers (user run, 2026-09-24)
+
+`gislr.4.downstream.next-gloss.ipynb`, run to completion:
+- 22 sweep parts: D3 and D1 × {recognizer alone, 5 predictors × 2 held-out families} ×
+  every rule setting, **selected on the selection signers' noisy sentence streams**;
+- the chosen settings scored on the 16 evaluation signers in four variants: `sentence`
+  (corpus sentences) or `control` (random gloss sequences, no grammar), each clean or with
+  noise. Noise here is 1–2 blocks per stream: 2,410 `fidget` (median 94 frames), 2,600 `hold`
+  (96) and 2,535 `reverse` (21) on the evaluation signers.
+
+Parity holds: D3 with no prior and no floor reproduces `continuous-models.md`'s 0.2934.
+Because selection used noisy streams, every chosen D3 setting includes a **confidence
+floor θ=0.3**. To separate what the prior does from what the floor does, the clean-tuned
+rule from the selection check above (rescore λ=0.3, no floor) was also scored on the
+evaluation signers, from the cached forward passes
+(`data/cache/gislr/downstream/results/clean_vs_noise_tuned.json`):
+
+| rule (D3, trigram, sentence-fold) | sentence clean | sentence noisy | control clean | control noisy | noise blocks accepted |
+|---|---|---|---|---|---|
+| recognizer alone | 0.293 | 0.982 | 0.289 | 1.006 | 75% |
+| **+ prior, clean-tuned** (rescore λ=0.3) | **0.276** | 0.977 | 0.298 | 1.022 | 75% |
+| confidence floor only (θ=0.3) | 0.347 | 0.580 | 0.343 | **0.580** | **39%** |
+| **+ prior + floor, noise-tuned** (rescore λ=0.3, θ=0.3) | 0.326 | **0.565** | 0.351 | 0.586 | 40% |
+
+Sentence accuracy: clean 37.7% alone → **40.7%** with the prior; noisy 2.2% alone → 9.6% with prior + floor.
+
+![Evaluation-signer GER for every chosen D3 setting, four variants](assets/sign-to-speech-downstream/ger_by_setting.png)
+
+**What this says:**
+- **The prior is worth about 6% on real sentences and costs about 3% on sequences it
+  has no grammar for.** The gain is all substitutions (0.213 → 0.197). Under the floor it
+  is the same size (0.347 → 0.326 clean, 0.580 → 0.565 noisy). Topic shift cuts it to about a
+  third: under the floor, `theme-out` gets 0.341 vs `sentence-fold` 0.326 (floor alone 0.347).
+- **Which predictor hardly matters above unigram.** Bigram, trigram and 4-gram land
+  within 0.001 of each other (0.325–0.326 clean, 0.564–0.565 noisy). The GRU LM is slightly
+  worse (0.331 / 0.571), consistent with its weaker ranking in §1. A unigram (no context)
+  gives nothing (0.348).
+- **Noise dominates everything else.** Without a floor, three out of four noise blocks
+  become a spoken word. The floor rejects most `hold` blocks (30% accepted), fewer
+  `reverse` (41%) and fewest `fidget` (46%), which is spliced from real sign fragments
+  and genuinely sign-like. Under the floor, 39–40% of noise blocks still produce a sign,
+  too many for a product.
+- **The floor is a precision/recall dial, not a free fix.** On clean sentences it cuts
+  wrong signs from 0.213 to 0.091 and extra signs from 0.017 to 0.003, but missed signs
+  rise from 0.064 to 0.252. This is the same trade the `agree` rule makes.
+- **The length gate is useless here.** It only helps with no floor at all (θ=0: 1.030 →
+  0.974 at `max_len` 80). At every useful floor it raises GER (figure below), and no chosen
+  setting uses one. D3 merges a noise run with an adjacent sign into one long segment, so
+  the gate discards real signs along with the noise.
+- **D1 is worse on every variant** (best 0.480 clean / 0.632 noisy). It has the lowest
+  noise acceptance for `hold` (18–22%), but at a large cost in accuracy.
+
+![Recognizer alone on noisy selection streams: confidence floor θ along each line, one line per length gate](assets/sign-to-speech-downstream/noise_tradeoff.png)
 
 ## 3. Stage 3: gloss → English
 
@@ -220,27 +278,36 @@ Sample outputs (held-out signers):
 | if rain yourself haveto jacket | if rain yourself later jacket | "If it will rain, you later the jacket." |
 
 The 0.245 is on a random 300-stream sample with a rule chosen on the selection signers.
-It is not comparable to the 0.293 of all 5,054 streams until the full notebook reports
-the same set.
+On all 5,054 evaluation streams the same rule scores **0.276** (§2.1), so the sample
+happened to be easier. 0.276 vs 0.293 is the like-for-like comparison.
 
 ## 6. Recommendations
 
-1. **Ship `rescore` at a small λ as the default**, and offer `agree` as a user-selectable
-   "precise" mode, once the full sweep confirms both on the evaluation signers and on
-   noisy streams.
-2. **The prior ships as n-gram tables** (`NgramLM.to_dict()`, a few KB per order). The
-   GRU LM earns a place only if the full run shows it clearly ahead.
-3. **Speech: the browser's `speechSynthesis` by default.** Aura only on request.
-4. **gloss → English: rules offline/fallback, LLM on the edge**, pending the LLM arm's
+1. **Ship the trigram prior with `rescore` λ=0.3** (−6% GER on sentences, confirmed on the
+   evaluation signers). Expose the **confidence floor θ as the user-facing dial** between
+   "say everything" (θ=0) and "say only what you're sure of" (θ≈0.3). `agree` adds nothing
+   over `rescore` plus the floor. Drop the length gate.
+2. **The prior ships as n-gram tables** (`NgramLM.to_dict()`, a few KB per order). The GRU
+   LM loses on ranking (§1) and on GER (§2.1).
+3. **Noise needs a model fix, not a decoder fix.** 39% of synthetic noise blocks still
+   become words under the best decoder setting. Train C1 with non-sign activity labelled
+   **null**: fidget and hold segments composed into training streams, the way rest and
+   transitions already are (`sb.recognize.continuous.data.compose`). Then re-measure with this
+   notebook. This is the highest-value next experiment on the recognition side (TODO §12.3/§12.6).
+   Also measure on *real* non-signing once the live prototype exists; this noise is
+   built from sign frames and may be harder or easier than the real thing.
+4. **Speech: the browser's `speechSynthesis` by default.** Aura only on request.
+5. **gloss → English: rules offline/fallback, LLM on the edge**, pending the LLM arm's
    numbers and the reviewed references.
-5. **Port `OnlineDecoder`, `fuse.decide` and the n-gram to TypeScript** with the same
+6. **Port `OnlineDecoder`, `fuse.decide` and the n-gram to TypeScript** with the same
    parity checks (`apps/web`, deployment step 1).
 
 ## 7. Pending
 
 | what | where | needs |
 |---|---|---|
-| Full next-gloss sweep: all predictors incl. GRU, both families, D3/D1, **noise rejection**, evaluation signers, `control` split | `gislr.4.downstream.next-gloss.ipynb` | **running (user, 2026-09-24)**: §1–§3 done (predictor scores above, forward cache, noise); the §4 sweep in progress |
+| ~~Full next-gloss sweep~~ | `gislr.4.downstream.next-gloss.ipynb` | **done 2026-09-24** (§2.1) |
+| Retrain C1 with noise as null, then re-run the next-gloss notebook | `gislr.1.models.continuous.ipynb` + a composer change | a plan for review (TODO §12.6) |
 | LLM gloss → English (Llama 3.2-3B, 3.1-8B) | `gislr.4.downstream.gloss-to-english.ipynb` §2 | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` in `.env` |
 | Workers AI TTS (MeloTTS, Aura-1, Aura-2; about 1.6k neurons) | `gislr.4.downstream.tts.ipynb` §2 | the same credentials |
 | Reviewed English references | `sb.rescore` `evalset/gloss2en.v1.jsonl` | user review → v2 |
