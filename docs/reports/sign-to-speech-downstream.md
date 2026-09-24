@@ -33,8 +33,8 @@ Extraction and recognition run on the client (`deployment-research.md`).
   is a **precision mode** ("say nothing rather than a wrong word"), which may still be
   the right UX choice for speech, but GER cannot show that (§2).
 - **Predicting the next gloss is hard on this corpus, and counts beat a neural LM.** The
-  best n-gram (trigram) ranks the true next gloss first 11–12% of the time, and in its top 5 30% of the time (vs 2% for a
-  uniform guess), and the GRU LM ranks worse (25% top-5). In-sample the 4-gram reaches
+  best n-gram (trigram) ranks the true next gloss first 11–12% of the time, and in its
+  top 5 30% of the time (vs 2% for a uniform guess). The GRU LM ranks worse (25% top-5). In-sample the 4-gram reaches
   65% top-5, so the corpus is small enough to memorize (§1).
 - **Rule-based gloss → English is a usable offline baseline.** On 132 draft references
   it scores BLEU 60.2 / chrF 75.0 / 42% exact, vs 7.9 / 46.8 / 7% for the glosses as
@@ -61,7 +61,7 @@ to measure memorization. top-k is computed over gloss positions (end-of-sentence
 | sentence-fold | uniform | 251 | — | 2.0% | 4.0% | — | — | — |
 | sentence-fold | unigram | 104.2 | 2.8% | 9.5% | 15.1% | 13.7% | 7.6% | 0.075 |
 | sentence-fold | bigram | 52.8 | 10.3% | 28.9% | 39.2% | 16.4% | 34.7% | 0.196 |
-| sentence-fold | **trigram** | **52.1** | **11.6%** | **30.0%** | 39.2% | 16.4% | 36.4% | **0.207** |
+| sentence-fold | **trigram** | 52.1 | **11.6%** | **30.0%** | 39.2% | 16.4% | 36.4% | **0.207** |
 | sentence-fold | 4-gram | 54.4 | 11.4% | 30.0% | 39.1% | 16.4% | 36.3% | 0.206 |
 | sentence-fold | GRU LM | **51.3** | 10.4% | 25.3% | 34.0% | 16.3% | 29.5% | 0.185 |
 | theme-out | trigram | 74.5 | 11.8% | 27.5% | 35.6% | 15.1% | 33.2% | 0.197 |
