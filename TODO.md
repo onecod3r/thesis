@@ -30,7 +30,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 | ~~0~~ | ~~Re-run `gislr.3.streaming.continuous-eval.ipynb`~~ — **done 2026-09-24**: C1 D3 c **GER 0.293** (eval signers) vs baseline 0.507, oracle 0.221 → `docs/reports/continuous-models.md`. Optional follow-up: D5 = D3 ∪ D1 decoder for hard-cut | §12.3 | — |
 | 0b | Plan §12.4 add-a-sign (enroll C-open's 20 held-out glosses from 1/5/10 examples) | §12.4 | C-open (`1790146838`) is trained and waiting; decides how custom signs (§12.7) work |
 | 0c | §12.5 research **done 2026-09-24** (`docs/reports/deployment-research.md`): extraction + recognition client-side (user decision), recognizer proven in-browser (LiteRT.js 0.20 ms/frame). All 4 open questions answered 2026-09-24 (Workers RPC not needed · Free plan · vanilla TS + Vite · prior on the client). **Next: build step 1 = `apps/web` live prototype** (camera → Holistic → step model → D3 → glosses; measure fps and mirroring) | §12.5 | first time real webcam landmarks reach the model |
-| 0d | §12.6: next-gloss sweep **done 2026-09-24**: the trigram prior gives −6% GER (0.293 → 0.276); **noise is the real problem** (0.982 unfiltered; the confidence floor → 0.580 but 39% of noise still spoken). **Decide: retrain C1 with noise as null?** Also: **add Cloudflare creds to `.env`** for the LLM/TTS arms; **review the 132 draft references** | §12.6 | stage 2 (prediction + fusion + noise rejection) and stage 3 (gloss → English) have no numbers on real decoding yet |
+| 0d | §12.6: next-gloss sweep **done 2026-09-24**: the trigram prior gives −6% GER (0.293 → 0.276); **noise is the real problem** (0.982 unfiltered; the confidence floor → 0.580 but 39% of noise still spoken). **Decide: retrain C1 with noise as null?** **Floor-recall experiment planned (2026-09-24): approve?** Clean floor deletes 511 correct signs (10.4%); `peak` scoring recovers +122 at equal errors on clean but not noisy Also: **add Cloudflare creds to `.env`** for the LLM/TTS arms; **review the 132 draft references** | §12.6 | stage 2 (prediction + fusion + noise rejection) and stage 3 (gloss → English) have no numbers on real decoding yet |
 | 0e | §12.7 custom-sign feature | §12.7 | product layer over 12.4 + 12.5 |
 | 0f | §13 **speech → gloss**: all 4 notebooks run 2026-09-24. No mic on the remote PC, so ASR is measured on synthesized speech (WER about 1%, turbo 1.7× faster; digit fix added). Next: human recordings when a mic exists; team reviews draft refs + writes a held-out set; authors send the T5 checkpoint | §13 | rules_v2 beats the team's engine on ASLG-PC12 (BLEU 36.4 vs 26.3); the guard blocks every meaning-changing T5 output; report §9 |
 | ~~1~~ | ~~Restart the Jupyter kernels, then run one short training~~ — **effectively done**: the four §12.3 continuous runs trained end to end through the restructured stack on 2026-09-23 | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
@@ -3511,6 +3511,27 @@ D3, trigram, sentence-fold):**
 - [ ] **Next (proposal, needs the user's OK): retrain C1 with non-sign activity as null**
   (fidget/hold segments in the training composer), then re-run this notebook. 39% noise
   acceptance under the best decoder is too high for a product. A decoder cannot fix it.
+- [ ] **Floor recall experiment (2026-09-24, plan awaiting the user's approval):** the user asked
+  for fewer missed signs under the confidence floor without more wrong or extra signs.
+  **Diagnostic on the selection signers' cached C1 outputs** (Claude, no training; D3 segments
+  labelled by frame overlap, a heuristic, not the GER alignment):
+  - clean: the θ=0.3 floor rejects 1,620 segments. 511 of them (32%) were **correct**, which is
+    10.4% of the 4,895 true signs. The rest are 1,097 wrong and 12 spurious.
+  - noisy: it rejects 4,410 segments: 507 correct (11%), 2,727 noise, 1,071 wrong.
+  - Rejected segments' true label is in q's top-3 51%, top-5 60% and top-10 70% of the time
+    (accepted: 93/95/97%), so re-ranking can recover part of what the floor now deletes.
+  - At the floor's error budget, scoring by `peak` (the max per-frame probability of the voted
+    class) admits **+122 correct signs on clean** (about −0.025 deletions). On noisy it admits
+    **−248**, because noise produces peaky frames. `q` stays the best single noise separator
+    (AUC 0.73 below the floor). Uncertain signs and noise need different features, so the
+    selector has to be learned on both, or noise removed at the model (the retrain above).
+  - Noise fragments into short D3 segments (median 32 frames), which is why the length gate fails.
+  - Plan (phases): (0) budget-matched evaluation harness (real alignment labels, risk–coverage
+    curves, per-signer bootstrap); (1) no-training arms: `peak`/margin scores, per-class
+    shrunk floors, segment-lattice decoding with one segment of look-ahead (top-k + skip,
+    n-gram both sides); (2) a tiny learned acceptance selector (logistic regression on segment
+    + prior features, the user runs it); (3) repeat on the noise-as-null retrain. Next action:
+    **the user approves or edits the plan.**
 - **GRU LM result (§1, complete):** lowest held-out perplexity (51.3 vs trigram 52.1), but
   worse ranking (top-5 25.3% vs 30.0%, MRR 0.185 vs 0.207) and worse on unseen topics
   (perplexity 89.1 vs 74.5). **The n-gram is the predictor to ship.**
