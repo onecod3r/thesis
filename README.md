@@ -52,8 +52,8 @@ Top 5 by canonical val accuracy, **current-split GISLR runs only** (training-loo
 | `1789559734` | gislr | gru | ME_132 | xy | 0.7517 | canonical | 860,938 |
 | `1789558839` | gislr | gru | ME_126 | xy | 0.7450 | canonical | 851,698 |
 | `1789560829` | gislr | gru | FP_118 | xy | 0.7425 | canonical | 839,378 |
+| `1790139949` | gislr | gru_continuous | ME_132 | xy | 0.7233 | pending | 927,505 |
 | `1790143122` | gislr | gru_continuous | ME_132 | xy | 0.7188 | canonical | 927,505 |
-| `1790144582` | gislr | lstm_continuous | ME_132 | xy | 0.7144 | canonical | 1,192,721 |
 <!-- /generated:registry-summary -->
 
 ### Checkpoints live on Kaggle
