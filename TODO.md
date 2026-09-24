@@ -3270,6 +3270,16 @@ The design brief comes from `docs/reports/sentence-baselines.md` §5.
   - **Next (user):** re-run the notebook. §§1–3 are cached, so §3b and §4 do the
     work, and an interruption now loses at most one part. Then Claude writes
     `docs/reports/continuous-models.md`.
+  - **Re-run in progress (observed 2026-09-24 ~08:48).** §1 parity passes (C1 has 1
+    float near-tie at τ, tolerated). §2 diag and §3 sweeps load from cache. §3b ran.
+    §4 had just started (`final C1 sentence with-null` 0/5054). §§5–6 have not run.
+    The notebook is **not committed** until the run finishes.
+    - **§3b results (selection GER):** the best settings do not change. C1 D3
+      collapsed stays **0.413** (ν=0.7, min_len 4). ν=0.8/0.9 score worse, so ν=0.7
+      is now an interior optimum. C2 D3 uncollapsed moves to ν=0.8 (0.467). C1 D1
+      collapsed moves to β=0.8, min_mass 8 (0.537, interior). D1 non-collapsed still
+      picks the new maximum (β=0.9, min_mass 16; C1 0.637, C2 0.646), but it is far
+      behind D3, so it is not worth widening again.
 - [x] **Parity fixed; the run itself is tracked by the partial-run item above (2026-09-24).** **Run the eval notebook** — first attempt 2026-09-23 stopped at the §1
   parity cell (C1: 1/10 D2-vs-live-loop mismatches). **Not a decoder bug**
   (diagnosed 2026-09-23): a float tie at the threshold. At frame 347 of
