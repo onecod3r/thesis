@@ -3286,7 +3286,7 @@ The design brief comes from `docs/reports/sentence-baselines.md` §5.
     normalization/augmentation ablations.
   - **Deployment choice (recommendation, not yet user-confirmed):** C1 + D3 c
     (ν=0.7, min_len 4), no state resets.
-  - **Re-run in progress (observed 2026-09-24 ~08:48).** §1 parity passes (C1 has 1
+  - ~~Re-run in progress (observed 2026-09-24 ~08:48)~~ — *superseded: the run finished; see the "Re-run finished" bullet above.* §1 parity passes (C1 has 1
     float near-tie at τ, tolerated). §2 diag and §3 sweeps load from cache. §3b ran.
     §4 had just started (`final C1 sentence with-null` 0/5054). §§5–6 have not run.
     The notebook is **not committed** until the run finishes.
@@ -3410,7 +3410,7 @@ sequence (ASL order, no inflection) into fluent English, (5) TTS speaks it.
 - [ ] Guardrails: reject an enrollment that collides with an existing gloss
   (high cosine similarity to its prototype), and a way to delete/re-record.
 
-**Gap check, sign → speech (2026-09-24).** Nothing deployable exists yet:
+**Status check, sign → speech (2026-09-24, re-confirmed ~13:35).** Unchanged: the recognizer half is done offline (C1 D3 GER 0.293), and none of 12.4–12.7 is started. The next step is the §12.4 plan. **Gap check (2026-09-24).** Nothing deployable exists yet:
 `apps/` is READMEs only, `sb-rescore` is a skeleton, and
 `sb.recognize.export` (`keras.py`/`tflite.py`) has no support for the
 continuous model (`ContinuousGRU`'s null/boundary heads, the cosine head's
