@@ -184,3 +184,53 @@ Sources: [Workers AI whisper-large-v3-turbo](https://developers.cloudflare.com/w
 [ASLG-PC12 paper](https://www.sign-lang.uni-hamburg.de/lrec/pub/12019.pdf) ·
 [aslg_pc12 on Hugging Face](https://huggingface.co/datasets/achrafothman/aslg_pc12) ·
 [NCSLGR download info](https://www.bu.edu/asllrp/ncslgr-for-download/download-info.html)
+
+## 7. Follow-up questions (2026-09-24)
+
+### 7.1 Google Speech Commands v0.02: not useful here
+
+It is a **keyword-spotting** set: ~1 s clips of 35 isolated words ("yes", "no", "up",
+"stop", digits, a few nouns, plus background-noise files). The pipeline's ASR is Whisper,
+which is open-vocabulary and already transcribes whole sentences (1.28 s in the recorded
+run). Training on Speech Commands would shrink the input to 35 words, and only 12 of them
+are GISLR glosses (`yes no up down on go bed bird cat dog happy tree`). It can't test
+sentence ASR either, since it has no sentences.
+
+The only narrow uses are the background-noise files, for a noise-robustness check of Whisper
+(mixing noise into our own test recordings), or a tiny on-device wake-word/command mode.
+Neither is on the plan. Licensing: the Kaggle mirror (`yashdogra/speech-commands`) is
+labelled CC BY-NC-SA 4.0; the original Google release is CC BY 4.0, so use the original if
+it is ever needed.
+
+For ASR evaluation, what's needed is **sentence-level English speech with transcripts**:
+our own recordings of the 30 test sentences, or a public read-speech set.
+
+### 7.2 A ready-made renderer instead of per-word video clips
+
+| Option | What it is | ASL? | Fit |
+|---|---|---|---|
+| **`spoken-to-signed-translation`** (sign-language-processing, **MIT**) | text → gloss → **pose lookup in a lexicon** → concatenation/smoothing → `.pose` or `.mp4`; fingerspells missing words by default; prints coverage | **No ASL lexicon shipped** (Swiss languages, DGS, BSL). The lexicon is pluggable (`--lexicon`, CSV index + pose files) | **Best fit.** Its poses are MediaPipe Holistic, the same 543-point format as GISLR, so we can build the ASL lexicon ourselves from GISLR's npz (250 glosses, many exemplars each) and later from WLASL run through `sb-extract`. This is renderer B, with the library doing the concatenation |
+| CWASA / JASigning (UEA) | HTML5/WebGL 3D avatar driven by SiGML/HamNoSys notation | Needs a HamNoSys transcription **per sign**; no large ASL lexicon exists in that notation | Polished avatar, but writing 250+ transcriptions by hand is a project in itself |
+| Commercial (Signapse, Hand Talk, …) | Hosted avatar/video APIs | Some ASL | Closed and paid; not a thesis contribution |
+
+**Recommendation:** use `spoken-to-signed-translation` for gloss → pose, with **our own
+ASL lexicon built from GISLR** (one exemplar per gloss, chosen by our recognizer's
+confidence, so the rendered sign is one the model recognizes). Render the skeleton in the
+browser, where it fits `apps/web` and the Cloudflare plan with no video hosting, and add a
+3D avatar later if needed.
+
+Why this beats the clip approach:
+- no WLASL licence or scraping problem;
+- one visual style instead of a new signer for every word;
+- smooth transitions between signs;
+- the output can be scored automatically by our recognizer.
+
+Caveats:
+- A skeleton is less readable to Deaf viewers than real video. Needs a small user check.
+- GISLR phone recordings have noisy face landmarks, which matters for signs that rely on
+  facial expression.
+- Vocabulary is 250 glosses until WLASL landmarks are added; everything else is fingerspelled.
+
+Sources: [spoken-to-signed-translation](https://github.com/sign-language-processing/spoken-to-signed-translation) ·
+[its paper (arXiv 2305.17714)](https://arxiv.org/abs/2305.17714) ·
+[CWASA](https://vh.cmp.uea.ac.uk/index.php/CWA_Signing_Avatars)

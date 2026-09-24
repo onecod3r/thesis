@@ -3426,6 +3426,16 @@ research first, then integrate it as its own pipeline.
   landmarks → browser skeleton, §12.1-style interpolated transitions; score
   with our recognizer (back-recognition accuracy).
 
+**User questions answered 2026-09-24** (report §7):
+- [x] Google Speech Commands v0.02: **not useful**. Keyword spotting over 35 words,
+  12 of them GISLR glosses; Whisper is already open-vocabulary. At most, its noise
+  files could be used for an ASR robustness check. Awaiting the user's agreement.
+- [ ] **Renderer: use a ready-made library instead of clips** (user's idea).
+  Recommended: `spoken-to-signed-translation` (MIT, MediaPipe-Holistic poses,
+  pluggable lexicon, fingerspelling fallback) + **our own ASL lexicon built from
+  GISLR npz** (best exemplar per gloss by recognizer confidence) + a browser skeleton
+  viewer. Replaces renderer A/B's clip path. Awaiting the user's go-ahead.
+
 **Links to other work:** §12.6's gloss → English is the reverse of this
 section's English → gloss (same corpora, one text↔gloss module); §12.5: Workers
 AI hosts both `whisper-large-v3-turbo` (ASR) and `melotts` (TTS), so one
