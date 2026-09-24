@@ -3041,7 +3041,7 @@ own plan and the user's review *before* it is built. Order agreed 2026-09-23
 |---|---|---|---|
 | **12.1** | 2 | GISLR-Sentences: sentence corpus + test-derived continuous dataset → Kaggle | **built + run 2026-09-23; upload pending** |
 | 12.2 | 3 (baselines) | existing isolated models on 12.1 | **run 2026-09-23** — `docs/reports/sentence-baselines.md` |
-| 12.3 | 1 + 4 | continuous frame-level model (null class, add-a-sign head) | **built 2026-09-23, not yet trained** |
+| 12.3 | 1 + 4 | continuous frame-level model (null class, add-a-sign head) | **trained 2026-09-23** (C1/C2/C3 + C-open); final eval (§4) re-running 2026-09-24 |
 | 12.4 | 3 (rerun) + 4 | 12.3 on 12.1; teach held-out signs (model side of custom signs) | plan pending — **do 1st** |
 | 12.5 | — | pipeline structure + **Cloudflare Workers** deployment research | plan pending — **do 2nd** |
 | 12.6 | — (2026-09-24) | downstream LLM: next-gloss prior fused with recognizer confidence, gloss → fluent English, TTS | plan pending — **do 3rd** |
@@ -3393,6 +3393,12 @@ sequence (ASL order, no inflection) into fluent English, (5) TTS speaks it.
   constrained vocabulary and give it a user-provided English meaning.
 - [ ] Guardrails: reject an enrollment that collides with an existing gloss
   (high cosine similarity to its prototype), and a way to delete/re-record.
+
+**Gap check, sign → speech (2026-09-24).** Nothing deployable exists yet:
+`apps/` is READMEs only, `sb-rescore` is a skeleton, and
+`sb.recognize.export` (`keras.py`/`tflite.py`) has no support for the
+continuous model (`ContinuousGRU`'s null/boundary heads, the cosine head's
+`class_mask`) — the §12.5 export item is confirmed open, not just unchecked.
 
 Related: §8 (sentence-level data for an LLM — 12.1's corpus is the first
 sentence-level artifact in the repo, though synthetic), §11 (reset
