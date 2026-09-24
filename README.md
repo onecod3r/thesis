@@ -344,8 +344,10 @@ signbridge/
 │   ├── cache/<dataset>/      #   derived artifacts; features/<pipeline>/<key>/ is content-addressed
 │   ├── temp/                 #   throwaway scratch — deleted after use (cleanup_temp())
 │   └── external/             #   third-party assets (MediaPipe .task model)
-├── apps/                     # deployment surfaces (scaffolded)
-│   ├── web/ · edge/ · shared-ts/
+├── apps/                     # deployment surfaces — Cloudflare Workers target (TODO §12.5); READMEs/contracts only so far
+│   ├── web/                  #   browser: camera, MediaPipe, streaming recognizer, custom-sign capture
+│   ├── edge/                 #   Worker(s): session, downstream LLM, TTS
+│   └── shared-ts/            #   TS ports of sb.core contracts + web↔edge wire messages
 ├── schemas/                  # GENERATED machine contracts — never hand-edit
 │   └── meta.v4.json          #   JSON Schema for a run record, rendered from sb.mlops.registry::FIELDS
 ├── ops/                      # housekeeping (PowerShell etc.), no project Python
