@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SignBridge — sign to speech</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <header>
+    <h1>SignBridge <span class="sub">sign → speech</span></h1>
+    <p id="status" class="status">Loading…</p>
+  </header>
+
+  <main>
+    <section class="controls" aria-label="Input">
+      <div class="row">
+        <label>Source
+          <select id="source">
+            <option value="replay">Held-out replay (no camera needed)</option>
+            <option value="camera">Camera</option>
+            <option value="file">Video file</option>
+          </select>
+        </label>
+        <select id="replay-stream" aria-label="Replay stream"></select>
+        <input id="file" type="file" accept="video/*" hidden />
+        <button id="start" disabled>Start</button>
+        <button id="stop" disabled>Stop</button>
+        <button id="replay-all" disabled title="Replay every held-out stream and compare with Python">Check all</button>
+      </div>
+      <div class="row toggles">
+        <label><input id="mirror" type="checkbox" /> Mirror input (swap hands)</label>
+        <label><input id="resample" type="checkbox" checked /> Resample to <span id="target-fps">30</span> fps</label>
+        <label><input id="auto-speak" type="checkbox" checked /> Speak confident sentences automatically</label>
+        <label>Voice <select id="voice"></select></label>
+        <label id="llm-wrap" hidden><input id="llm" type="checkbox" /> English by LLM (edge; rules offline otherwise)</label>
+      </div>
+    </section>
+
+    <section class="stage">
+      <div class="video-wrap">
+        <video id="video" playsinline muted></video>
+        <canvas id="overlay"></canvas>
+        <div id="replay-card" class="replay-card" hidden></div>
+      </div>
+      <aside class="live">
+        <h2>Now</h2>
+        <div id="chips" class="chips" aria-live="polite"></div>
+        <p id="waiting" class="waiting"></p>
+        <div class="meter" title="1 − p(null): how much the recognizer thinks a sign is happening">
+          <div id="activity"></div>
+        </div>
+        <dl class="stats">
+          <dt>Landmark fps</dt><dd id="fps">–</dd>
+          <dt>Recognizer</dt><dd id="rec-ms">–</dd>
+          <dt>MediaPipe</dt><dd id="mp-ms">–</dd>
+          <dt>Holistic delegate</dt><dd id="delegate">–</dd>
+        </dl>
+        <p class="legend"><span class="chip">sure</span> <span class="chip uncertain">unsure?</span> Glosses under
+          <span id="uncertain-below">0.5</span> confidence are greyed out. They are right far less often.</p>
+      </aside>
+    </section>
+
+    <section>
+      <h2>Sentences</h2>
+      <ol id="sentences" class="sentences" reversed></ol>
+    </section>
+
+    <section id="check" class="check" hidden>
+      <h2>Replay check: browser vs Python</h2>
+      <p id="check-summary"></p>
+      <table>
+        <thead><tr><th>stream</th><th>signed</th><th>Python</th><th>browser</th><th>same?</th></tr></thead>
+        <tbody id="check-rows"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <footer>
+    <p>Recognizer C1 (continuous GRU, 250 GISLR signs) · D3 + look-ahead lattice with a trigram prior ·
+      rule-based English (offline) · your browser's own voice. Everything runs on this device.</p>
+    <p>Trained on composed GISLR clips, not real continuous signing: expect it to be wrong often.
+      See <code>docs/reports/sign-to-speech-demo-analysis.md</code>.</p>
+  </footer>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

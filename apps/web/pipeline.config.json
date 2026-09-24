@@ -1,0 +1,34 @@
+{
+  "_comment": "Sign -> speech in the browser (TODO §12.5/§12.6). The deployed settings, in one place. tools/export.py copies this into public/assets/pipeline.json with the model's hashes; the app reads only that file. Python is authoritative for every number here.",
+  "run": "C1",
+  "corpus_version": "v1",
+  "prior": {
+    "order": 3,
+    "discount": 0.75,
+    "_note": "Kneser-Ney trigram fitted on every GISLR-Sentences v1 corpus sentence (the deployed prior; the notebooks score held-out folds)."
+  },
+  "rule": {
+    "kind": "lattice",
+    "theta": 0.2687,
+    "lam": 0.2,
+    "k": 5,
+    "lag": 2,
+    "max_len": null,
+    "_source": "docs/reports/sign-to-speech-downstream.md §2.2: beats the θ=0.3 floor on missed, wrong and extra signs and noise on the evaluation signers (GER 0.347 -> 0.320 clean, 0.580 -> 0.547 noisy); about 27 frames of delay on uncertain signs."
+  },
+  "collapse": true,
+  "sentence_end_null_frames": 45,
+  "target_fps": 30,
+  "display": {
+    "uncertain_below": 0.5,
+    "_note": "sign-to-speech-demo-analysis.md §2: glosses under 0.5 are right 27-74% of the time; they are greyed out."
+  },
+  "speech": {
+    "auto_speak_min_confidence": 0.5
+  },
+  "replay": {
+    "n_streams": 24,
+    "seed": 42
+  },
+  "holistic_model_url": "https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/latest/holistic_landmarker.task"
+}

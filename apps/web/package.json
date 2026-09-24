@@ -1,0 +1,26 @@
+{
+  "name": "@signbridge/web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Sign -> speech in the browser: camera or video file -> MediaPipe Holistic -> C1 step model (LiteRT.js) -> D3 + lattice decoder with the n-gram prior -> gloss -> English rules -> speechSynthesis (TODO \u00c2\u00a712.5/\u00c2\u00a712.6).",
+  "scripts": {
+    "assets": "node scripts/assets.ts",
+    "predev": "node scripts/assets.ts",
+    "dev": "vite",
+    "prebuild": "node scripts/assets.ts",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@litertjs/core": "2.5.3",
+    "@mediapipe/tasks-vision": "1.0.1"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vite": "8.3.1",
+    "@types/node": "^24.0.0"
+  }
+}
