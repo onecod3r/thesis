@@ -33,10 +33,10 @@ behind "remote functions".
   Aura / MeloTTS).** Session state lives in a Durable Object. On price, a spoken
   sentence costs about $0.002 with `aura-2-en`. With `melotts` it is effectively free
   (§6).
-- **"Remote functions" can mean four things (§7).** Plain Workers RPC is
-  Worker-to-Worker only, so a browser cannot call it. **Recommendation: an Agents SDK
-  `Agent` (a Durable Object) with `@callable()` methods**, reached over one WebSocket.
-  **Cap'n Web** is the lighter fallback.
+- **Workers RPC is not needed (user, 2026-09-24).** The browser can't call it, and
+  with recognition on the client the only browser ↔ edge traffic is one message per
+  accepted sign plus the audio back. That is a plain WebSocket to the Worker/session DO
+  (§7).
 
 ## 1. The pipeline as it would ship
 
