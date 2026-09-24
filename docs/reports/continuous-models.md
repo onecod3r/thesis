@@ -194,6 +194,17 @@ deliberate, paused signing (a learner, or someone signing to a camera).
    product.** Every stream here is composed from isolated clips. The first live
    browser demo (§12.5) is the real test.
 
+## Follow-ups (2026-09-24)
+
+- **D3 as a live loop:** `sb.recognize.continuous.online.OnlineDecoder` runs D3 one frame at
+  a time (with optional prior and accept rule) and matches the batch decoder exactly.
+  Stepped over the **browser TFLite export**, it reproduces the offline PyTorch path on
+  300 held-out streams (293 identical, 7 float near-ties, 0 unexplained).
+- **Recommendation 4's language prior, first numbers:** a held-out trigram fused as
+  `q·p^0.3` lowers selection GER from 0.413 to 0.401, all of it in substitutions. A prior
+  that must *agree* before accepting trades substitutions for deletions and loses on GER.
+  `sign-to-speech-downstream.md` §2.
+
 ## Caveats
 
 - **Synthetic streams.** GISLR-Sentences v1 joins isolated test clips with interpolated

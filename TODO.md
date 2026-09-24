@@ -3493,8 +3493,21 @@ for this was never written down — start fresh). Research questions:
 - Fixed in `gloss2en`: a leading `if`/`because` ("The if will rain…" → "If it is raining,
   we stay home.").
 
+**Next-gloss notebook: user run in progress (observed 2026-09-24 ~17:20).** §1–§3 finished
+(`lm_eval.json`, `demo.json`, forward cache for all 4 variants × 2 groups, `noise_summary.json`).
+The §4 sweep is writing part files (D1/D3 `none`, D3 sentence-fold uni/bi/trigram so far).
+Do not commit the notebook until it finishes.
+- **GRU LM result (§1, complete):** lowest held-out perplexity (51.3 vs trigram 52.1), but
+  worse ranking (top-5 25.3% vs 30.0%, MRR 0.185 vs 0.207) and worse on unseen topics
+  (perplexity 89.1 vs 74.5). **The n-gram is the predictor to ship.**
+- Noise blocks: eval 2,410 fidget / 2,600 hold / 2,535 reverse (median 94/96/21 frames).
+- Docs updated 2026-09-24: new `docs/reports/sign-to-speech-downstream.md`; `speech-to-sign-audit.md`
+  §10; deployment-research and continuous-models follow-ups; daily log 2026-09-24; week 39;
+  `docs/README.md` index (it was also missing the landmark-importance, continuous-models,
+  deployment-research and speech-to-sign-audit reports).
+
 **Next actions:**
-- [ ] **User: run `gislr.4.downstream.next-gloss.ipynb`**, then Claude writes
+- [~] **User: run `gislr.4.downstream.next-gloss.ipynb`** (running), then Claude writes
   `docs/reports/downstream-next-gloss.md` (questions in the notebook's §7).
 - [ ] **User: add `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` (Workers AI: Read) to
   `.env`**, then re-run the gloss-to-English notebook's §2–§4 (about 430 calls/model,

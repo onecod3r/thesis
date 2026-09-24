@@ -1,6 +1,6 @@
 # Sign → speech deployment research: client-side recognition, Cloudflare edge
 
-**TODO §12.5** · 2026-09-24 · status: research done, **plan awaiting review** (§9)
+**TODO §12.5** · 2026-09-24 · status: research done; plan agreed (all §9 questions answered). Built since: the offline end-to-end pipeline and its streaming decoder (`sign-to-speech-downstream.md` §5). `apps/web` step 1 is next
 
 **Question.** How do we deploy the full sign → speech pipeline so that **landmark
 extraction and recognition run on the client** (the user's constraint, 2026-09-24),
@@ -260,15 +260,15 @@ heavy, Cap'n Web over a WebSocket to a plain DO does the same job. **Resolved 20
 The dominant terms are the **pause used to detect a sentence end** and the LLM. Both
 are edge/UX choices. The client-side recognizer is not a bottleneck.
 
-## 9. Proposed build plan (for review; nothing past step 0 is built)
+## 9. Build plan (agreed 2026-09-24; progress noted per step)
 
 | step | what | output | TODO |
 |---|---|---|---|
 | **0 (done)** | step export + LiteRT.js browser parity | `sb.recognize.export.step`, this report | §12.5 |
 | 1 | **`apps/web` live prototype**: camera → HolisticLandmarker → `frameToRows` → LiteRT.js step model → D3 → on-screen glosses. Measure achieved fps and check mirroring on known signs | a page served by `wrangler dev` | §12.5, §10.2 |
 | 2 | `apps/shared-ts`: generated ports of the gloss list, ME_132 rows and the manifest schema, plus a parity script against Python (`sb.core.*`) | TS module + check | §12.5 |
-| 3 | n-gram gloss prior + fused acceptance, **offline first** in a notebook on 12.1's streams, compared against C1 D3's GER | notebook + GER table | §12.6 |
-| 4 | `apps/edge`: Agent (DO) session, gloss → English on Workers AI with a versioned prompt, TTS stream back | Worker + `wrangler.jsonc` | §12.6 |
+| 3 | n-gram gloss prior + fused acceptance, **offline first** in a notebook on 12.1's streams, compared against C1 D3's GER. **Built; selection check run** (rescore λ=0.3: 0.401 vs 0.413), full sweep pending. Also built: `OnlineDecoder` (the client loop) and an end-to-end demo, GER 0.245 on 300 held-out streams, streaming = offline (`sign-to-speech-downstream.md`) | notebook + GER table | §12.6 |
+| 4 | `apps/edge`: DO session, gloss → English on Workers AI with a versioned prompt (`prompts/v1/gloss2en.txt`). **Speech defaults to the browser's `speechSynthesis`**; Workers AI TTS opt-in (Free-plan cost, §6) | Worker + `wrangler.jsonc` | §12.6 |
 | 5 | custom signs: capture → embed with the step model → append a row to `W`, persisted per user | web + edge | §12.4 → §12.7 |
 
 Step 1 is the next action. It is the first time real webcam landmarks reach the

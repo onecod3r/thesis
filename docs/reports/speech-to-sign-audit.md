@@ -377,5 +377,60 @@ the sentences completely, which confirms §8. On Europarl text (`EUROPEAN`, `COM
    `training_metadata.json`, the training corpus, and review of the draft references.
 2. A held-out sentence set not written by Claude, for a fair rules_v2 vs guarded-hybrid test.
 3. Recordings of the 30 sentences → `speech.2.asr.eval.ipynb` (ASR WER, large-v3 vs turbo).
+   *Stand-in measured 2026-09-24 on synthesized speech (§10), since the PC has no microphone.*
 4. NCSLGR export (licence form) → `data/raw/ncslgr/ncslgr.csv`: the only real-signing test set here.
 
+## 10. Run without a microphone (2026-09-24, second pass)
+
+The user runs Jupyter on a **remote PC with no microphone**. Their run of the four
+synthesis notebooks showed:
+
+| notebook | state |
+|---|---|
+| `aslg.0.dataset.text2gloss` | clean; reproduces §9 exactly. NCSLGR still missing, 0 WLASL videos on disk |
+| `aslg.1.models.text2gloss` | clean; reproduces §9 exactly. T5 checkpoint still missing, so the hybrids equal the rules |
+| `speech.2.asr.eval` | ran with **0/30 recordings**, so no numbers |
+| `speech.3.pipeline.demo` | **crashed**: `PortAudioError: Error querying device -1` (PortAudio's default input is -1: there is no input device) |
+
+**Fixes (`sb-synthesize`):**
+- `asr.microphone()` returns the default input device or `None`. `asr.record` raises a
+  readable error instead of the PortAudio one. Both notebooks skip recording when there is
+  no mic.
+- `sb.synthesize.tts`: Windows SAPI voices through PowerShell's `System.Speech` (no new
+  dependency; text passed through a temp file, so quoting is safe), plus `add_noise`
+  (white noise at an SNR over voiced samples). `speech.2` §1b speaks team30 with every
+  installed voice (David, Zira) × clean/20/10/5/0 dB and scores each **source**
+  separately. `speech.3` §2b: typed text → speech → ASR → gloss.
+- `asr.model_dir`: `large-v3-turbo` failed to download with **WinError 1314**. The
+  Hugging Face cache makes symlinks, and Windows without Developer Mode refuses them.
+  Whisper models now download into plain `data/external/whisper/<model>/`.
+- `asr.spell_numbers`, applied in `SpeechToGloss` before glossing (the raw transcript is
+  kept for WER). See below for why.
+
+**Results on synthesized speech.** This is an optimistic bound: synthetic voices are
+cleaner and more regular than a person reading.
+
+| noise | WER large-v3 | WER large-v3-turbo |
+|---|---|---|
+| clean | 1.0% | 1.0% |
+| 20 dB | 1.0% | 0.8% |
+| 10 dB | 1.0% | 1.3% |
+| 5 dB | 1.3% | 1.8% |
+| 0 dB | 2.8% | 3.1% |
+
+- **turbo is 1.7× faster at equal accuracy:** 0.12 s vs 0.20 s median per sentence. It is
+  also the model Workers AI hosts, so it is the deployment choice for ASR.
+- **The only errors on clean audio were digits:** "three o'clock" → "3 o'clock", "five
+  minutes" → "5 minutes". `rules_v2` passes digits through (`TIME 3`, `5 MINUTE`), and a
+  digit matches no sign in the lexicon. With `spell_numbers`, the ASR cost to the gloss
+  (gloss WER on the ASR text minus on the true text, `rules_v2`) falls **from 0.013 to 0.000**
+  on clean speech and to 0.018 at 0 dB (was 0.031).
+- At 0 dB the model starts hallucinating words: "Dhaka" → "Gaza", "leaving early" →
+  "losing ground". That is the failure mode to watch with real noisy input.
+
+**Demo** (`speech.3` §2b): "Yesterday my brother and I went to the store. Where is the
+cat?" → `YESTERDAY MY BROTHER AND ME GO STORE | CAT WHERE`, with large-v3 taking 0.5 s for
+4.9 s of audio.
+
+**Still owed:** human recordings for the real WER (when a mic is available). §9.4 stands
+otherwise.
