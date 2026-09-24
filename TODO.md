@@ -3417,6 +3417,40 @@ for this was never written down — start fresh). Research questions:
 
 ### 12.6 Downstream: next-gloss prediction + fused acceptance + noise rejection, gloss → English, TTS — **experiments built 2026-09-24**
 
+**Demo diagnosis (2026-09-24, the user's question: "very misleading glosses, translation way off").**
+Report: `docs/reports/sign-to-speech-demo-analysis.md`. Artifacts: `data/cache/gislr/pipeline_demo/analysis/`.
+All 5,054 evaluation-signer sentence streams, from the cached outputs (= the demo's streaming path).
+- **Observed:** the committed demo outputs used `rule_default` (rescore λ=0.3, **no floor**), because
+  the next-gloss sweep had not run then. A re-run now picks the sweep's best rule (floor + prior).
+- **Recognition:**
+  - with no floor, 48.2% of sentences contain a wrong or extra gloss, 40.7% are exact, and
+    displayed-gloss precision is 77.7%;
+  - floor + prior: 25.1% / 33.7% / 88.1%;
+  - lattice lag 1: 21.8% / 34.7% / 89.4%;
+  - confidence is informative: ≤0.2 → 27% right (1,857 glosses), 0.2–0.3 → 48%, ≥0.8 → 98.5%;
+  - of 3,079 substitutions, 7% are documented look-alike pairs, 2% near-meaning, <1% opposites,
+    and **about 90% unrelated signs**;
+  - worst recall: nap 32%, give 36%, ride/there/bedroom 44%;
+  - for a substitution, the true gloss is in the top 3 38% of the time.
+- **Translation (rules):**
+  - chrF 73.6 / BLEU 57.9 on true glosses vs 55.0 / 39.2 on recognized glosses (389 reference
+    streams); 59% of streams get different English;
+  - failure patterns even on true glosses: noun lists, locative prepositions, clause/time order,
+    `finish`/tense, `hesheit`/`owie`, adjective vs verb.
+- [ ] **Fix A1:** pin the demo/client rule in `gislr.pipeline-demo.json` (lattice lag 1 once §2.2's
+  evaluation check holds, else floor + prior θ0.3) instead of reading the sweep implicitly.
+- [ ] **Fix A2:** show uncertainty in the UI: glosses next to the English, grey out anything under
+  0.5, speak only if every gloss ≥ 0.5 or after the user confirms. **Fix A3:** refuse to translate a
+  sequence the trigram finds very unlikely when a gloss is also low confidence.
+- [ ] **Fix B4:** an LLM gloss → English arm with top-3 alternatives + confidences per sign and a
+  meaning guard, scored on *recognized* glosses (needs Cloudflare credentials in `.env`).
+- [ ] **Fix B5:** rule-engine patches for the listed patterns (offline fallback), each measured on
+  the references. **Fix B6:** add English-from-recognized-glosses chrF to the demo's integration check.
+- [ ] **Fix C7/C8:** a better recognizer overall (the errors are a long tail); noise as null; targeted
+  data for the worst glosses; **run the demo's `VIDEO_FILE` path on real signing**.
+- Next action: the user picks which fixes to do first. Claude's recommendation is A1 + A2 + B6
+  (quick), then B4 when credentials exist.
+
 **User decisions (2026-09-24, second round):**
 - **Stages stay separate:** MediaPipe extraction → **recognizer + next-gloss prediction**
   (side by side) → **gloss → English** ("the opposite of the rule-based model") → TTS.
