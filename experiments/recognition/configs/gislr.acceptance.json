@@ -1,0 +1,51 @@
+{
+  "_comment": "TODO §12.6 floor-recall experiment (2026-09-24): fewer missed signs than the θ=0.3 confidence floor at no more wrong or extra signs. gislr.4.downstream.acceptance.ipynb. Reuses the next-gloss notebook's C1 forward cache and signer split (gislr.downstream.json); no model runs here.",
+  "downstream_config": "gislr.downstream.json",
+  "forward_dir": "gislr/downstream/forward",
+  "next_gloss_results": "gislr/downstream/results",
+  "prior": {
+    "arm": "trigram",
+    "family": "sentence-fold"
+  },
+  "selection_variants": [
+    "sentence-clean",
+    "sentence-noisy"
+  ],
+  "references": {
+    "baseline": {"score": "q", "theta": 0.0, "lam": 0.0},
+    "floor": {"score": "q", "theta": 0.3, "lam": 0.0},
+    "floor+prior": {"score": "q", "theta": 0.3, "lam": 0.3}
+  },
+  "budget": {
+    "reference": "floor",
+    "tol_rate": 0.002,
+    "tol_noise_fa": 0.005,
+    "_note": "A setting is feasible on the selection signers when, on both selection variants, its substitution and insertion rates are each at most the reference's + tol_rate, and on sentence-noisy its noise false-accept rate is at most the reference's + tol_noise_fa. Among feasible settings, the lowest summed deletion rate wins."
+  },
+  "theta_grid": [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95],
+  "arms": {
+    "scores": {
+      "score": ["q", "peak", "margin", "qp"],
+      "lam": [0.0, 0.3]
+    },
+    "class": {
+      "gamma": [0.5, 1.0, 1.5],
+      "alpha": 20.0,
+      "lam": [0.0, 0.3]
+    },
+    "lattice": {
+      "lam": [0.2, 0.3, 0.5],
+      "k": [3, 5],
+      "lag": [0, 1, 2],
+      "theta": [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7]
+    },
+    "linear": {
+      "l2": [0.1, 1.0, 10.0, 100.0],
+      "lam": [0.0, 0.3]
+    }
+  },
+  "bootstrap": {
+    "n": 2000,
+    "seed": 0
+  }
+}

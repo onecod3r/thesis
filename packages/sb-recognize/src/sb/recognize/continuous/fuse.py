@@ -29,7 +29,9 @@ A rejected segment leaves the history unchanged. An accepted one appends to
 it. History is per stream: one GISLR-Sentences stream is one sentence.
 
 Everything here is numpy on precomputed per-frame outputs (``gp``, ``bp``),
-so the sweeps never rerun the model. ``prior`` is any callable
+so the sweeps never rerun the model. Anything with a ``decide(seg, history,
+prior)`` method can stand in for a :class:`Rule` (``sb.recognize.continuous.select``
+adds scores other than ``q``). ``prior`` is any callable
 ``history (tuple of class ids) -> probabilities over the glosses``. This
 module does not import ``sb.rescore``; the notebook adapts the predictors.
 """
@@ -38,6 +40,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Protocol
 
 import numpy as np
 
@@ -51,6 +54,7 @@ class Segment:
     end: int  # exclusive
     q: np.ndarray  # (C,) recognizer vote over glosses, sums to 1
     mass: float  # non-null probability mass (frames' worth)
+    peak: np.ndarray | None = None  # (C,) each gloss's highest single-frame probability in the segment
 
     @property
     def length(self) -> int:
@@ -77,7 +81,7 @@ def segments_d3(gp: np.ndarray, nu: float, min_len: int, null_index: int) -> lis
     for s, e in zip(edges[::2], edges[1::2]):
         if e - s >= min_len:
             q, m = vote(gp[s:e], null_index)
-            out.append(Segment(int(s), int(e), q, m))
+            out.append(Segment(int(s), int(e), q, m, gp[s:e, :null_index].max(0)))
     return out
 
 
@@ -91,7 +95,7 @@ def segments_d1(gp: np.ndarray, bp: np.ndarray, beta: float, min_mass: float,
     for t in cross:
         q, m = vote(gp[start:t + 1], null_index)
         if m >= min_mass:
-            out.append(Segment(int(start), int(t) + 1, q, m))
+            out.append(Segment(int(start), int(t) + 1, q, m, gp[start:t + 1, :null_index].max(0)))
         start = int(t) + 1
     return out
 
@@ -108,6 +112,15 @@ class Rule:
 
     def as_dict(self) -> dict:
         return {k: getattr(self, k) for k in self.__dataclass_fields__}
+
+    def decide(self, seg: Segment, history: tuple[int, ...], prior: Prior | None) -> tuple[int, float] | None:
+        return decide(seg, history, prior, self)
+
+
+class Decider(Protocol):
+    """One segment + the accepted history -> ``(class, confidence)`` or ``None``."""
+
+    def decide(self, seg: Segment, history: tuple[int, ...], prior: Prior | None) -> tuple[int, float] | None: ...
 
 
 def fused(q: np.ndarray, p: np.ndarray, lam: float) -> np.ndarray:
@@ -144,13 +157,14 @@ def decide(seg: Segment, history: tuple[int, ...], prior: Prior | None, rule: Ru
     raise ValueError(f"unknown rule mode {rule.mode!r}")
 
 
-def decode_fused(segments: list[Segment], prior: Prior | None, rule: Rule) -> list[Emission]:
+def decode_fused(segments: list[Segment], prior: Prior | None, rule: Decider) -> list[Emission]:
     """Segments in stream order -> emissions ``(class, frame, confidence)``,
-    committed at each accepted segment's last frame."""
+    committed at each accepted segment's last frame. ``rule`` is a
+    :class:`Rule` or any other :class:`Decider`."""
     out: list[Emission] = []
     history: tuple[int, ...] = ()
     for seg in segments:
-        d = decide(seg, history, prior, rule)
+        d = rule.decide(seg, history, prior)
         if d is None:
             continue
         c, conf = d

@@ -307,6 +307,7 @@ happened to be easier. 0.276 vs 0.293 is the like-for-like comparison.
 | what | where | needs |
 |---|---|---|
 | ~~Full next-gloss sweep~~ | `gislr.4.downstream.next-gloss.ipynb` | **done 2026-09-24** (§2.1) |
+| Fewer missed signs than the floor at equal wrong/extra signs (other scores, per-sign floors, a look-ahead lattice, a learned accept/reject) | `gislr.4.downstream.acceptance.ipynb` | the user runs it (about 10–20 min, no model runs); results → §2.2 |
 | Retrain C1 with noise as null, then re-run the next-gloss notebook | `gislr.1.models.continuous.ipynb` + a composer change | a plan for review (TODO §12.6) |
 | LLM gloss → English (Llama 3.2-3B, 3.1-8B) | `gislr.4.downstream.gloss-to-english.ipynb` §2 | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` in `.env` |
 | Workers AI TTS (MeloTTS, Aura-1, Aura-2; about 1.6k neurons) | `gislr.4.downstream.tts.ipynb` §2 | the same credentials |
