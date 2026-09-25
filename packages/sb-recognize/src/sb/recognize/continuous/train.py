@@ -218,7 +218,7 @@ def train_continuous(run_name: str, config_path: Path | str = CONFIG_PATH, *,
     torch.backends.cudnn.benchmark = True
     cfg = load_config(config_path)
     run = cfg["runs"][run_name]
-    hyp = run_hyp(cfg, run_name)
+    hyp = {**run_hyp(cfg, run_name), "landmark_subset": cfg["subset"]}  # for front-end models (gru_continuous_phono)
     arch, seed = run["arch"], cfg["seed"]
     ccfg = {**cfg["composer"], "null_weight": hyp["null_weight"], "ramp_start": hyp["ramp_start"]}
 

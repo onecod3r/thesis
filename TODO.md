@@ -28,7 +28,8 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 | # | next action | where | why now |
 |---|---|---|---|
 | 0a | **§12.8 live camera fails on sentences (user, 2026-09-25).** Probes: low fps (repeated frames) → missed signs, jitter → extra signs, landscape framing → both; app-side interp + EMA + reframe measured (`live-streaming-gap.md`). **Next: user answers fps/mirror/distance, and decides Fix 1 (app) / Fix 2 (record real sentences) / Fix 3 (retrain C1 v2)** | §12.8 | the deployed model is unusable live until this is fixed |
-| 0a2 | **§3.8 sign patterns**: the first variables gave no per-sign pattern; **with handshape/orientation/location/movement, every ASL-LEX parameter is recovered on unseen signs and templates reach 38.8% top-1 (was 4.9%)**; **B3 done: DTW over per-frame phonology 41.6% top-1, 15.2% from one example**, no training. **Next: the user picks: learned per-parameter embedding, DTW as a custom-sign baseline, or back to §12.8 live fixes** | §3.8 | the user's current priority (2026-09-25: "start on the sign pattern first") |
+| 0a2 | **§3.8 sign patterns**: the first variables gave no per-sign pattern; **with handshape/orientation/location/movement, every ASL-LEX parameter is recovered on unseen signs and templates reach 38.8% top-1 (was 4.9%)**; **B3 done: DTW over per-frame phonology 41.6% top-1, 15.2% from one example**, no training. **Follow-up built as §3.9 (see row 0a3)** | §3.8 | the user's current priority (2026-09-25: "start on the sign pattern first") |
+| 0a3 | **§3.9 phonology front-end models, built 2026-09-25; user runs:** `gislr.1.models.training.ipynb` §4 → §8b `gru_phono` → §8c `gru_phono_raw` (PH_55, ME_134) → §8d importance → (config check) → §8e `bilstm_phono` → §10 evals. Streaming-ready (RecurrentSession parity 2e-5) with a continuous port (`gru_continuous_phono`) | §3.9 | the user's request: a streamable model from the pattern findings, subset combos + explainability, and the best offline model |
 | ~~0~~ | ~~Re-run `gislr.3.streaming.continuous-eval.ipynb`~~ — **done 2026-09-24**: C1 D3 c **GER 0.293** (eval signers) vs baseline 0.507, oracle 0.221 → `docs/reports/continuous-models.md`. Optional follow-up: D5 = D3 ∪ D1 decoder for hard-cut | §12.3 | — |
 | 0b | Plan §12.4 add-a-sign (enroll C-open's 20 held-out glosses from 1/5/10 examples) | §12.4 | C-open (`1790146838`) is trained and waiting; decides how custom signs (§12.7) work |
 | 0c | §12.5 **web app built 2026-09-24** (`apps/web`, `apps/edge`): sign → speech runs in the browser (Holistic → LiteRT.js step model → lag-2 lattice + trigram → rule English → browser voice). Parity tests pass and a headless Chrome replay of 24 held-out streams is identical to Python. **Next (user): first camera test**: `cd apps/web && npm run dev`; check mirroring, fps, a few known sentences | §12.5 | first time real webcam landmarks reach the model |
@@ -1479,11 +1480,72 @@ ranked top-N accuracy.
   *Awaiting the user's call.*
 - [ ] Optional: use parameter patterns for §12.4/§12.7 custom-sign enrollment (describe a new sign as a
   parameter combination) and to explain confusable pairs (`give`/`gift`).
-- [ ] **Follow-up (optional, no training), in expected-gain order:**
-  - add handshape (finger angles, fingertip distances);
-  - keep time: fixed-length resampled trajectories + DTW to per-gloss templates;
-  - speed normalization.
-  Each is a nearest-template test like the one above. *Awaiting the user's call on whether to pursue it.*
+- [x] ~~Follow-up (optional, no training): add handshape; keep time with DTW; speed normalization~~ —
+  **done 2026-09-25**: handshape (§7), DTW over per-frame phonology with time resampling (§8).
+
+### 3.9 Phonology front-end models: streaming GRU, subset combos, feature importance, BiLSTM (2026-09-25, built, awaiting the user's run)
+
+**User request (2026-09-25), after §3.8:**
+1. train a model that can stream later, with its training set up to match downstream, so an isolated win
+   ports to continuous signing;
+2. see whether the phonology features combine with the landmark subsets into a best combination, and use
+   explainability to find which features contribute;
+3. run the best type of model regardless of streaming.
+
+**User decisions (2026-09-25):**
+- **Claude prepares the experiment; the user runs the notebook** (CLAUDE.md's "never train" rule stands).
+- Sweep = "focused": 3 arms + feature-group importance, then BiLSTM with the winner.
+
+- [x] **Built (Claude, 2026-09-25):**
+  - `PhonologyFrontend` (in `architectures.py`):
+    - non-learned, per-frame, causal;
+    - every frame shoulder-centred and shoulder-width scaled, which also removes §12.8's framing
+      dependence;
+    - 41 features per hand (handshape 25 as joint cosines, tip distances, spreads and the thumb gap;
+      orientation 6; location 9 vs nose / chin / forehead / mouth / shoulder / chest / other hand;
+      present 1) + 2 elbow angles = 84;
+    - left hand mirrored; `phono+raw` mode appends the subset's shoulder-normalized xy;
+    - optional `mirror_p` handedness augmentation, 0 in every arm for all-else-equal.
+  - Classes and `ARCHS` keys:
+    - `PhonoGRU` (`gru_phono`, `gru_phono_raw`);
+    - `PhonoBiLSTM` (`bilstm_phono`, offline);
+    - `ContinuousPhonoGRU` (`gru_continuous_phono`, the §12.3 port).
+  - New subsets: `PH_55` (hands + upper pose + 5 face anchors) and `ME_134` (ME_132 + chin/forehead).
+  - Drivers pass `landmark_subset` in `hyp`, so every rebuild site gets it: `sb-evaluate`, the
+    continuous loader, the baselines.
+  - `RecurrentSession` accepts the new recurrent archs.
+  - `sb.recognize.phonology_eval`: feature-group permutation importance on the canonical val split.
+  - Config `gislr.training.json`: shared `frontend`/`mirror_p` (ignored by old classes) + the 3 new
+    archs.
+  - Notebook `gislr.1.models.training.ipynb` §8b–§8e.
+- [x] **Wiring checks (no training, no registry writes):**
+  - every arch builds; front-end outputs are finite on real clips;
+  - mirroring swaps the r/l hand blocks to 1e-5;
+  - autocast train steps OK;
+  - **RecurrentSession = batch forward to 2e-5** for `gru_phono`, `gru_phono_raw` and
+    `gru_continuous_phono`;
+  - importance runs end to end on the real val split (~14 s per repeat); the permutation hook changes
+    the logits;
+  - `ty` clean on new code; `sb-docs --check` up to date.
+  - Built the `PH_55/xyz` val cache (0.47 GB).
+- [ ] **Next (user):** in `gislr.1.models.training.ipynb`:
+  - run §4 (builds the `PH_55/xyz` + `ME_134/xyz` caches);
+  - §8b `gru_phono` (PH_55);
+  - §8c `gru_phono_raw` (PH_55, ME_134);
+  - §8d importance, which names the best arm; if it isn't phono+raw on ME_134, edit `bilstm_phono`
+    in the config;
+  - §8e `bilstm_phono`;
+  - then `sb-evaluate` each run (§10).
+
+  Estimated ~25–45 min per GRU run (the `gru` baseline regime), longer for BiLSTM. Compare against
+  `gru` ME_132/xy **0.7517** (canonical) and `bilstm`.
+- [ ] After the runs: Claude analyzes (arm comparison, importance, BiLSTM gap). If a phonology arm
+  beats `gru`, the continuous port needs:
+  - a continuous config run with `subset`/`coords` = the winner's and `arch: gru_continuous_phono`
+    (its global `subset`/`coords` are ME_132/xy today);
+  - the export (`sb.recognize.export.step`) to support the front-end (it has cross products and
+    divisions; it would need a Keras port) before the web app can use it.
+- [ ] Optional ablation later: `mirror_p` 0.5 on the winning arm (handedness invariance).
 
 ## 4. Architecture Benchmarking
 

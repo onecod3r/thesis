@@ -99,6 +99,10 @@ UPPER_BODY_POSE_8: list[int] = pose_rows([11, 12, 13, 14, 15, 16, 23, 24])
 #: duplicate the hand meshes when those are detected.
 POSE_HAND_POINTS_6: list[int] = pose_rows([17, 18, 19, 20, 21, 22])
 
+#: face anchors the phonology front-end measures hand location against
+#: (nose tip, forehead, upper/lower lip, chin) -- sb.recognize.architectures.PhonologyFrontend
+FACE_ANCHORS_5: list[int] = [1, 10, 13, 14, 152]
+
 #: complete face mesh, 468.
 FACE_ALL_468: list[int] = list(range(0, 468))
 
@@ -210,6 +214,21 @@ SUBSETS: dict[str, LandmarkSubset] = {s.name: s for s in [
         "Component ablation.",
         probe_acc_global=0.4671,
     ),
+    _make(
+        "PH_55",
+        HANDS_42 + UPPER_BODY_POSE_8 + FACE_ANCHORS_5,
+        "The phonology front-end's minimum input: both hands, upper-body pose "
+        "and 5 face anchors. Its raw coordinates are what 'phonology + hands' "
+        "adds on top of the phonology features.",
+        "TODO §3.9; docs/reports/sign-patterns.md §7-§8.",
+    ),
+    _make(
+        "ME_134",
+        LIPS_40 + HANDS_42 + EYES_NOSE_36 + UPPER_BODY_POSE_8 + POSE_HAND_POINTS_6 + FACE_ANCHORS_5,
+        "ME_132 + forehead and chin (the two face anchors ME_132 lacks), so the "
+        "phonology front-end can run on it.",
+        "TODO §3.9.",
+    ),
 ]}
 
 
@@ -228,3 +247,5 @@ assert len(SUBSETS["ME_126"]) == 126
 assert len(SUBSETS["ME_132"]) == 132
 assert len(SUBSETS["HANDS_42"]) == 42
 assert len(SUBSETS["HANDS_POSE_50"]) == 50
+assert len(SUBSETS["PH_55"]) == 55
+assert len(SUBSETS["ME_134"]) == 134

@@ -4,7 +4,11 @@
   "regime": "v2-plateau-300",
   "source": "gislr.1.models.training.ipynb",
   "coords": "xy",
-  "subsets": ["ME_126", "ME_132", "FP_118"],
+  "subsets": [
+    "ME_126",
+    "ME_132",
+    "FP_118"
+  ],
   "shared": {
     "batch_size": 1024,
     "lr": 0.001414,
@@ -17,7 +21,9 @@
     "lr_factor": 0.5,
     "lr_patience": 5,
     "es_patience": 15,
-    "es_min_delta": 0.001
+    "es_min_delta": 0.001,
+    "frontend": "phono",
+    "mirror_p": 0.0
   },
   "architectures": {
     "gru": {},
@@ -35,6 +41,34 @@
         "num_layers": 5
       },
       "notes": "num_layers is the number of dilated conv BLOCKS, not recurrent layers - it sets the receptive field: 1 + (kernel-1) * sum(2^i) = 125 frames at 5 blocks (dilations 1,2,4,8,16), which matches MAX_SEQ_LEN=128. At 2 blocks it collapses to 13 frames, far too short to see a whole sign; that is what produced the ~0.54 runs on 2026-07-19."
+    },
+    "gru_phono": {
+      "subsets": [
+        "PH_55"
+      ],
+      "coords": "xyz",
+      "notes": "TODO §3.9 arm 1 — phonology features only (84/frame: per hand handshape 25, orientation 6, location 9, present 1; + 2 elbow angles), shoulder-normalized per frame. Same StreamingGRU and regime as gru; frontend/mirror_p are ignored by classes without a front-end."
+    },
+    "gru_phono_raw": {
+      "subsets": [
+        "PH_55",
+        "ME_134"
+      ],
+      "coords": "xyz",
+      "overrides": {
+        "frontend": "phono+raw"
+      },
+      "notes": "TODO §3.9 arms 2-3 — phonology features + the subset's shoulder-normalized xy: PH_55 = + hands/upper-pose/5 face anchors, ME_134 = + ME_132 (with chin/forehead)."
+    },
+    "bilstm_phono": {
+      "subsets": [
+        "ME_134"
+      ],
+      "coords": "xyz",
+      "overrides": {
+        "frontend": "phono+raw"
+      },
+      "notes": "TODO §3.9 item 3 — offline-only BiLSTM on the phonology front-end. Default = the expected winner (phono+raw on ME_134); if §11 of the notebook picks another arm, change subsets/overrides here before running."
     }
   }
 }

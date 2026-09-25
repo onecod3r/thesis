@@ -260,6 +260,9 @@ def train_run(
     data_dir = data_dir or ds.resolve_dir()
     sign2idx = ds.label_map(data_dir)
     subset = get_subset(subset_name)
+    # models with a landmark-aware front-end (gru_phono, ...) need to know which
+    # row is which; stored in the checkpoint's hyp, so every rebuild gets it too
+    hyp = {**hyp, "landmark_subset": subset.name}
     tag = D.subset_tag(subset_name, coords)
     feature_dim = len(subset) * len(coords)
 
