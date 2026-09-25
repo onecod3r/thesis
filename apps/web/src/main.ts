@@ -51,6 +51,10 @@ const ui = {
   recMs: $<HTMLElement>("rec-ms"),
   mpMs: $<HTMLElement>("mp-ms"),
   delegate: $<HTMLElement>("delegate"),
+  videoRes: $<HTMLElement>("video-res"),
+  landmarks: $<HTMLElement>("landmarks"),
+  bodyInView: $<HTMLElement>("body-in-view"),
+  pNull: $<HTMLElement>("p-null"),
   sentences: $<HTMLOListElement>("sentences"),
   check: $<HTMLElement>("check"),
   checkSummary: $<HTMLParagraphElement>("check-summary"),
@@ -99,7 +103,15 @@ function showLive(signs: readonly Sign[], r: StepResult | null): void {
   if (r) {
     ui.activity.style.width = `${Math.round((1 - r.pNull) * 100)}%`;
     ui.waiting.textContent = r.waiting ? `Waiting for the next sign to decide ${r.waiting} uncertain one${r.waiting > 1 ? "s" : ""}…` : "";
+    ui.pNull.textContent = r.pNull.toFixed(3);
   }
+}
+
+/** Rows of a (543,3) frame with a real (non-`NaN`) `x` -- how much of the body Holistic actually found. */
+function countLandmarks(frame: Float32Array): number {
+  let n = 0;
+  for (let row = 0; row < frame.length / 3; row++) if (!Number.isNaN(frame[row * 3])) n++;
+  return n;
 }
 
 /** The Worker's LLM English, when it is deployed with a Workers AI binding and the user opted in. */
@@ -306,6 +318,7 @@ async function runLive(kind: "camera" | "file"): Promise<void> {
     video.src = URL.createObjectURL(f);
   }
   await video.play();
+  ui.videoRes.textContent = `${video.videoWidth}x${video.videoHeight}`;
   ui.video.parentElement!.classList.toggle("mirrored", kind === "camera");
   const session = newSession();
   app.rec.reset();
@@ -349,9 +362,11 @@ async function runLive(kind: "camera" | "file"): Promise<void> {
         ui.mpMs.textContent = `${(performance.now() - t0).toFixed(1)} ms/frame`;
         const frame = holisticToFrame(res, ui.mirror.checked);
         drawFrame(frame);
+        ui.landmarks.textContent = `${countLandmarks(frame)}/543`;
         // Nobody in view: every GISLR training frame, rest included, has a body. An empty
         // frame is out of distribution (p_null ~ 0.01 on it), so it is a pause, not a sign.
         const nobody = Number.isNaN(frame[POSE_ROW * 3]) && Number.isNaN(frame[POSE_ROW * 3 + 3]);
+        ui.bodyInView.textContent = nobody ? "no" : "yes";
         if (nobody && !wasEmpty) app.rec.reset();
         wasEmpty = nobody;
         ui.waiting.textContent = nobody ? "No one in view." : ui.waiting.textContent;

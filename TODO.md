@@ -3959,6 +3959,20 @@ for possible solutions.
   - Not yet done: the general `Clock`-repeat interpolation for a slow/stalled camera (independent of
     the new toggle) is still open above; a landmark recorder for real continuous test data (Fix 2) is
     still open too.
+- [x] **Real bug found: Camera source showed a blank/black screen (user, 2026-09-25, phone
+  screenshot).** Root cause: `.replay-card`'s CSS rule sets `display: flex` unconditionally,
+  which beats the `hidden` attribute's UA-stylesheet `display: none` (author CSS always wins over
+  the UA sheet, specificity ties or not) — so the opaque black card (`background: #111`, `inset: 0`,
+  painted after `video`/`canvas` in DOM order) never actually hid, even on a fresh page load before
+  any replay ever ran. Fixed with `.replay-card[hidden] { display: none; }` (`style.css`).
+  - Added a debug row to the live stats panel while at it, since diagnosing "blank screen" blind was
+    the actual pain point: **Video** (`videoWidth`x`videoHeight`, so a 0×0 means the stream never
+    attached), **Landmarks detected** (`/543`, from `holisticToFrame`'s output — 0 means Holistic
+    is running but seeing nothing), **Body in view** (yes/no, the same signal the null-frame reset
+    logic uses), **p(null)**.
+  - `npm run build` + `npm test` (11/11) pass. **Not yet redeployed** — `wrangler deploy` was
+    blocked by the auto-mode classifier (production-deploy guard) this turn; awaiting the user to
+    either approve the deploy permission or run `npm run deploy` (`apps/edge`) themselves.
 - [ ] **Fix 2:** landmark recorder in `apps/web` (download frames + timestamps), then 30–50 real known
   sentences as the first real continuous test set. Measures what the probes can't: real transitions and
   rest, and Tasks-vs-legacy Holistic differences.

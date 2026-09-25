@@ -57,6 +57,10 @@ button#start { background: var(--accent); color: #fff; border-color: var(--accen
 .video-wrap video, .video-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .video-wrap.mirrored video, .video-wrap.mirrored canvas { transform: scaleX(-1); }
 .replay-card { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; padding: 20px; color: #ddd; background: #111; }
+/* `hidden`'s UA display:none loses to the class rule above unless re-asserted here at equal
+   specificity but later in the sheet -- without this the opaque card never actually hides,
+   blacking out the camera feed underneath it (found 2026-09-25: blank screen on Camera source). */
+.replay-card[hidden] { display: none; }
 .replay-card strong { color: #fff; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 34px; }
 .chip { display: inline-flex; gap: 6px; align-items: baseline; padding: 3px 10px; border-radius: 999px; background: var(--chip); color: var(--chip-fg); font-weight: 600; }
