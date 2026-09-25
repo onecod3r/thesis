@@ -35,7 +35,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 | 0c | §12.5 **web app built 2026-09-24** (`apps/web`, `apps/edge`): sign → speech runs in the browser (Holistic → LiteRT.js step model → lag-2 lattice + trigram → rule English → browser voice). Parity tests pass and a headless Chrome replay of 24 held-out streams is identical to Python. **Next (user): first camera test**: `cd apps/web && npm run dev`; check mirroring, fps, a few known sentences | §12.5 | first time real webcam landmarks reach the model |
 | 0d | §12.6: next-gloss sweep **done 2026-09-24**: the trigram prior gives −6% GER (0.293 → 0.276); **noise is the real problem** (0.982 unfiltered; the confidence floor → 0.580 but 39% of noise still spoken). **Decide: retrain C1 with noise as null?** **Floor-recall experiment done (2026-09-24): on the evaluation signers the lag-2 lattice beats the floor on missed (−1.4/100 clean, −0.7 noisy), wrong and extra signs, and noise (−2.1 pts); GER 0.347→0.320 clean; about 27 frames delay. Now the web app's default rule** Clean floor deletes 511 correct signs (10.4%); `peak` scoring recovers +122 at equal errors on clean but not noisy Also: **add Cloudflare creds to `.env`** for the LLM/TTS arms; **review the 132 draft references** | §12.6 | stage 2 (prediction + fusion + noise rejection) and stage 3 (gloss → English) have no numbers on real decoding yet |
 | 0e | §12.7 custom-sign feature | §12.7 | product layer over 12.4 + 12.5 |
-| 0f | §13 **speech → gloss deployed to the browser 2026-09-25** (`apps/web/speech.html`, user decision: Free plan, no Containers). ASR via Workers AI; gloss via wink-nlp ports of rules_v1/v2 (76%/65% sentence-exact agreement with the Python/spaCy engines); T5 exported to int8 ONNX but **not deployed**: the checkpoint (`data/external/t5-text2gloss/.../model/`) still has no `model.safetensors`, only config/tokenizer files, so the export + parity tests ran against a public `google-t5/t5-base` stand-in. **Next: the team sends the weights, re-export, re-run `tools/export_speech.py fixtures` + `npm test`, then `wrangler deploy`** (needs the account's Cloudflare token scope confirmed — `user/tokens/verify` rejected the one in `.env`) | §13 | the gloss half of speech → sign now runs end to end client-side; only the real checkpoint and a deploy are missing |
+| 0f | §13 **speech → gloss built and deployed 2026-09-25**: **https://signbridge.onecoder1.workers.dev** (`apps/web/speech.html` + `/speech`, user decision: Free plan, no Containers). ASR via Workers AI; gloss via wink-nlp ports of rules_v1/v2 (76%/65% sentence-exact agreement with the Python/spaCy engines); T5 exported to int8 ONNX but its assets aren't on the deploy yet — the checkpoint (`data/external/t5-text2gloss/.../model/`) still has no `model.safetensors`, only config/tokenizer files, so the export + parity tests ran against a public `google-t5/t5-base` stand-in and the speech page runs rules-only live. Also found + fixed a real bug while verifying: `wrangler.jsonc` had no `assets.binding`, so any true 404 crashed with a 500. **Next: the team sends the weights, re-export `tools/export_speech.py assets`, re-run `fixtures` + `npm test`, redeploy** | §13 | the gloss half of speech → sign runs end to end client-side and is live; only the real checkpoint (and re-exporting T5 with it) remains |
 | ~~1~~ | ~~Restart the Jupyter kernels, then run one short training~~ — **effectively done**: the four §12.3 continuous runs trained end to end through the restructured stack on 2026-09-23 | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
 | 2 | ~~Run the first checkpoint backup~~ — **done 2026-09-04**: 42 on Kaggle, local copies pruned after hash verification. Model confirmed **private** 2026-09-24 | §9.3 | was the last single-copy risk |
 | 3 | **Notebook §5b: the three-arm AWP/LateDropout ablation** (~30 min) | §4.2 | the 1st-place port has collapsed at epoch 15 twice and neither switch has been run alone, so the recipe is still unmeasured |
@@ -4078,14 +4078,26 @@ uses **draft** references (written by Claude) until the team supplies real ones.
   - `public/_headers` sets COOP/COEP so onnxruntime-web can use several WASM threads when
     the browser allows it; single-threaded (`numThreads=1`) is the automatic fallback
     otherwise, so it still works without those headers (e.g. behind a proxy that strips them).
-  - **Not done:** deploy (needs `wrangler login`/`CLOUDFLARE_API_TOKEN` — verified 2026-09-25
-    that the `.env` token authenticates to the account's `workers.dev` subdomain
-    (`onecoder1`) but fails the account-level `user/tokens/verify` check, so its exact scope
-    is unconfirmed; `wrangler deploy` itself was not attempted this session); re-export
-    `assets` and re-run `fixtures`/`speech.test.ts` once the team's checkpoint is at
-    `data/external/t5-text2gloss/thesis_hybrid_dataset1/model/` (only tokenizer/config
-    files were supplied 2026-09-25, no `model.safetensors` yet — the export path is proven
-    against public `t5-base` but never run on the real weights).
+  - **Deployed 2026-09-25**: `wrangler whoami` shows the `.env` token authenticates fine
+    (the `user/tokens/verify` failure earlier was that unrelated endpoint's own scoping, not
+    a bad token) — `npx wrangler deploy` from `apps/edge` pushed both pages + the Worker to
+    **https://signbridge.onecoder1.workers.dev**. Live-verified: `/`, `/speech`, `/api/health`
+    (`llm: true`, `asr: true`), `/api/english`. `/assets/t5/manifest.json` 404s as expected
+    (T5 was never exported — no real checkpoint), so the speech page runs rules-only until
+    the checkpoint arrives.
+  - **Found + fixed while verifying the deploy**: `wrangler.jsonc`'s `assets` block had no
+    `binding: "ASSETS"`, so `env.ASSETS` was `undefined` everywhere the Worker calls
+    `env.ASSETS.fetch(request)` — any request that fell through to the Worker without
+    matching a static asset or `/api/*` (i.e. any real 404) crashed with a 500. Pre-existing
+    since the Worker was first built 2026-09-24; `dev:offline` never hit it because `/` and
+    `/speech` always matched a real file. Fixed and redeployed; `/nonexistent` now returns a
+    clean 404.
+  - **Still owed:** re-export `assets` and re-run `fixtures`/`speech.test.ts`/`wrangler deploy`
+    once the team's checkpoint is at
+    `data/external/t5-text2gloss/thesis_hybrid_dataset1/model/` (only tokenizer/config files
+    were supplied 2026-09-25, no `model.safetensors` yet — the export path is proven against
+    public `t5-base` but never run on the real weights); decide whether int8 is usable on
+    that checkpoint (it wasn't on the generic `t5-base` stand-in) or fp32 ships instead.
 
 **Results + state (2026-09-24, report §9):**
 - ASLG-PC12 test (2,000, independent of our refs): **rules_v2 BLEU 36.4 / WER 0.303 vs

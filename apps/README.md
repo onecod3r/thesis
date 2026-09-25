@@ -1,7 +1,8 @@
 # apps/ — deployment surfaces
 
 The live pipeline: camera → landmarks → recognizer → LLM → English → speech.
-Target platform: **Cloudflare Workers** (TODO §12.5).
+Target platform: **Cloudflare Workers** (TODO §12.5). **Deployed 2026-09-25:**
+https://signbridge.onecoder1.workers.dev (Workers Free plan, `onecoder1` account).
 
 **Sign → speech runs in the browser as of 2026-09-24** (`web/`, see its README):
 - camera or video → Holistic → C1 step model (LiteRT.js) → lattice decoder + trigram
@@ -66,8 +67,8 @@ candidates cross the network. §12.5 quantifies this.
 |---|---|---|
 | deployment research | §12.5 | **done 2026-09-24**: `docs/reports/deployment-research.md`. Recognizer confirmed client-side (LiteRT.js, step export) |
 | **web app, sign → speech** | §12.5 step 1, §12.6 | **built 2026-09-24** (`web/`): parity tests pass, browser replay 24/24 identical to Python. **Not yet tried on a camera** |
-| **web app, speech → gloss** | §13 Phase 4 | **built 2026-09-25** (`web/speech.html`): ASR + gloss run client-side, `npm test` passes. T5 int8 export proven on a public stand-in checkpoint only — the real weights aren't on disk |
-| edge Worker | §12.5 step 4, §13 | **built 2026-09-24/25** (`edge/`): static assets + `/api/english` + `/api/asr` (Workers AI). Verified offline; LLM/ASR routes and deploy need Cloudflare credentials |
+| **web app, speech → gloss** | §13 Phase 4 | **built + deployed 2026-09-25** (`web/speech.html`, live at `/speech`): ASR + gloss run client-side, `npm test` passes. T5 int8 export proven on a public stand-in checkpoint only — the real weights aren't on disk, so the live page runs rules-only |
+| edge Worker | §12.5 step 4, §13 | **built + deployed 2026-09-24/25** (`edge/`): static assets + `/api/english` + `/api/asr` (Workers AI), both live. Found + fixed a missing `assets.binding` that 500'd every real 404 |
 | LLM + TTS | §12.6 | rules English + browser voices in the app; LLM route in `edge/`; Workers AI TTS not wired |
 | custom signs | §12.4 / §12.7 | plan pending |
 | live MediaPipe mode | §10.2 | folded into §12.5 |
