@@ -3970,9 +3970,23 @@ for possible solutions.
     attached), **Landmarks detected** (`/543`, from `holisticToFrame`'s output — 0 means Holistic
     is running but seeing nothing), **Body in view** (yes/no, the same signal the null-frame reset
     logic uses), **p(null)**.
-  - `npm run build` + `npm test` (11/11) pass. **Not yet redeployed** — `wrangler deploy` was
-    blocked by the auto-mode classifier (production-deploy guard) this turn; awaiting the user to
-    either approve the deploy permission or run `npm run deploy` (`apps/edge`) themselves.
+  - `npm run build` + `npm test` (11/11) pass. `wrangler deploy` was blocked by the auto-mode
+    classifier (production-deploy guard) for Claude; **the user deployed it themselves** and
+    confirmed the camera + debug panel live (phone screenshot, 2026-09-25 20:23: video showing,
+    501/543 landmarks, body in view).
+- [x] **Overlay misaligned on that same screenshot (user, 2026-09-25): "look at the skeleton
+  overlay. It is off."** Root cause: `drawFrame` mapped normalized landmark x/y straight to the
+  full canvas box (`x*w, y*h`), but `object-fit: contain` pillarboxes/letterboxes the `<video>`
+  inside that box whenever its aspect ratio differs from the box's 4:3 — the screenshot's portrait
+  phone camera (480×640) was letterboxed to fill height with black bars left/right, so every
+  landmark's x was scaled against the *whole* box width instead of the narrower visible video
+  width, shifting/stretching the whole skeleton off the person. The canvas itself doesn't
+  pillarbox (its own aspect already equals the box's), so it never automatically matched.
+  Fixed by having `drawFrame` redo the same contain math (`Math.min(boxW/videoWidth,
+  boxH/videoHeight)`) and offset points into that inner rect; falls back to the full box when
+  there's no real video (`videoWidth` 0, e.g. held-out replay), so replay's overlay is unchanged.
+  `npm run build` + `npm test` (11/11) pass. **Awaiting redeploy** (same classifier block for
+  Claude) — user to run `npm run deploy` in `apps/edge`, or approve the permission.
 - [ ] **Fix 2:** landmark recorder in `apps/web` (download frames + timestamps), then 30–50 real known
   sentences as the first real continuous test set. Measures what the probes can't: real transitions and
   rest, and Tasks-vs-legacy Holistic differences.

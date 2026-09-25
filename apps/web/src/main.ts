@@ -164,11 +164,19 @@ const CONNECT_POSE: [number, number][] = [[11, 12], [11, 13], [13, 15], [12, 14]
 function drawFrame(frame: Float32Array): void {
   const c = ui.overlay, g = c.getContext("2d")!;
   const dpr = devicePixelRatio;
-  const w = (c.width = c.clientWidth * dpr), h = (c.height = c.clientHeight * dpr);
-  g.clearRect(0, 0, w, h);
+  const boxW = (c.width = c.clientWidth * dpr), boxH = (c.height = c.clientHeight * dpr);
+  g.clearRect(0, 0, boxW, boxH);
+  // `object-fit: contain` on <video> letterboxes/pillarboxes it inside the box whenever its
+  // aspect ratio differs from the box's -- the canvas doesn't (its own aspect already matches
+  // the box), so it must redo that same math or its points land on the black bars, not the
+  // video (found 2026-09-25: a portrait phone camera in the 4:3 box shifted the whole overlay).
+  const vw = ui.video.videoWidth, vh = ui.video.videoHeight;
+  const scale = vw > 0 && vh > 0 ? Math.min(boxW / vw, boxH / vh) : 1;
+  const w = vw > 0 ? vw * scale : boxW, h = vh > 0 ? vh * scale : boxH;
+  const offX = (boxW - w) / 2, offY = (boxH - h) / 2;
   const pt = (row: number): [number, number] | null => {
     const x = frame[row * 3], y = frame[row * 3 + 1];
-    return Number.isNaN(x) || Number.isNaN(y) ? null : [x * w, y * h];
+    return Number.isNaN(x) || Number.isNaN(y) ? null : [offX + x * w, offY + y * h];
   };
   const dot = (p: [number, number] | null, r: number) => {
     if (!p) return;
