@@ -1,6 +1,6 @@
 # Does each sign have a kinematic pattern? Intra- vs inter-gloss similarity on all 250 GISLR glosses
 
-**Status: complete (2026-09-25). No model trained.** TODO §3.8. Narrative:
+**Status: complete (2026-09-25). No model trained.** TODO §3.8. **Update (§7, same day): with handshape, orientation, location and movement variables, patterns exist per phonological parameter (every ASL-LEX parameter recovered on unseen signs, p < 0.005), and per-sign templates reach 38.8% top-1 (§2: 4.9%).** Narrative:
 [docs/logs/daily/2026-09-25.md](../logs/daily/2026-09-25.md).
 
 | | |
@@ -39,7 +39,7 @@ Tests on the standardized variables (heavy-tailed ones `log1p`-compressed):
 - **nearest template**: the mean vector per gloss from `train`, each `test` clip assigned to the closest
   one. Chance is 0.4%.
 
-## 2. Headline: no — these variables do not give each sign its own pattern
+## 2. Headline: no — the first variables do not give each sign its own pattern (see §7 for what does)
 
 ![silhouette and template accuracy per setting](assets/sign-patterns/grid.png)
 
@@ -138,3 +138,106 @@ If the goal is a pattern per sign without a trained network, the next steps in o
 3. **Canonicalize** handedness (as here) and signing speed (time normalization) before templating.
 
 Each is a nearest-template test like §2, so it answers the same question without training.
+
+## 7. Follow-up (same day): patterns exist per phonological parameter, and they carry sign identity
+
+§6's diagnosis was tested directly (research note B1 + B2,
+[improvements-research.md](improvements-research.md)). Still no model is trained.
+
+**Variables added** (`sb.recognize.patterns.phonology_descriptors`, 125 after cleaning), one family per
+ASL phonological parameter:
+
+- **handshape** (75): 15 finger flexion angles, fingertip-to-wrist distance ÷ palm size, 4 spread angles,
+  thumb–index gap; each as mean, std, and change over the sign (last third − first third);
+- **orientation** (14): palm normal and pointing direction;
+- **location** (22): the hand's distance to nose, chin, forehead, mouth, shoulder, chest and the other
+  hand, and the share of frames near each;
+- **movement** (11): path length, net displacement, straightness, extent, direction reversals, turning,
+  speed;
+- **signtype** (3 survive): hand presence, inter-hand distance, velocity correlation.
+
+The left hand is computed mirrored, so relabeling to the dominant hand is an exact mirror.
+
+**Ground truth.** ASL-LEX 2.0 phonological codes (`sb.recognize.aslex`, CC BY-NC 4.0, downloaded to
+`data/external/asl_lex/`). 229 of 250 glosses map:
+
+- 209 exactly;
+- 20 through same-sign synonyms (MOM = MOTHER, GARBAGE = TRASH, …);
+- 21 unmapped, including `look`, `say`, `shhh`, `sleepy` and `puppy`, where the closest entry is a
+  different sign.
+
+A parameter counts for a gloss only if all its ASL-LEX variants agree.
+
+**Test.** Each score is **gloss-disjoint**: a value's template is built from *other* signs than the one
+tested, so passing means the pattern transfers to unseen signs.
+
+- Leave-one-gloss-out nearest template on per-gloss mean descriptors, as balanced accuracy.
+- A 200-shuffle null. Every entry below has p < 0.005 (no shuffle did as well).
+- The same at clip level (train-clip templates → test clips of held-out glosses).
+
+### 7.1 Each family recovers its own parameter on unseen signs
+
+| ASL-LEX parameter (values tested) | best family | chance | gloss-level bal. acc | clip-level |
+|---|---|---|---|---|
+| selected fingers (6) | **handshape** | 0.17 | **0.81** | 0.63 |
+| repeated movement (2) | **movement** | 0.50 | **0.80** | 0.59 |
+| ulnar rotation (2) | **orientation** | 0.50 | **0.75** | 0.59 |
+| thumb position (2) | **handshape** | 0.50 | **0.74** | 0.68 |
+| spread (2) | handshape | 0.50 | 0.70 | 0.57 |
+| contact (2) | §3 variables (touch) | 0.50 | 0.66 | 0.57 |
+| major location (Head/Neutral/Body/Hand) | all phonology | 0.25 | 0.65 | 0.50 |
+| flexion change (2) | all phonology | 0.50 | 0.65 | 0.57 |
+| movement shape (Straight/Curved/Circular) | **movement** | 0.33 | 0.56 | 0.43 |
+| sign type (one-handed, symmetric, …) | all phonology | 0.25 | 0.55 | 0.40 |
+| minor location (10) | §3 variables | 0.10 | 0.49 | 0.25 |
+| flexion (5) | handshape | 0.20 | 0.44 | 0.34 |
+| handshape (17) | handshape | 0.06 | 0.39 | 0.30 |
+
+![family x parameter skill](assets/sign-patterns/parameter_grid.png)
+
+The grid is close to diagonal: each family predicts the parameter it was built for. Handshape → selected
+fingers / thumb / spread / handshape; location → major/minor location and contact; movement → repeated
+movement and movement shape; orientation → ulnar rotation. Most mismatched pairs sit near chance (e.g.
+location → selected fingers 0.20 vs chance 0.17). The exception is orientation → major location (skill 0.46),
+because palm direction changes with where the hand is. Skill = (bal. acc − chance) / (1 − chance). The **pattern per parameter is real and
+generalizes across signs**; the user's idea holds at this level.
+
+Weak spots: **sign type** (one- vs two-handed) is poorly captured because the non-dominant hand is tracked
+in few frames (each hand in ~30% of GISLR frames), and **movement shape** (0.56) is limited by orderless
+path statistics.
+
+### 7.2 With these parameters, whole-sign patterns appear
+
+§2's test again (per-gloss templates, train → test clips, 250 glosses):
+
+| variables | n | separable glosses | silhouette | top-1 | top-5 |
+|---|---|---|---|---|---|
+| §3 variables (the user's, xy, dominant) | 111 | 16% | −0.146 | 4.9% | 16.3% |
+| handshape only | 75 | 38% | −0.164 | **26.1%** | 48.8% |
+| orientation only | 14 | 23% | −0.275 | 10.8% | 29.6% |
+| location only | 22 | 9% | −0.396 | 6.6% | 19.6% |
+| movement only | 11 | 11% | −0.276 | 2.7% | 9.3% |
+| **all phonology** | 125 | **70%** | **−0.086** | **38.8%** | **61.9%** |
+| all phonology + §3 | 236 | 72% | −0.072 | 36.5% | 59.3% |
+
+- **Handshape was the missing ingredient.** Alone it gives 5× the template accuracy of all of §3's
+  variables.
+- With all four parameters, **70% of glosses are tighter than their nearest rival** (§2: 16%). A single
+  mean template per sign, with no fitted weights, gets 38.8% top-1 (97× chance) on unseen clips.
+- Adding §3's variables on top slightly *lowers* accuracy: they are mostly redundant with location and
+  add noise.
+- Silhouette is still negative at clip level. Single clips are noisy (partial clips, 30% hand detection),
+  while gloss means are clean. That is why gloss-level tests are strong and clip-level ones weaker.
+
+For scale: the trained GRU gets ~74% top-1. Orderless templates reach half of that with no training.
+
+### 7.3 What is left, and what this enables
+
+- **Time order** (research note B3): movement is the weakest family. It is summarized, not compared as a
+  trajectory. DTW over time-normalized handshape + location sequences is the next test.
+- **Two-handedness**: needs a better handle on the non-dominant hand (presence is too sparse to use as is).
+- **Uses:**
+  - custom signs (§12.4/§12.7): a new sign can be described, and matched, as a parameter combination from
+    one or two examples;
+  - the confusable pairs (`give`/`gift`, `awake`/`wake`) can be checked for which parameter they share;
+  - an interpretable parameter-level readout could sit beside the GRU.

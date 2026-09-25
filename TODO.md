@@ -28,7 +28,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 | # | next action | where | why now |
 |---|---|---|---|
 | 0a | **§12.8 live camera fails on sentences (user, 2026-09-25).** Probes: low fps (repeated frames) → missed signs, jitter → extra signs, landscape framing → both; app-side interp + EMA + reframe measured (`live-streaming-gap.md`). **Next: user answers fps/mirror/distance, and decides Fix 1 (app) / Fix 2 (record real sentences) / Fix 3 (retrain C1 v2)** | §12.8 | the deployed model is unusable live until this is fixed |
-| 0a2 | **§3.8 sign patterns (done 2026-09-25)**: the user's angle/distance/variance/touch variables do not give a sign its own pattern (negative silhouette everywhere, best template top-1 4.9%); x ≈ y > z, xy > xyz. **Next: user decides whether to add handshape + temporal (DTW) templates** | §3.8 | answers the user's generalization question |
+| 0a2 | **§3.8 sign patterns**: the first variables gave no per-sign pattern; **with handshape/orientation/location/movement, every ASL-LEX parameter is recovered on unseen signs and templates reach 38.8% top-1 (was 4.9%)**, no training. **Next: B3, DTW temporal templates** | §3.8 | the user's current priority (2026-09-25: "start on the sign pattern first") |
 | ~~0~~ | ~~Re-run `gislr.3.streaming.continuous-eval.ipynb`~~ — **done 2026-09-24**: C1 D3 c **GER 0.293** (eval signers) vs baseline 0.507, oracle 0.221 → `docs/reports/continuous-models.md`. Optional follow-up: D5 = D3 ∪ D1 decoder for hard-cut | §12.3 | — |
 | 0b | Plan §12.4 add-a-sign (enroll C-open's 20 held-out glosses from 1/5/10 examples) | §12.4 | C-open (`1790146838`) is trained and waiting; decides how custom signs (§12.7) work |
 | 0c | §12.5 **web app built 2026-09-24** (`apps/web`, `apps/edge`): sign → speech runs in the browser (Holistic → LiteRT.js step model → lag-2 lattice + trigram → rule English → browser voice). Parity tests pass and a headless Chrome replay of 24 held-out streams is identical to Python. **Next (user): first camera test**: `cd apps/web && npm run dev`; check mirroring, fps, a few known sentences | §12.5 | first time real webcam landmarks reach the model |
@@ -1448,13 +1448,25 @@ ranked top-N accuracy.
     and velocity/acceleration/jerk variances are nearly constant across glosses.
   - **Handedness:** the labeled "left" hand is the more-seen hand in 42% of clips. Relabeling to the
     dominant hand raises top-1 from 3.8% to 4.9%.
-- [ ] **Research follow-up (2026-09-25, `improvements-research.md` Part B), preferred next step:**
-  - map the 250 glosses to **ASL-LEX 2.0** phonological codes (handshape, major location, movement,
-    one/two-handed);
-  - rerun the intra/inter test with parameter values as the groups;
-  - question: are there patterns per *parameter* (a sign = a combination), as PhonSSM (arXiv 2604.08761)
-    exploits?
-  - informs §12.4/§12.7 custom-sign enrollment.
+- [x] **Parameter-level patterns: done (user said "start on the sign pattern first", 2026-09-25).** B1 + B2 from
+  `improvements-research.md`, no training. Report `sign-patterns.md` §7.
+  - New code: `sb.recognize.aslex` (ASL-LEX 2.0: 229/250 glosses mapped, 209 exact + 20 synonyms) and
+    `patterns.phonology_descriptors` (handshape / orientation / location / movement / signtype, left hand
+    mirrored).
+  - Notebook §7 of `gislr.0.dataset.sign-patterns.ipynb` (run by Claude).
+  - **Every ASL-LEX parameter is recovered on unseen signs** (gloss-disjoint, p < 0.005). Best cases:
+    - selected fingers 0.81 (chance 0.17, handshape);
+    - repeated movement 0.80 (movement);
+    - ulnar rotation 0.75 (orientation);
+    - major location 0.65 (chance 0.25).
+  - The family × parameter grid is near-diagonal.
+  - **Whole-sign templates: 4.9% → 38.8% top-1** (61.9% top-5); separable glosses 16% → 70%. Handshape
+    alone gives 26.1%.
+  - Weak spots: sign type (non-dominant hand tracked too rarely) and movement shape (orderless).
+- [ ] **Next (B3):** DTW over time-normalized handshape + location trajectories, per-gloss templates, same
+  train → test scoring. Expected to lift movement and whole-sign accuracy.
+- [ ] Optional: use parameter patterns for §12.4/§12.7 custom-sign enrollment (describe a new sign as a
+  parameter combination) and to explain confusable pairs (`give`/`gift`).
 - [ ] **Follow-up (optional, no training), in expected-gain order:**
   - add handshape (finger angles, fingertip distances);
   - keep time: fixed-length resampled trajectories + DTW to per-gloss templates;

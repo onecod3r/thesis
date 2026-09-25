@@ -190,6 +190,183 @@ def clip_descriptors(clip: np.ndarray, axes: str, touch_thr: float = 0.12) -> di
     return out
 
 
+# ---------------------------------------------------------------------------
+# phonological descriptors: handshape, orientation, location, movement, sign type
+# ---------------------------------------------------------------------------
+
+# (a, vertex, c) per finger joint, hand-landmark numbering (0 = wrist)
+_FINGERS = {"thumb": (1, 2, 3, 4), "index": (5, 6, 7, 8), "middle": (9, 10, 11, 12),
+            "ring": (13, 14, 15, 16), "pinky": (17, 18, 19, 20)}
+PHONOLOGY_FAMILIES = ("handshape", "orientation", "location", "movement", "signtype")
+
+
+def _joint_angles(h: np.ndarray) -> dict[str, np.ndarray]:
+    """``(T, 21, 3)`` hand -> 15 flexion angles (3 per finger, degrees).
+    180 = straight."""
+    out = {}
+    for f, (a, b, c, d) in _FINGERS.items():
+        chain = (0, a, b, c, d)
+        for k in range(3):
+            p, v, q = chain[k], chain[k + 1], chain[k + 2]
+            out[f"flex_{f}_{k + 1}"] = _angle(h[:, p], h[:, v], h[:, q])
+    return out
+
+
+def _thirds_delta(s: np.ndarray) -> float:
+    """Mean of the last third minus mean of the first third (NaN-aware):
+    a change over the sign, e.g. a hand that opens or rotates."""
+    s = s[np.isfinite(s)]
+    if len(s) < 3:
+        return np.nan
+    k = len(s) // 3
+    return float(s[-k:].mean() - s[:k].mean())
+
+
+def _stats(prefix: str, s: np.ndarray, out: dict, which=("mean", "std", "delta")) -> None:
+    ok = np.isfinite(s)
+    for w in which:
+        if w == "mean":
+            out[f"{prefix}_mean"] = float(s[ok].mean()) if ok.any() else np.nan
+        elif w == "std":
+            out[f"{prefix}_std"] = float(s[ok].std()) if ok.sum() >= 2 else np.nan
+        elif w == "delta":
+            out[f"{prefix}_delta"] = _thirds_delta(s)
+        elif w == "min":
+            out[f"{prefix}_min"] = float(s[ok].min()) if ok.any() else np.nan
+
+
+def _reversals(v: np.ndarray, min_speed: float) -> int:
+    """Direction changes of a 1-D velocity, ignoring near-still frames."""
+    s = np.sign(v[np.abs(v) > min_speed])
+    return int((np.diff(s) != 0).sum()) if len(s) > 1 else 0
+
+
+def phonology_descriptors(clip: np.ndarray, near: float = 0.35) -> dict[str, float]:
+    """The four ASL phonological parameters (+ sign type) for one clip, per
+    hand, on the kept frames of :func:`normalize`.
+
+    - **handshape**: 15 finger flexion angles, fingertip-to-wrist distances ÷
+      palm size, 4 spread angles and the thumb-index tip gap. 3-D, since hand
+      depth is consistent within a hand.
+    - **orientation**: the palm normal and the wrist→middle-knuckle direction.
+    - **location** (xy): the hand centroid's distance to the nose, chin,
+      forehead, mouth, same-side shoulder, chest and other hand (mean, min,
+      fraction of frames within ``near`` shoulder widths), and its mean
+      position/spread.
+    - **movement** (xy): path length, net displacement, straightness, extent,
+      direction reversals (repetition), turning per unit path, mean speed.
+    - **signtype**: each hand's presence, the inter-hand distance and the
+      correlation of the two hands' (mirrored) velocities (symmetric vs
+      alternating).
+
+    Each statistic is ``mean`` / ``std`` over frames, or ``delta`` = last third −
+    first third (a change during the sign, e.g. FlexionChange).
+
+    **Left hand = mirrored.** The left hand's features are computed on a copy
+    with x negated, so a left-handed signer's dominant hand looks like a
+    right-handed signer's. :func:`dominant_swap`'s column swap is then an exact
+    mirror of the clip.
+    """
+    n, _ = normalize(clip)
+    out: dict[str, float] = {}
+    if len(n) == 0:
+        return out
+    face_pts = {"nose": [NOSE], "chin": [_I[FACE["chin"]]], "forehead": [_I[FACE["forehead"]]],
+                "mouth": [_I[FACE["upper_lip"]], _I[FACE["lower_lip"]]]}
+    cents, vels = {}, {}
+    for side, hand_idx, other_idx, sh in (("r", RH, LH, R_SH), ("l", LH, RH, L_SH)):
+        m = n.copy()
+        if side == "l":
+            m[..., 0] *= -1
+        h = m[:, hand_idx]  # (T, 21, 3)
+        present = ~np.isnan(h[:, 0, 0])
+        p = f"{side}h_"
+        out[f"signtype:{p}present"] = float(present.mean())
+        # handshape
+        palm = np.linalg.norm(h[:, 9] - h[:, 0], axis=-1)
+        palm = np.where(palm > 1e-6, palm, np.nan)
+        feats = _joint_angles(h)
+        for f, (_, _, _, tip) in _FINGERS.items():
+            feats[f"tip_{f}"] = np.linalg.norm(h[:, tip] - h[:, 0], axis=-1) / palm
+        dirs = {f: h[:, j[3]] - h[:, j[0]] for f, j in _FINGERS.items()}
+        for a, b in (("thumb", "index"), ("index", "middle"), ("middle", "ring"), ("ring", "pinky")):
+            feats[f"spread_{a}_{b}"] = _angle(dirs[a], np.zeros_like(dirs[a]), dirs[b])
+        feats["thumb_index_gap"] = np.linalg.norm(h[:, 4] - h[:, 8], axis=-1) / palm
+        for k, s in feats.items():
+            _stats(f"handshape:{p}{k}", s, out)
+        # orientation
+        normal = np.cross(h[:, 5] - h[:, 0], h[:, 17] - h[:, 0])
+        normal /= np.maximum(np.linalg.norm(normal, axis=-1, keepdims=True), 1e-9)
+        point = h[:, 9] - h[:, 0]
+        point /= np.maximum(np.linalg.norm(point, axis=-1, keepdims=True), 1e-9)
+        for name, vec in (("palm", normal), ("point", point)):
+            for k, ax in enumerate("xyz"):
+                _stats(f"orientation:{p}{name}_{ax}", vec[:, k], out, ("mean", "delta"))
+            if present.sum() >= 2:
+                out[f"orientation:{p}{name}_spread"] = float(np.linalg.norm(np.nanstd(vec[present], axis=0)))
+        # location (xy)
+        c = np.nanmean(h[:, :, :2], axis=1) if present.any() else np.full((len(h), 2), np.nan)
+        c[~present] = np.nan
+        anchors = {k: np.nanmean(m[:, idx, :2], axis=1) for k, idx in face_pts.items()}
+        anchors["shoulder"] = m[:, sh, :2]
+        anchors["chest"] = np.zeros((len(m), 2))
+        oh = m[:, other_idx, :2]
+        anchors["other_hand"] = np.nanmean(oh, axis=1) if (~np.isnan(oh[:, 0, 0])).any() else np.full((len(m), 2), np.nan)
+        for k, a in anchors.items():
+            d = np.linalg.norm(c - a, axis=-1)
+            _stats(f"location:{p}to_{k}", d, out, ("mean", "min"))
+            ok = np.isfinite(d)
+            out[f"location:{p}near_{k}_frac"] = float((d[ok] < near).mean()) if ok.any() else np.nan
+        for k, ax in enumerate("xy"):
+            _stats(f"location:{p}pos_{ax}", c[:, k], out, ("mean", "std"))
+        # movement (xy), on a 3-frame moving average
+        cs = c.copy()
+        if len(cs) >= 3:
+            cs[1:-1] = (c[:-2] + c[1:-1] + c[2:]) / 3
+        v = np.diff(cs, axis=0)
+        step = np.linalg.norm(v, axis=-1)
+        okv = np.isfinite(step)
+        path = float(step[okv].sum()) if okv.any() else np.nan
+        seen = np.flatnonzero(np.isfinite(cs[:, 0]))
+        net = cs[seen[-1]] - cs[seen[0]] if len(seen) >= 2 else np.array([np.nan, np.nan])
+        out[f"movement:{p}path"] = path
+        out[f"movement:{p}net_x"], out[f"movement:{p}net_y"] = float(net[0]), float(net[1])
+        out[f"movement:{p}net"] = float(np.linalg.norm(net))
+        out[f"movement:{p}straightness"] = (  # > 1 only across detection gaps
+            float(min(np.linalg.norm(net) / path, 1.0)) if path and path > 1e-6 else np.nan)
+        for k, ax in enumerate("xy"):
+            col = cs[:, k][np.isfinite(cs[:, k])]
+            out[f"movement:{p}extent_{ax}"] = float(np.ptp(col)) if len(col) else np.nan
+            out[f"movement:{p}reversals_{ax}"] = float(_reversals(v[okv, k], 0.01)) if okv.any() else np.nan
+        vv = v[okv]
+        if len(vv) >= 2:
+            ang = np.arctan2(vv[:, 1], vv[:, 0])
+            turn = np.abs(np.angle(np.exp(1j * np.diff(ang))))
+            out[f"movement:{p}turning"] = float(turn.sum() / max(path, 1e-6))
+        out[f"movement:{p}speed"] = float(step[okv].mean()) if okv.any() else np.nan
+        cents[side], vels[side] = c, v
+    # sign type: how the two hands relate (symmetric names survive the swap)
+    d = np.linalg.norm(cents["r"] * [1, 1] - cents["l"] * [-1, 1], axis=-1)  # back to the image frame
+    _stats("signtype:lh_rh_dist", d, out, ("mean", "std"))
+    both = np.isfinite(vels["r"]).all(1) & np.isfinite(vels["l"]).all(1)
+    out["signtype:lh_rh_both_frac"] = float((np.isfinite(cents["r"][:, 0]) & np.isfinite(cents["l"][:, 0])).mean())
+    if both.sum() >= 3:
+        a, b = vels["r"][both].ravel(), vels["l"][both].ravel()  # both in their own mirrored frame
+        out["signtype:lh_rh_velcorr"] = float(np.corrcoef(a, b)[0, 1]) if a.std() > 0 and b.std() > 0 else np.nan
+    return out
+
+
+def file_phonology(path: str) -> dict[str, float]:
+    """:func:`phonology_descriptors` for one npz, columns ``ph|<family>:<name>``,
+    plus the hand-presence columns :func:`dominant_swap` reads."""
+    clip = load_clip(path)
+    out = {f"ph|{k}": v for k, v in phonology_descriptors(clip).items()}
+    n, _ = normalize(clip)
+    out["ph|meta:lh_present"] = float((~np.isnan(n[:, LH, 0]).all(1)).mean()) if len(n) else np.nan
+    out["ph|meta:rh_present"] = float((~np.isnan(n[:, RH, 0]).all(1)).mean()) if len(n) else np.nan
+    return out
+
+
 def file_descriptors(path: str, axes: tuple[str, ...], touch_thr: float) -> dict[str, float]:
     """Every axis setting for one npz, columns ``<axes>|<family>:<name>``.
     Module-level so a process pool can pickle it."""
@@ -323,3 +500,82 @@ def nearest_template(X_ref: np.ndarray, y_ref: np.ndarray, X: np.ndarray, y: np.
     truth = np.searchsorted(classes, y)
     return {"top1": float((order[:, 0] == truth).mean()), f"top{top}": float((order == truth[:, None]).any(1).mean()),
             "chance_top1": 1 / len(classes)}
+
+
+# ---------------------------------------------------------------------------
+# patterns per phonological parameter (ASL-LEX), not per sign
+# ---------------------------------------------------------------------------
+
+def _balanced(pred: np.ndarray, truth: np.ndarray, k: int) -> float:
+    return float(np.mean([(pred[truth == c] == c).mean() for c in range(k) if (truth == c).any()]))
+
+
+def parameter_test(X: np.ndarray, gloss: np.ndarray, is_ref: np.ndarray, values: dict,
+                   min_glosses: int = 5, n_folds: int = 5, n_perm: int = 200, seed: int = 0) -> dict | None:
+    """Do clips group by one phonological parameter's value (e.g. major
+    location = Head / Neutral / Body / Hand), **across signs**?
+
+    ``values`` maps gloss -> value (``None`` = unknown). Values held by fewer
+    than ``min_glosses`` glosses are dropped. Every score is **gloss-disjoint**:
+    a template never contains the sign it is tested on, so a pass means the
+    parameter's pattern generalizes to signs it has not seen.
+
+    - ``gloss_bacc``: each gloss's mean descriptor (from ``is_ref`` clips) goes
+      to the nearest value template built from all *other* glosses
+      (leave-one-gloss-out, cosine); balanced accuracy over values.
+    - ``gloss_bacc_null`` / ``p``: the same score with values shuffled across
+      glosses ``n_perm`` times; ``p`` = share of shuffles at least as good.
+    - ``clip_bacc``: templates from ``is_ref`` clips of the other folds'
+      glosses; every non-``is_ref`` clip of the held-out glosses is matched to
+      them (``n_folds`` gloss folds).
+    - ``silhouette``: cosine silhouette of ``is_ref`` clips grouped by value.
+    """
+    values = {g: v for g, v in values.items() if isinstance(v, str)}  # None / NaN = unknown
+    val = np.array([values.get(g) for g in gloss], dtype=object)
+    counts: dict = {}
+    for g, v in values.items():
+        if v is not None and g in set(gloss):
+            counts[v] = counts.get(v, 0) + 1
+    kept = sorted(v for v, c in counts.items() if c >= min_glosses)
+    if len(kept) < 2:
+        return None
+    code = {v: i for i, v in enumerate(kept)}
+    rng = np.random.default_rng(seed)
+
+    # gloss prototypes (unit mean of ref clips)
+    gl = sorted(g for g, v in values.items() if v in code and g in set(gloss))
+    U = _unit(X)
+    P = _unit(np.stack([U[(gloss == g) & is_ref].mean(0) for g in gl]))
+    y = np.array([code[values[g]] for g in gl])
+    k = len(kept)
+
+    def logo(yv):
+        S = np.zeros((k, P.shape[1]))
+        np.add.at(S, yv, P)
+        n = np.bincount(yv, minlength=k).astype(float)
+        C = S[None] - P[:, None] * (np.arange(k)[None, :, None] == yv[:, None, None])  # drop self
+        n_ex = n[None] - (np.arange(k)[None] == yv[:, None])
+        C = C / np.maximum(n_ex[..., None], 1)
+        sim = np.einsum("gd,gkd->gk", P, C / np.maximum(np.linalg.norm(C, axis=-1, keepdims=True), 1e-12))
+        return _balanced(sim.argmax(1), yv, k)
+
+    obs = logo(y)
+    null = np.array([logo(rng.permutation(y)) for _ in range(n_perm)])
+
+    # clip level, gloss-disjoint folds
+    fold = {g: i % n_folds for i, g in enumerate(rng.permutation(gl))}
+    fclip = np.array([fold.get(g, -1) for g in gloss])
+    yc = np.array([code.get(v, -1) if v is not None else -1 for v in val])
+    preds, truths = [], []
+    for f in range(n_folds):
+        ref = is_ref & (fclip >= 0) & (fclip != f)
+        tst = ~is_ref & (fclip == f)
+        T = _unit(np.stack([U[ref & (yc == c)].mean(0) for c in range(k)]))
+        preds.append((U[tst] @ T.T).argmax(1))
+        truths.append(yc[tst])
+    clip_bacc = _balanced(np.concatenate(preds), np.concatenate(truths), k)
+    sel = is_ref & (yc >= 0)
+    sil = similarity_report(X[sel], yc[sel])["silhouette"]
+    return {"values": kept, "glosses_per_value": [counts[v] for v in kept], "n_glosses": len(gl),
+            "chance": 1 / k, "gloss_bacc": obs, "gloss_bacc_null": float(null.mean()),
+            "p": float((null >= obs).mean()), "clip_bacc": clip_bacc, "silhouette": sil}
