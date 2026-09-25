@@ -59,9 +59,9 @@ def assets(args) -> None:
     if not (md / "config.json").is_file() or not any(md.glob("*.safetensors")):
         sys.exit(f"no checkpoint at {md} (needs config.json + model.safetensors)")
     t0 = time.time()
-    m = export(md, WORK, T5_OUT, t5_cfg=cfg["t5"])
+    m = export(md, WORK, T5_OUT, t5_cfg=cfg["t5"], ship=args.ship)
     sizes = {k: f"{v['bytes'] / 2**20:.0f} MiB in {len(v['parts'])} parts" for k, v in m["files"].items()}
-    print(f"T5 -> {T5_OUT}: {sizes}; fp32 parity {m['parity_fp32']}; {time.time() - t0:.0f}s")
+    print(f"T5 ({m['precision']}) -> {T5_OUT}: {sizes}; fp32 parity {m['parity_fp32']}; {time.time() - t0:.0f}s")
 
 
 def sentences(cfg: dict) -> list[dict]:
@@ -124,6 +124,9 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("what", choices=["assets", "fixtures"])
     ap.add_argument("--model-dir")
+    ap.add_argument("--ship", choices=["fp32", "int8"], default="fp32",
+                     help="assets: which precision the browser downloads (default fp32 -- "
+                          "int8 was too lossy on the team's checkpoint, see export_web.export)")
     args = ap.parse_args()
     {"assets": assets, "fixtures": fixtures}[args.what](args)
 

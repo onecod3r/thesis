@@ -3,7 +3,7 @@
  *
  *   mic (hold to record) or an audio file ─► WAV ─► POST /api/edge /api/asr (Workers AI
  *     whisper-large-v3-turbo) ─► English text ─► spellNumbers ─► rules_v1 + rules_v2
- *     (wink-nlp) ─► T5 int8 ONNX in a Worker (optional, "guarded hybrid") ─► guard.combine
+ *     (wink-nlp) ─► T5 ONNX in a Worker (optional, "guarded hybrid") ─► guard.combine
  *
  * T5 is optional: if its manifest 404s (checkpoint not exported yet) the page still works on
  * rules_v2 alone, same as `sb.synthesize.gloss.GlossEngine` without a checkpoint.

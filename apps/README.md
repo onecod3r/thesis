@@ -14,12 +14,11 @@ https://signbridge.onecoder1.workers.dev (Workers Free plan, `onecoder1` account
 **Speech → gloss runs in the browser as of 2026-09-25** (`web/speech.html`, user decision:
 Free plan, no server-side Containers): mic or an audio file → `apps/edge` `/api/asr`
 (Workers AI `whisper-large-v3-turbo`) → English → `rules_v1`/`rules_v2` (ported from
-`sb.synthesize.gloss` to TypeScript on **wink-nlp**, since Pyodide has no spaCy) → an
-optional T5 refiner (int8 ONNX in a Worker, beam search ported from transformers) → the
-guarded hybrid. **T5 is exported but not deployed**: the checkpoint has no
-`model.safetensors` yet, only config/tokenizer files, so parity was proven against a public
-`t5-base` stand-in — see TODO §13. Gloss → *signs* (rendering) is still deferred: the gloss
-engine now runs, but there are no sign videos to play.
+`sb.synthesize.gloss` to TypeScript on **wink-nlp**, since Pyodide has no spaCy) → the
+team's T5 refiner (**fp32** ONNX in a Worker, beam search ported from transformers) → the
+guarded hybrid. The checkpoint arrived and is deployed; int8 quantization was measured and
+rejected (too lossy — see TODO §13). Gloss → *signs* (rendering) is still deferred: the
+gloss engine now runs, but there are no sign videos to play.
 
 ```
 apps/
@@ -67,7 +66,7 @@ candidates cross the network. §12.5 quantifies this.
 |---|---|---|
 | deployment research | §12.5 | **done 2026-09-24**: `docs/reports/deployment-research.md`. Recognizer confirmed client-side (LiteRT.js, step export) |
 | **web app, sign → speech** | §12.5 step 1, §12.6 | **built 2026-09-24** (`web/`): parity tests pass, browser replay 24/24 identical to Python. **Not yet tried on a camera** |
-| **web app, speech → gloss** | §13 Phase 4 | **built + deployed 2026-09-25** (`web/speech.html`, live at `/speech`): ASR + gloss run client-side, `npm test` passes. T5 int8 export proven on a public stand-in checkpoint only — the real weights aren't on disk, so the live page runs rules-only |
+| **web app, speech → gloss** | §13 Phase 4 | **built + deployed 2026-09-25, with the real T5 checkpoint** (`web/speech.html`, live at `/speech`): ASR + gloss run client-side, `npm test` passes. T5 ships as **fp32** ONNX (int8 was too lossy on the real checkpoint: 52% exact vs `generate()`, some meaning-changing) |
 | edge Worker | §12.5 step 4, §13 | **built + deployed 2026-09-24/25** (`edge/`): static assets + `/api/english` + `/api/asr` (Workers AI), both live. Found + fixed a missing `assets.binding` that 500'd every real 404 |
 | LLM + TTS | §12.6 | rules English + browser voices in the app; LLM route in `edge/`; Workers AI TTS not wired |
 | custom signs | §12.4 / §12.7 | plan pending |

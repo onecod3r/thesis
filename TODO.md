@@ -35,7 +35,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 | 0c | §12.5 **web app built 2026-09-24** (`apps/web`, `apps/edge`): sign → speech runs in the browser (Holistic → LiteRT.js step model → lag-2 lattice + trigram → rule English → browser voice). Parity tests pass and a headless Chrome replay of 24 held-out streams is identical to Python. **Next (user): first camera test**: `cd apps/web && npm run dev`; check mirroring, fps, a few known sentences | §12.5 | first time real webcam landmarks reach the model |
 | 0d | §12.6: next-gloss sweep **done 2026-09-24**: the trigram prior gives −6% GER (0.293 → 0.276); **noise is the real problem** (0.982 unfiltered; the confidence floor → 0.580 but 39% of noise still spoken). **Decide: retrain C1 with noise as null?** **Floor-recall experiment done (2026-09-24): on the evaluation signers the lag-2 lattice beats the floor on missed (−1.4/100 clean, −0.7 noisy), wrong and extra signs, and noise (−2.1 pts); GER 0.347→0.320 clean; about 27 frames delay. Now the web app's default rule** Clean floor deletes 511 correct signs (10.4%); `peak` scoring recovers +122 at equal errors on clean but not noisy Also: **add Cloudflare creds to `.env`** for the LLM/TTS arms; **review the 132 draft references** | §12.6 | stage 2 (prediction + fusion + noise rejection) and stage 3 (gloss → English) have no numbers on real decoding yet |
 | 0e | §12.7 custom-sign feature | §12.7 | product layer over 12.4 + 12.5 |
-| 0f | §13 **speech → gloss built and deployed 2026-09-25**: **https://signbridge.onecoder1.workers.dev** (`apps/web/speech.html` + `/speech`, user decision: Free plan, no Containers). ASR via Workers AI; gloss via wink-nlp ports of rules_v1/v2 (76%/65% sentence-exact agreement with the Python/spaCy engines); T5 exported to int8 ONNX but its assets aren't on the deploy yet — the checkpoint (`data/external/t5-text2gloss/.../model/`) still has no `model.safetensors`, only config/tokenizer files, so the export + parity tests ran against a public `google-t5/t5-base` stand-in and the speech page runs rules-only live. Also found + fixed a real bug while verifying: `wrangler.jsonc` had no `assets.binding`, so any true 404 crashed with a 500. **Next: the team sends the weights, re-export `tools/export_speech.py assets`, re-run `fixtures` + `npm test`, redeploy** | §13 | the gloss half of speech → sign runs end to end client-side and is live; only the real checkpoint (and re-exporting T5 with it) remains |
+| 0f | §13 **speech → gloss, with the real T5 checkpoint, built and deployed 2026-09-25**: **https://signbridge.onecoder1.workers.dev** (`apps/web/speech.html` + `/speech`, user decision: Free plan, no Containers). ASR via Workers AI; gloss via wink-nlp ports of rules_v1/v2 (76%/65% sentence-exact agreement with the Python/spaCy engines); T5 exported to **fp32** ONNX (int8 was too lossy on the real checkpoint — 52% exact, some meaning-changing) and deployed, manifest + all parts verified reachable. Found + fixed a real bug while verifying the first deploy: `wrangler.jsonc` had no `assets.binding`, so any true 404 crashed with a 500. **Not yet checked: an actual browser session running T5 end to end** (only server-side/HTTP checks done) | §13 | the gloss half of speech → sign runs end to end client-side, with the real T5 refiner, and is live |
 | ~~1~~ | ~~Restart the Jupyter kernels, then run one short training~~ — **effectively done**: the four §12.3 continuous runs trained end to end through the restructured stack on 2026-09-23 | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
 | 2 | ~~Run the first checkpoint backup~~ — **done 2026-09-04**: 42 on Kaggle, local copies pruned after hash verification. Model confirmed **private** 2026-09-24 | §9.3 | was the last single-copy risk |
 | 3 | **Notebook §5b: the three-arm AWP/LateDropout ablation** (~30 min) | §4.2 | the 1st-place port has collapsed at epoch 15 twice and neither switch has been run alone, so the recipe is still unmeasured |
@@ -4092,12 +4092,25 @@ uses **draft** references (written by Claude) until the team supplies real ones.
     since the Worker was first built 2026-09-24; `dev:offline` never hit it because `/` and
     `/speech` always matched a real file. Fixed and redeployed; `/nonexistent` now returns a
     clean 404.
-  - **Still owed:** re-export `assets` and re-run `fixtures`/`speech.test.ts`/`wrangler deploy`
-    once the team's checkpoint is at
-    `data/external/t5-text2gloss/thesis_hybrid_dataset1/model/` (only tokenizer/config files
-    were supplied 2026-09-25, no `model.safetensors` yet — the export path is proven against
-    public `t5-base` but never run on the real weights); decide whether int8 is usable on
-    that checkpoint (it wasn't on the generic `t5-base` stand-in) or fp32 ships instead.
+  - **The team's checkpoint arrived 2026-09-25 and is live.** `model.safetensors` copied
+    into `data/external/t5-text2gloss/thesis_hybrid_dataset1/model/` (still gitignored, per
+    `data/`'s rule). Sanity check on 3 sentences with `sb.synthesize.gloss.t5.T5Refiner`
+    directly: coherent gloss, e.g. "Can you help me?" → `CAN YOU HELP ME`. Re-ran
+    `tools/export_speech.py assets` + `fixtures` against it, then `npm test`:
+    - `sb.synthesize.gloss.export_web.export` gained a `ship: "fp32" | "int8"` parameter
+      (default **`fp32`**, changed from int8) — **on the real checkpoint, int8 matched
+      `generate()` on only 13/25 sentences (52%), some meaning-changing (an invented "HE"
+      subject: "She likes coffee." → int8 `HE LIKE COFFEE` vs Python's `LIKE COFFEE`)**,
+      against fp32's 25/25 exact. fp32 is a larger download (~1 GB vs ~260 MB, both chunked
+      for the 25 MiB Workers cap: 44 vs 12 parts) but exact, so it ships;
+    - the manifest now records `precision` so the browser (and anyone reading it) knows
+      which graph is loaded;
+    - `wrangler deploy` re-run: `/assets/t5/manifest.json` and every `.onnx` part are live
+      and fetch 200 (verified by curl on `manifest.json`'s own part list). `/speech` now
+      has a real T5 refiner, not just rules.
+    - **Not yet checked**: an actual browser session loading and running T5 end to end
+      (only the Node-side onnxruntime-node parity test and raw HTTP reachability were
+      verified this session — no browser was driven).
 
 **Results + state (2026-09-24, report §9):**
 - ASLG-PC12 test (2,000, independent of our refs): **rules_v2 BLEU 36.4 / WER 0.303 vs

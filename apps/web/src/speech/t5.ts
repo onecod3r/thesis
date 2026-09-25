@@ -27,6 +27,7 @@ export interface T5Manifest {
     length_penalty?: number };
   guard: { min_content_recall?: number };
   weights_sha256: string | null;
+  precision: "fp32" | "int8";
 }
 
 export class T5Refiner {

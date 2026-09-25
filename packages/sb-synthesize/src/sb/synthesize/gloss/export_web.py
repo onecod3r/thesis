@@ -146,13 +146,20 @@ def split_parts(src: Path, dest_dir: Path, stem: str) -> dict:
 
 
 def export(model_dir: str | Path, work_dir: str | Path, out_dir: str | Path, *, t5_cfg: dict,
-           preset: str = "guarded", parity_tol: float = 1e-3) -> dict:
+           preset: str = "guarded", parity_tol: float = 1e-3, ship: str = "fp32") -> dict:
     """Export, gate, quantize and chunk. ``work_dir`` keeps the fp32 and int8
-    ``.onnx`` files (for the Node parity tests); ``out_dir`` gets what the
-    browser loads: the parts, ``tokenizer.json`` and ``manifest.json``."""
+    ``.onnx`` files (for the Node parity tests) either way; ``out_dir`` gets
+    what the browser loads: ``ship``'s parts, ``tokenizer.json`` and
+    ``manifest.json``. **``ship="fp32"`` is the default** (2026-09-25): on the
+    team's checkpoint, int8 matched ``generate()`` on only 13/25 sentences
+    (some meaning-changing -- an invented subject), against 25/25 for fp32
+    (`apps/web/test/speech.test.ts`). fp32 is a larger download (~1 GB vs
+    ~260 MB, chunked either way for the 25 MiB Workers asset cap) but exact."""
     import torch
     from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
+    if ship not in ("fp32", "int8"):
+        raise ValueError(f"ship must be 'fp32' or 'int8', got {ship!r}")
     model_dir, work, out = Path(model_dir), Path(work_dir), Path(out_dir)
     work.mkdir(parents=True, exist_ok=True)
     tok = AutoTokenizer.from_pretrained(model_dir)
@@ -165,11 +172,12 @@ def export(model_dir: str | Path, work_dir: str | Path, out_dir: str | Path, *, 
     if worst > parity_tol:
         raise RuntimeError(f"ONNX vs PyTorch parity failed: {parity} (tol {parity_tol})")
     int8 = quantize(fp32, work)
+    shipped = fp32 if ship == "fp32" else int8
 
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
-    files = {name: split_parts(p, out, f"{name}.int8.onnx") for name, p in int8.items()}
+    files = {name: split_parts(p, out, f"{name}.{ship}.onnx") for name, p in shipped.items()}
     shutil.copy2(model_dir / "tokenizer.json", out / "tokenizer.json")
     cfg = model.config
     manifest = {
@@ -177,6 +185,7 @@ def export(model_dir: str | Path, work_dir: str | Path, out_dir: str | Path, *, 
         "source_dir": str(model_dir).replace("\\", "/"),
         "weights_sha256": sha256_file(next(model_dir.glob("*.safetensors"))) if any(model_dir.glob("*.safetensors")) else None,
         "files": files,
+        "precision": ship,
         "tokenizer": {"file": "tokenizer.json", "sha256": sha256_file(out / "tokenizer.json")},
         "decoder_start_token_id": cfg.decoder_start_token_id,
         "eos_token_id": cfg.eos_token_id,
