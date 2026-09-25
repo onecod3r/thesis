@@ -18,7 +18,7 @@ kept but marked paused, not deleted. GISLR is the only active dataset.
 
 ---
 
-## Current focus (2026-09-24)
+## Current focus (2026-09-25)
 
 The workstream sections below are the source of truth; this is just the short
 list of what is actually next, in order. Re-derived at each audit — if it looks
@@ -27,6 +27,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 
 | # | next action | where | why now |
 |---|---|---|---|
+| 0a | **§12.8 live camera fails on sentences (user, 2026-09-25).** Probes: low fps (repeated frames) → missed signs, jitter → extra signs, landscape framing → both; app-side interp + EMA + reframe measured (`live-streaming-gap.md`). **Next: user answers fps/mirror/distance, and decides Fix 1 (app) / Fix 2 (record real sentences) / Fix 3 (retrain C1 v2)** | §12.8 | the deployed model is unusable live until this is fixed |
 | ~~0~~ | ~~Re-run `gislr.3.streaming.continuous-eval.ipynb`~~ — **done 2026-09-24**: C1 D3 c **GER 0.293** (eval signers) vs baseline 0.507, oracle 0.221 → `docs/reports/continuous-models.md`. Optional follow-up: D5 = D3 ∪ D1 decoder for hard-cut | §12.3 | — |
 | 0b | Plan §12.4 add-a-sign (enroll C-open's 20 held-out glosses from 1/5/10 examples) | §12.4 | C-open (`1790146838`) is trained and waiting; decides how custom signs (§12.7) work |
 | 0c | §12.5 **web app built 2026-09-24** (`apps/web`, `apps/edge`): sign → speech runs in the browser (Holistic → LiteRT.js step model → lag-2 lattice + trigram → rule English → browser voice). Parity tests pass and a headless Chrome replay of 24 held-out streams is identical to Python. **Next (user): first camera test**: `cd apps/web && npm run dev`; check mirroring, fps, a few known sentences | §12.5 | first time real webcam landmarks reach the model |
@@ -3721,6 +3722,42 @@ sequence (ASL order, no inflection) into fluent English, (5) TTS speaks it.
   constrained vocabulary and give it a user-provided English meaning.
 - [ ] Guardrails: reject an enrollment that collides with an existing gloss
   (high cosine similarity to its prototype), and a way to delete/re-record.
+
+### 12.8 Live camera: continuous recognition breaks — diagnosis + fixes (2026-09-25, new)
+
+**User report (2026-09-25), first camera test of `apps/web`:** "most sentences are garbage": missing,
+extra and wrong glosses. Isolated recognition is good; continuous streaming is very bad. The user asked
+for possible solutions.
+
+- [x] **Robustness probes run (Claude, 2026-09-25, inference only):**
+  `gislr.3.streaming.live-robustness.ipynb` → `docs/reports/live-streaming-gap.md`. Setup: C1 + D3 on
+  400 evaluation-signer streams. Clean GER 0.293, isolated acc 0.737.
+  - **Hurt the stream, not isolated** (the user's symptom):
+    - 15 fps with repeated frames: GER 0.504, missed 0.353, isolated 0.719;
+    - jitter 1%: 0.516, extra 0.165, isolated 0.730;
+    - 6 chained sentences with no reset: 0.415, extra 0.107, recall 0.73 → 0.67 along the chain.
+  - **Hurt both:**
+    - x squashed 0.56 (landscape webcam vs GISLR's portrait framing): 0.651 / isolated 0.416;
+    - mirror: 0.990 / 0.032;
+    - scale 0.7: 0.375.
+  - **App-side fixes measured:**
+    - interpolate instead of repeat: 0.504 → 0.365;
+    - EMA α 0.5: 0.516 → 0.337;
+    - **reframe** (a per-session shoulder/nose affine to GISLR's medians): aspect 0.651 → 0.334 and
+      scale 0.375 → 0.334, costing +0.04 on clean;
+    - live-like combination: 0.592 → 0.481 with all three.
+  - GISLR framing: shoulders span 0.57 of the image width, shoulder mid y 0.61, nose y 0.38. The app
+    requests 640×480 landscape.
+- [?] **Open question to the user:** what fps did the UI show? Was mirroring checked on a one-handed
+  sign? How far from the camera were you? "Isolated works": was that live, or the offline numbers?
+- [ ] **Fix 1 (app, no retrain):** reframe calibration; interpolate in `Clock`; EMA α 0.5; a forced
+  reset at the next null frame after ~600 frames. TS ports with parity fixtures. Awaiting the user's go.
+- [ ] **Fix 2:** landmark recorder in `apps/web` (download frames + timestamps), then 30–50 real known
+  sentences as the first real continuous test set. Measures what the probes can't: real transitions and
+  rest, and Tasks-vs-legacy Holistic differences.
+- [ ] **Fix 3 (retrain C1 v2, needs the user's go):** normalized input; composer augmentations (fps
+  drop/repeat, speed 0.7–1.5×, jitter, hand dropout, scale/shift/aspect); streams up to ~2k frames;
+  noise as null (§12.6 Phase 3). Score it on the probes and on Fix 2's recordings.
 
 **Status check, sign → speech (2026-09-24, re-confirmed ~13:35).** Unchanged: the recognizer half is done offline (C1 D3 GER 0.293), and none of 12.4–12.7 is started. The next step is the §12.4 plan. **Gap check (2026-09-24).** Nothing deployable exists yet:
 `apps/` is READMEs only, `sb-rescore` is a skeleton, and
