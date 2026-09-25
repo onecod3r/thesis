@@ -2229,6 +2229,28 @@ Figure out whether this is overfitting, underfitting or a data/label ceiling
   §6's own reading that pooling itself, not the channel choice, is the
   ceiling** — angles don't rescue what pooling loses. Full write-up:
   `docs/reports/pair-similarity.md`.
+- [x] **Turned the hand-picked 16-pair list into reusable code, re-derived from scratch on
+  the current canonical split (2026-09-25, user: "analyze all the glosses... merge
+  semantically similar ones... then check accuracy of the top performing models").**
+  `sb.recognize.label_merge` (new): 9 merge groups (19 words -> 9 canonical labels:
+  `awake`/`wake`, `give`/`gift`, `listen`/`hear`, `nap`/`sleep`/`sleepy`, `kitty`/`cat`,
+  `pencil`/`pen`, `look`/`see`, `mouth`/`lips`, `puppy`/`dog`), each requiring **both**
+  a semantic check (WordNet Wu-Palmer, dominant sense -- alone it's a poor filter, rating
+  `cat`/`dog` or any two colors just as "similar" as true synonyms) **and** empirical
+  confusion in a freshly-rebuilt current-split confusion matrix (not the possibly stale
+  cached `confusion_all_normalized.npy`). Matches this section's own `finger`/`wait` and
+  `animal`/`have` read (confused but not semantically related -- excluded) and extends it:
+  also excluded several plausible-sounding semantic guesses the model doesn't actually
+  confuse (`not`/`no`, `cute`/`pretty`, `shower`/`bath`, `talk`/`say`, `fall`/`drop`,
+  `bad`/`yucky`, `loud`/`noisy` -- all near-zero). `experiments/recognition/
+  gislr.2.models.label-merging.ipynb` (run) + `docs/reports/label-merging.md`.
+  **Provisional top-model numbers only** (7 current-split canonical runs exist right
+  now, one a broken outlier at 0.335 acc; merge lift so far +1.4 to +1.6 points,
+  consistent across architectures) -- **blocked on `gislr.1.models.training.ipynb`'s
+  §4.3 grid finishing and being evaluated**, per the user's explicit instruction to wait;
+  re-run §2-§4 of the notebook once it has. Two borderline pairs surfaced by the noisier
+  current matrix, below the merge bar for now: `mouth`/`tooth` (0.063), `lips`/`tooth`
+  (0.057) -- watch after more runs land, don't merge yet.
 
 ### 7.2 Phase 2 — Fix normalization (remove signer-appearance bias)
 
