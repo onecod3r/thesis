@@ -1448,6 +1448,13 @@ ranked top-N accuracy.
     and velocity/acceleration/jerk variances are nearly constant across glosses.
   - **Handedness:** the labeled "left" hand is the more-seen hand in 42% of clips. Relabeling to the
     dominant hand raises top-1 from 3.8% to 4.9%.
+- [ ] **Research follow-up (2026-09-25, `improvements-research.md` Part B), preferred next step:**
+  - map the 250 glosses to **ASL-LEX 2.0** phonological codes (handshape, major location, movement,
+    one/two-handed);
+  - rerun the intra/inter test with parameter values as the groups;
+  - question: are there patterns per *parameter* (a sign = a combination), as PhonSSM (arXiv 2604.08761)
+    exploits?
+  - informs §12.4/§12.7 custom-sign enrollment.
 - [ ] **Follow-up (optional, no training), in expected-gain order:**
   - add handshape (finger angles, fingertip distances);
   - keep time: fixed-length resampled trajectories + DTW to per-gloss templates;
@@ -3786,6 +3793,20 @@ for possible solutions.
 - [ ] **Fix 2:** landmark recorder in `apps/web` (download frames + timestamps), then 30–50 real known
   sentences as the first real continuous test set. Measures what the probes can't: real transitions and
   rest, and Tasks-vs-legacy Holistic differences.
+- [x] **Research + recommendations (Claude, 2026-09-25):** `docs/reports/improvements-research.md` Part A.
+  - Main finding: Zuo et al. (EMNLP 2024, online CSLR) got online WER 38.4% → 22.1% by adding a
+    background class for co-articulation and training on clips cut from *real* continuous video by
+    forced alignment.
+  - Our C1 has only seen synthetic transitions, so real recordings are the biggest lever.
+  - New candidates:
+    - a One Euro filter instead of the EMA;
+    - forced-alignment labeling of recorded known sentences;
+    - ASLLRP DAI (real continuous ASL with time-aligned glosses);
+    - ASL Citizen (83k webcam isolated videos, Deaf signers);
+    - a fixed-context model as an alternative to the drifting GRU state.
+  - Recommended order: user check (fps/mirror/framing) → app fixes + recorder → C1 v2 retrain gated on
+    probes + real recordings.
+- [ ] Add a One Euro filter probe to `gislr.3.streaming.live-robustness.ipynb` (compare with EMA α 0.5).
 - [ ] **Fix 3 (retrain C1 v2, needs the user's go):** normalized input; composer augmentations (fps
   drop/repeat, speed 0.7–1.5×, jitter, hand dropout, scale/shift/aspect); streams up to ~2k frames;
   noise as null (§12.6 Phase 3). Score it on the probes and on Fix 2's recordings.
