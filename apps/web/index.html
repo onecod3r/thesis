@@ -32,6 +32,7 @@
       <div class="row toggles">
         <label><input id="mirror" type="checkbox" /> Mirror input (swap hands)</label>
         <label><input id="resample" type="checkbox" checked /> Resample to <span id="target-fps">30</span> fps</label>
+        <label><input id="skip-frames" type="checkbox" checked /> Detect every other frame (halves MediaPipe cost; gaps are interpolated, not repeated)</label>
         <label><input id="auto-speak" type="checkbox" checked /> Speak confident sentences automatically</label>
         <label>Voice <select id="voice"></select></label>
         <label id="llm-wrap" hidden><input id="llm" type="checkbox" /> English by LLM (edge; rules offline otherwise)</label>

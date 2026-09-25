@@ -36,6 +36,7 @@ const ui = {
   replayAll: $<HTMLButtonElement>("replay-all"),
   mirror: $<HTMLInputElement>("mirror"),
   resample: $<HTMLInputElement>("resample"),
+  skipFrames: $<HTMLInputElement>("skip-frames"),
   autoSpeak: $<HTMLInputElement>("auto-speak"),
   voice: $<HTMLSelectElement>("voice"),
   llm: $<HTMLInputElement>("llm"),
@@ -190,6 +191,15 @@ function drawFrame(frame: Float32Array): void {
   }
 }
 
+/** Linear interpolation between two frames — the gap left by a skipped/repeated
+ * capture, per `docs/reports/live-streaming-gap.md` (interpolating beat repeating
+ * a stale frame: GER 0.504 -> 0.365 at 15 fps). `NaN` (no landmark) stays `NaN`. */
+function lerpFrame(a: Float32Array, b: Float32Array, t: number): Float32Array {
+  const out = new Float32Array(a.length);
+  for (let i = 0; i < a.length; i++) out[i] = a[i] + (b[i] - a[i]) * t;
+  return out;
+}
+
 // ---------------------------------------------------------------- sessions
 
 function newSession(): Session {
@@ -302,6 +312,7 @@ async function runLive(kind: "camera" | "file"): Promise<void> {
   const clock = new Clock(app.cfg.target_fps);
   let signs: Sign[] = [];
   let frames = 0, fpsT0 = performance.now(), busy = false, recMs = 0, recN = 0, wasEmpty = false;
+  let capturedFrames = 0, lastFed: Float32Array | null = null;
   const nullFrame = new Float32Array(app.rec.glosses.length + 1);
   nullFrame[app.rec.manifest.null_index] = 1;
   setStatus(kind === "camera" ? "Signing: pause for about 1.5 s to end a sentence." : "Playing the video…");
@@ -324,6 +335,15 @@ async function runLive(kind: "camera" | "file"): Promise<void> {
       }
       if (!busy) {
         busy = true;
+        capturedFrames++;
+        // Skip MediaPipe on alternate captures (halves its cost) -- the gap this leaves in
+        // the model's clock is filled by interpolating toward the next real detection below,
+        // not by repeating a stale one (`docs/reports/live-streaming-gap.md`).
+        if (ui.skipFrames.checked && capturedFrames % 2 === 0) {
+          busy = false;
+          schedule();
+          return;
+        }
         const t0 = performance.now();
         const res: HolisticResult = holistic.detect(video, mediaTime * 1000);
         ui.mpMs.textContent = `${(performance.now() - t0).toFixed(1)} ms/frame`;
@@ -338,7 +358,11 @@ async function runLive(kind: "camera" | "file"): Promise<void> {
         const k = ui.resample.checked ? clock.ticks(mediaTime) : 1;
         for (let i = 0; i < k; i++) {
           const t1 = performance.now();
-          const p = nobody ? nullFrame : await app.rec.step(frame);
+          // Only the last of k catch-up ticks is the real frame; earlier ones are
+          // interpolated toward it from the last frame actually fed, one tick of latency
+          // instead of repeating either endpoint.
+          const stepFrame = nobody || !lastFed || i === k - 1 ? frame : lerpFrame(lastFed, frame, (i + 1) / k);
+          const p = nobody ? nullFrame : await app.rec.step(stepFrame);
           recMs += performance.now() - t1;
           recN += nobody ? 0 : 1;
           const r = session.push(p);
@@ -349,6 +373,7 @@ async function runLive(kind: "camera" | "file"): Promise<void> {
           }
           showLive(signs, r);
         }
+        if (!nobody) lastFed = frame;
         frames++;
         const now = performance.now();
         if (now - fpsT0 > 1000) {

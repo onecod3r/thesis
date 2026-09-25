@@ -37,6 +37,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 | 0e | §12.7 custom-sign feature | §12.7 | product layer over 12.4 + 12.5 |
 | 0f | §13 **speech → gloss, with the real T5 checkpoint, live and tuned for speed** — **https://signbridge.onecoder1.workers.dev**. Built + deployed 2026-09-25; then, on the user's request to reduce inference time, re-tuned same day: T5 ships **mixed precision** (int8 encoder + fp32 decoder — same guard-acceptance as full fp32, ~30% smaller) with `num_beams` 4→2 and `max_length` 64→56 for the browser's `guarded` preset, all benchmarked on the real checkpoint before shipping. Checkpoint files moved from `C:\Users\Public\Downloads\...` into the repo. Headless-Chrome-verified end to end (camera stream, Holistic, T5 manifest live) | §13 | the full speech → gloss pipeline runs client-side with the real T5 refiner, tuned for latency, and is live |
 | 0g | §12.5 **sign → speech camera overlay improved 2026-09-25** (user: "should show the video along with mediapipe overlay live"). Audit found the video + overlay were already both showing (verified live with headless Chrome + a fake camera device) — the overlay was just barely visible (2px pale dots, no pose skeleton). Rewrote `drawFrame` with a bright pose skeleton over the model's own ME-126 upper-body landmarks and clearer hand markers; `npm test` (11/11) and the 24/24 browser replay check still pass | §12.5 | the live camera view now reads as an obviously "live" overlay, not just technically-present dots |
+| 0h | §12.8 **deployed app redeployed + every-other-frame detection, 2026-09-25** (user: "the deployed app is not working... video feed should be shown... send every other frame to the model"). The 0g overlay fix was in `src/` but `signbridge.onecoder1.workers.dev` predated the redeploy — rebuilt + `wrangler deploy` (only 2/89 assets changed). Added a "detect every other frame" toggle: halves `holistic.detect` cost, filling the gap by **interpolating** toward the next real frame (1 tick latency) instead of repeating one — same fix as §12.8's open "interpolate in `Clock`" item. `npm run build` + `npm test` (11/11) pass | §12.8 | live app was stale, not broken; now redeployed with a real perf win that (per the probes above) shouldn't cost GER the way frame-dropping does |
 | ~~1~~ | ~~Restart the Jupyter kernels, then run one short training~~ — **effectively done**: the four §12.3 continuous runs trained end to end through the restructured stack on 2026-09-23 | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
 | 2 | ~~Run the first checkpoint backup~~ — **done 2026-09-04**: 42 on Kaggle, local copies pruned after hash verification. Model confirmed **private** 2026-09-24 | §9.3 | was the last single-copy risk |
 | 3 | **Notebook §5b: the three-arm AWP/LateDropout ablation** (~30 min) | §4.2 | the 1st-place port has collapsed at epoch 15 twice and neither switch has been run alone, so the recipe is still unmeasured |
@@ -3939,6 +3940,25 @@ for possible solutions.
   sign? How far from the camera were you? "Isolated works": was that live, or the offline numbers?
 - [ ] **Fix 1 (app, no retrain):** reframe calibration; interpolate in `Clock`; EMA α 0.5; a forced
   reset at the next null frame after ~600 frames. TS ports with parity fixtures. Awaiting the user's go.
+- [x] **Deployed app fixed + redeployed (2026-09-25).** User reported the live app (`apps/edge`,
+  `signbridge.onecoder1.workers.dev`) "not working," wanted it to look like the MediaPipe Holistic
+  sample (live video + overlay), and asked about sending only every other frame to the model.
+  - The camera overlay fix (`main.ts`'s `drawFrame`, commit `67993c8`) was already in `src/` but the
+    live Worker predated it — `wrangler deploy` had not been re-run since. Rebuilt and redeployed
+    (`npm run build` in `apps/web`, `npm run deploy` in `apps/edge`); only 2 of 89 assets changed,
+    confirming the rest of the app was already current.
+  - Added a "detect every other frame" toggle (`index.html`/`main.ts`, default on): `holistic.detect`
+    now runs on every other captured frame, halving its cost. The gap this leaves in the model's
+    30 fps clock is filled by **interpolating** toward the next real detection (one tick of latency),
+    not by repeating a stale frame — this is the same fix as this section's still-open "interpolate in
+    `Clock`" item, now built for the skip case (and for a slow camera's natural repeats too). Per the
+    probes above, interpolating beat repeating at 15 fps (GER 0.504 → 0.365), so this should not cost
+    accuracy the way naive frame-dropping would.
+  - Verified: `npm run build` (typecheck + vite build) and `npm test` (all 11 suites, decoder/prior/
+    rules/T5 parity) pass unchanged — the new code path doesn't touch anything they cover.
+  - Not yet done: the general `Clock`-repeat interpolation for a slow/stalled camera (independent of
+    the new toggle) is still open above; a landmark recorder for real continuous test data (Fix 2) is
+    still open too.
 - [ ] **Fix 2:** landmark recorder in `apps/web` (download frames + timestamps), then 30–50 real known
   sentences as the first real continuous test set. Measures what the probes can't: real transitions and
   rest, and Tasks-vs-legacy Holistic differences.
