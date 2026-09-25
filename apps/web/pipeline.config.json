@@ -30,5 +30,7 @@
     "n_streams": 24,
     "seed": 42
   },
+  "holistic_delegate": "CPU",
+  "_holistic_delegate_note": "CPU (user decision 2026-09-25: the GPU delegate was slower on their machine). \"GPU\" tries the GPU first and falls back to CPU. ?delegate=GPU|CPU on the page URL overrides it for a comparison.",
   "holistic_model_url": "https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/latest/holistic_landmarker.task"
 }

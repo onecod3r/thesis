@@ -35,7 +35,7 @@ compares every stream with Python.
 | `src/pipeline/decoder.ts` | `OnlineDecoder`, `decide` (none/rescore/agree), `Lattice` | `sb.recognize.continuous.{online,fuse,select}` | `npm test`: 60 streams × 6 rules identical |
 | `src/pipeline/prior.ts` | Kneser-Ney n-gram from `prior.json` | `sb.rescore.prior.NgramLM` | `npm test`: 592 histories, max diff 3e-15 |
 | `src/pipeline/gloss2en.ts` | gloss → English rules (offline) | `sb.rescore.gloss2en.convert` | `npm test`: 5,724 sequences identical |
-| `src/pipeline/holistic.ts` | MediaPipe HolisticLandmarker, VIDEO mode | `packages/sb-extract-ts` worker | headless smoke test: loads, runs (GPU delegate) |
+| `src/pipeline/holistic.ts` | MediaPipe HolisticLandmarker, VIDEO mode, **CPU delegate** (`holistic_delegate`; `?delegate=GPU` to compare) | `packages/sb-extract-ts` worker | headless smoke test: loads, runs (GPU delegate) |
 | `src/pipeline/session.ts` | sentence end on a pause, 30 fps clock, speak policy | new (app behaviour) | – |
 | `src/pipeline/speech.ts` | `speechSynthesis` | the SAPI arm of the TTS notebook | – |
 | `../shared-ts/src/landmarks.ts` | Holistic result → (543, 3) frame | reuses `packages/sb-extract-ts/src/schema.ts` | – |

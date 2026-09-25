@@ -20,12 +20,16 @@ export class Holistic {
     this.delegate = delegate;
   }
 
-  /** `modelUrls` are tried in order (a local copy first, then Google's CDN). GPU first, CPU if it fails. */
-  static async load(wasmDir: string, modelUrls: string[]): Promise<Holistic> {
+  /**
+   * `modelUrls` are tried in order (a local copy first, then Google's CDN). `prefer` "CPU" uses
+   * only the CPU; "GPU" tries the GPU first and falls back to the CPU if it fails.
+   */
+  static async load(wasmDir: string, modelUrls: string[], prefer: "CPU" | "GPU" = "CPU"): Promise<Holistic> {
     const fileset = await FilesetResolver.forVisionTasks(wasmDir);
+    const delegates = prefer === "GPU" ? (["GPU", "CPU"] as const) : (["CPU"] as const);
     let lastError: unknown;
     for (const url of modelUrls) {
-      for (const delegate of ["GPU", "CPU"] as const) {
+      for (const delegate of delegates) {
         try {
           const lm = await HolisticLandmarker.createFromOptions(fileset, {
             baseOptions: { modelAssetPath: url, delegate },

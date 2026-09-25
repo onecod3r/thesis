@@ -253,7 +253,9 @@ async function replayAll(): Promise<void> {
 async function ensureHolistic(): Promise<Holistic> {
   if (app.holistic) return app.holistic;
   setStatus("Loading MediaPipe Holistic (about 14 MB, once)…");
-  app.holistic = await Holistic.load(`${WASM}/mediapipe`, [`${ASSETS}/holistic_landmarker.task`, app.cfg.holistic_model_url]);
+  const asked = new URLSearchParams(location.search).get("delegate")?.toUpperCase();
+  const prefer = asked === "GPU" || asked === "CPU" ? asked : (app.cfg.holistic_delegate ?? "CPU");
+  app.holistic = await Holistic.load(`${WASM}/mediapipe`, [`${ASSETS}/holistic_landmarker.task`, app.cfg.holistic_model_url], prefer);
   ui.delegate.textContent = app.holistic.delegate;
   return app.holistic;
 }

@@ -3371,6 +3371,7 @@ duplicates.
     prompt v1, hash = Python's);
   - verified with `wrangler dev --env offline`; the AI route needs `CLOUDFLARE_API_TOKEN`;
   - not deployed.
+- **2026-09-25, user decision: Holistic on CPU.** The GPU delegate was slower on their machine. `pipeline.config.json` `holistic_delegate: "CPU"` (`?delegate=GPU` on the URL to compare). The recognizer was already CPU (LiteRT.js WASM). Re-checked: `npm test` passes, headless replay 24/24 identical, Holistic smoke test runs on CPU.
 - [ ] **Next (user):** open `npm run dev` with a camera. Check mirroring on a one-handed sign,
   note the achieved fps, and try a few known sentences. That is the first real-signing test.
 - [ ] Credentials → `npm run dev` in `apps/edge` for the LLM English route; then `npm run deploy`.

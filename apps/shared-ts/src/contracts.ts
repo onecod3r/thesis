@@ -44,6 +44,8 @@ export interface PipelineConfig {
   display: { uncertain_below: number };
   speech: { auto_speak_min_confidence: number };
   holistic_model_url: string;
+  /** MediaPipe delegate for Holistic; "GPU" falls back to CPU if it fails. */
+  holistic_delegate?: "CPU" | "GPU";
   decoder: DecoderSettings;
   model: { run_id: number; sha256: Record<string, string> };
 }
