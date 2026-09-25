@@ -28,6 +28,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 | # | next action | where | why now |
 |---|---|---|---|
 | 0a | **§12.8 live camera fails on sentences (user, 2026-09-25).** Probes: low fps (repeated frames) → missed signs, jitter → extra signs, landscape framing → both; app-side interp + EMA + reframe measured (`live-streaming-gap.md`). **Next: user answers fps/mirror/distance, and decides Fix 1 (app) / Fix 2 (record real sentences) / Fix 3 (retrain C1 v2)** | §12.8 | the deployed model is unusable live until this is fixed |
+| 0a2 | **§3.8 sign patterns (done 2026-09-25)**: the user's angle/distance/variance/touch variables do not give a sign its own pattern (negative silhouette everywhere, best template top-1 4.9%); x ≈ y > z, xy > xyz. **Next: user decides whether to add handshape + temporal (DTW) templates** | §3.8 | answers the user's generalization question |
 | ~~0~~ | ~~Re-run `gislr.3.streaming.continuous-eval.ipynb`~~ — **done 2026-09-24**: C1 D3 c **GER 0.293** (eval signers) vs baseline 0.507, oracle 0.221 → `docs/reports/continuous-models.md`. Optional follow-up: D5 = D3 ∪ D1 decoder for hard-cut | §12.3 | — |
 | 0b | Plan §12.4 add-a-sign (enroll C-open's 20 held-out glosses from 1/5/10 examples) | §12.4 | C-open (`1790146838`) is trained and waiting; decides how custom signs (§12.7) work |
 | 0c | §12.5 **web app built 2026-09-24** (`apps/web`, `apps/edge`): sign → speech runs in the browser (Holistic → LiteRT.js step model → lag-2 lattice + trigram → rule English → browser voice). Parity tests pass and a headless Chrome replay of 24 held-out streams is identical to Python. **Next (user): first camera test**: `cd apps/web && npm run dev`; check mirroring, fps, a few known sentences | §12.5 | first time real webcam landmarks reach the model |
@@ -1422,6 +1423,36 @@ ranked top-N accuracy.
   `test_predictions.npz` the way this write-up did.
 
 ---
+
+### 3.8 Sign "patterns" without a model: intra- vs inter-gloss similarity of hand-built variables (2026-09-25, built + run)
+
+**User request (2026-09-25):**
+- per clip: normalize to a reference point, scale by the shoulder width, compute wrist/elbow/shoulder
+  angles, hand↔hand and hand↔face distances, drop null frames, take the variance of displacement,
+  velocity, acceleration and jerk, and count touches;
+- run it with only x, only y, only z, and xyz;
+- test whether same-gloss clips are similar and different glosses dissimilar, so each sign generalizes to
+  a pattern;
+- no model training.
+
+- [x] `sb.recognize.patterns` + `gislr.0.dataset.sign-patterns.ipynb`: run by Claude on all 94,477 clips,
+  no training. Report: `docs/reports/sign-patterns.md`.
+  - **Answer: no.**
+    - Intra > inter on average, but every gloss has a nearest rival more similar than its own clips.
+    - Silhouette is negative in every setting. For the user's combined variables in xyz, it is negative for
+      all 250 glosses.
+    - Nearest-template train → test: best top-1 **4.9%** / top-5 16.3% (xy, all variables, dominant hand);
+      chance is 0.4%, the GRU gets ~74%.
+  - **Axes:** x ≈ y (3.2% / 3.0%) > z (1.2%). xy > xyz in every family but touch; z adds noise.
+  - **Strongest variables:** dominant hand ↔ face touch fraction (Fisher 0.91) and distance (0.50). Angles
+    and velocity/acceleration/jerk variances are nearly constant across glosses.
+  - **Handedness:** the labeled "left" hand is the more-seen hand in 42% of clips. Relabeling to the
+    dominant hand raises top-1 from 3.8% to 4.9%.
+- [ ] **Follow-up (optional, no training), in expected-gain order:**
+  - add handshape (finger angles, fingertip distances);
+  - keep time: fixed-length resampled trajectories + DTW to per-gloss templates;
+  - speed normalization.
+  Each is a nearest-template test like the one above. *Awaiting the user's call on whether to pursue it.*
 
 ## 4. Architecture Benchmarking
 

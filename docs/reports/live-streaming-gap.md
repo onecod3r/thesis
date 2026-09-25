@@ -37,6 +37,8 @@ finding where they start and end:
   goes 0.73, 0.72, 0.70, 0.66, 0.66, 0.67. Training streams never exceeded 600 frames. The app resets
   the state only after 45 null frames, and with jitter those rarely come.
 
+![what each live-camera difference costs](assets/live-streaming-gap/probes.png)
+
 **Two more differences break both the stream and isolated recognition:**
 
 | probe | stream GER | isolated acc |
