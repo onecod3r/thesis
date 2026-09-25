@@ -1,6 +1,6 @@
 # Does each sign have a kinematic pattern? Intra- vs inter-gloss similarity on all 250 GISLR glosses
 
-**Status: complete (2026-09-25). No model trained.** TODO §3.8. **Update (§7, same day): with handshape, orientation, location and movement variables, patterns exist per phonological parameter (every ASL-LEX parameter recovered on unseen signs, p < 0.005), and per-sign templates reach 38.8% top-1 (§2: 4.9%).** Narrative:
+**Status: complete (2026-09-25). No model trained.** TODO §3.8. **Update (§7, same day): with handshape, orientation, location and movement variables, patterns exist per phonological parameter (every ASL-LEX parameter recovered on unseen signs, p < 0.005), and per-sign templates reach 38.8% top-1 (§2: 4.9%). §8: keeping time order with DTW over per-frame phonology reaches 41.6% top-1 / 66.8% top-5, and 15.2% from one example per sign.** Narrative:
 [docs/logs/daily/2026-09-25.md](../logs/daily/2026-09-25.md).
 
 | | |
@@ -234,10 +234,78 @@ For scale: the trained GRU gets ~74% top-1. Orderless templates reach half of th
 ### 7.3 What is left, and what this enables
 
 - **Time order** (research note B3): movement is the weakest family. It is summarized, not compared as a
-  trajectory. DTW over time-normalized handshape + location sequences is the next test.
+  trajectory. §8 tests DTW over time-normalized sequences.
 - **Two-handedness**: needs a better handle on the non-dominant hand (presence is too sparse to use as is).
 - **Uses:**
   - custom signs (§12.4/§12.7): a new sign can be described, and matched, as a parameter combination from
     one or two examples;
   - the confusable pairs (`give`/`gift`, `awake`/`wake`) can be checked for which parameter they share;
   - an interpretable parameter-level readout could sit beside the GRU.
+
+## 8. Time order: DTW over per-frame phonology (research note B3, same day)
+
+§7 still summarized each clip over time. Here each clip keeps its time course.
+
+**Setup:**
+- 39 per-frame channels of the dominant hand (`patterns.phonology_sequence`), mirrored for left-dominant
+  clips: handshape 25, orientation 6, location 5, other hand 3.
+- Gaps interpolated, resampled to 32 steps (normalizes signing speed); each family weighted equally.
+- Every `test` clip is matched to its nearest of K = 20 `train` exemplars per gloss.
+- The distances compared all use the same exemplars and channels, so the table isolates what order and
+  warping add. DTW runs on the GPU (`patterns.dtw_distances`), checked against a naive DTW to 7e-6.
+- 96.3% of clips have a usable dominant hand; the test set is 18,183 clips.
+
+| channels | orderless (time average) | lockstep | DTW ±4 | DTW ±8 | DTW ±16 | DTW, no band |
+|---|---|---|---|---|---|---|
+| handshape | 24.6% | 24.2% | 28.0% | | | |
+| orientation | 4.9% | 8.3% | 10.0% | | | |
+| location | 3.3% | 7.2% | 8.4% | | | |
+| **all** | 34.5% | 36.8% | 40.1% | 41.1% | 41.5% | **41.6%** (top-5 66.8%) |
+
+- **Order helps, and warping helps more.** For the same channels: orderless 34.5% → lockstep 36.8%
+  (+2.3) → DTW 41.6% (+4.8). A wider band is better up to about ±16 steps (half the sign). Signers
+  differ in timing more than a fixed resampling can absorb.
+- **Order matters most where movement lives.** Location goes 3.3% → 8.4% and orientation 4.9% → 10.0%,
+  both more than double. Handshape, mostly static, gains less (24.6% → 28.0%).
+- **Against §7.2:** DTW on 39 channels (41.6%) edges out the orderless template on 125 variables (38.8%).
+  The two methods differ in matching as well as in order (exemplar nearest neighbour vs one mean per
+  gloss); within one method, order is worth +7.1 points.
+
+**Few-shot** (DTW, no band, all channels):
+
+| exemplars per gloss | top-1 | top-5 |
+|---|---|---|
+| 1 | 15.2% (38× chance) | 32.5% |
+| 5 | 27.8% | 51.1% |
+| 20 | 41.6% | 66.8% |
+
+This is the regime custom signs (§12.7) would run in: one or a few recordings per new sign, no training.
+
+**Per gloss.** Median accuracy is 39.7%; 29.6% of glosses reach ≥ 50%, and only one (0.4%) is below 10%.
+
+- Best: `uncle` 85%, `airplane` 80%, `brown` 78%, `cow` 77%, `callonphone` 76%. These signs have
+  distinctive handshape + location combinations.
+- Worst, and their most common wrong answer:
+  - `give` → `gift` 13%, `pen` → `pencil` 14%, `mouth` → `lips` 14%: near-identical sign pairs, the same
+    ones the trained models confuse (`five-arch-benchmark.md`);
+  - `there` 10%, `go` 15%, `why` 14%, `on` 17%, `touch` 15%: short pointing or contact signs whose shape
+    is common.
+
+### 8.1 Where this leaves the pattern question
+
+| method (no training) | top-1 | top-5 |
+|---|---|---|
+| the user's 7-step variables, per-gloss template (§2) | 4.9% | 16.3% |
+| + handshape / orientation / location / movement, per-gloss template (§7.2) | 38.8% | 61.9% |
+| per-frame phonology, DTW, 20 exemplars (§8) | **41.6%** | **66.8%** |
+| trained GRU (for scale) | ~74% | – |
+
+A sign is recognizable as a pattern of phonological parameters over time. Without any training that
+reaches about 42% top-1 over 250 glosses, and about 15% from a single example. The remaining gap to a
+trained model is about half the accuracy. It comes from near-identical sign pairs, short pointing signs,
+and noisy single clips (each hand is detected in only ~30% of frames).
+
+**Next, if pursued:**
+- a learned per-parameter embedding (the PhonSSM idea) instead of hand-set channel weights;
+- using DTW templates for custom-sign enrollment (§12.4/§12.7) and comparing them with the cosine-head
+  imprinting planned there.

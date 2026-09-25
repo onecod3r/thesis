@@ -579,3 +579,135 @@ def parameter_test(X: np.ndarray, gloss: np.ndarray, is_ref: np.ndarray, values:
     return {"values": kept, "glosses_per_value": [counts[v] for v in kept], "n_glosses": len(gl),
             "chance": 1 / k, "gloss_bacc": obs, "gloss_bacc_null": float(null.mean()),
             "p": float((null >= obs).mean()), "clip_bacc": clip_bacc, "silhouette": sil}
+
+
+# ---------------------------------------------------------------------------
+# time-ordered patterns: per-frame phonology sequences + DTW (research note B3)
+# ---------------------------------------------------------------------------
+
+SEQ_CHANNELS: dict[str, tuple[str, ...]] = {
+    "handshape": tuple([f"flex_{f}_{k}" for f in _FINGERS for k in (1, 2, 3)]
+                       + [f"tip_{f}" for f in _FINGERS]
+                       + ["spread_thumb_index", "spread_index_middle", "spread_middle_ring", "spread_ring_pinky",
+                          "thumb_index_gap"]),
+    "orientation": ("palm_x", "palm_y", "palm_z", "point_x", "point_y", "point_z"),
+    "location": ("pos_x", "pos_y", "to_nose", "to_chin", "to_chest"),
+    "other_hand": ("other_x", "other_y", "other_present"),
+}
+
+
+def _fill_time(s: np.ndarray) -> np.ndarray:
+    """Linear interpolation over NaN frames, edges held; all-NaN stays NaN."""
+    ok = np.isfinite(s)
+    if ok.all() or not ok.any():
+        return s
+    t = np.arange(len(s))
+    return np.interp(t, t[ok], s[ok])
+
+
+def phonology_sequence(clip: np.ndarray, length: int = 32) -> np.ndarray | None:
+    """One clip -> ``(length, n_channels)`` per-frame phonology of the
+    **dominant** hand (the one seen in more kept frames; a left-dominant clip
+    is mirrored), channels in :data:`SEQ_CHANNELS` order.
+
+    Kept frames of :func:`normalize`; frames where the dominant hand is
+    missing are interpolated in time, then the sequence is linearly resampled
+    to ``length`` steps (so signing speed is normalized). ``None`` if the
+    dominant hand is seen in fewer than 2 frames."""
+    n, _ = normalize(clip)
+    if len(n) == 0:
+        return None
+    seen = {s: (~np.isnan(n[:, idx, 0]).all(1)) for s, idx in (("r", RH), ("l", LH))}
+    dom = "r" if seen["r"].sum() >= seen["l"].sum() else "l"
+    if seen[dom].sum() < 2:
+        return None
+    m = n.copy()
+    if dom == "l":
+        m[..., 0] *= -1
+    h = m[:, RH if dom == "r" else LH]
+    o = m[:, LH if dom == "r" else RH]
+    palm = np.linalg.norm(h[:, 9] - h[:, 0], axis=-1)
+    palm = np.where(palm > 1e-6, palm, np.nan)
+    ch: dict[str, np.ndarray] = dict(_joint_angles(h))
+    for f, (_, _, _, tip) in _FINGERS.items():
+        ch[f"tip_{f}"] = np.linalg.norm(h[:, tip] - h[:, 0], axis=-1) / palm
+    dirs = {f: h[:, j[3]] - h[:, j[0]] for f, j in _FINGERS.items()}
+    for a, b in (("thumb", "index"), ("index", "middle"), ("middle", "ring"), ("ring", "pinky")):
+        ch[f"spread_{a}_{b}"] = _angle(dirs[a], np.zeros_like(dirs[a]), dirs[b])
+    ch["thumb_index_gap"] = np.linalg.norm(h[:, 4] - h[:, 8], axis=-1) / palm
+    normal = np.cross(h[:, 5] - h[:, 0], h[:, 17] - h[:, 0])
+    normal /= np.maximum(np.linalg.norm(normal, axis=-1, keepdims=True), 1e-9)
+    point = h[:, 9] - h[:, 0]
+    point /= np.maximum(np.linalg.norm(point, axis=-1, keepdims=True), 1e-9)
+    for k, ax in enumerate("xyz"):
+        ch[f"palm_{ax}"], ch[f"point_{ax}"] = normal[:, k], point[:, k]
+    c = np.nanmean(h[:, :, :2], axis=1)
+    ch["pos_x"], ch["pos_y"] = c[:, 0], c[:, 1]
+    ch["to_nose"] = np.linalg.norm(c - m[:, NOSE, :2], axis=-1)
+    ch["to_chin"] = np.linalg.norm(c - m[:, _I[FACE["chin"]], :2], axis=-1)
+    ch["to_chest"] = np.linalg.norm(c, axis=-1)
+    oc = np.nanmean(o[:, :, :2], axis=1)
+    ch["other_present"] = (~np.isnan(o[:, 0, 0])).astype(np.float64)
+    ch["other_x"], ch["other_y"] = oc[:, 0], oc[:, 1]
+    names = [c for fam in SEQ_CHANNELS.values() for c in fam]
+    S = np.stack([_fill_time(np.asarray(ch[k], np.float64)) for k in names], 1)  # (T, C)
+    t_old = np.linspace(0, 1, len(S))
+    t_new = np.linspace(0, 1, length)
+    out = np.stack([np.interp(t_new, t_old, S[:, j]) if np.isfinite(S[:, j]).any() else np.full(length, np.nan)
+                    for j in range(S.shape[1])], 1)
+    return out.astype(np.float32)
+
+
+def file_sequence(path: str, length: int = 32) -> np.ndarray | None:
+    """:func:`phonology_sequence` for one npz (module-level, so a process pool can pickle it)."""
+    return phonology_sequence(load_clip(path), length)
+
+
+def dtw_distances(A, B, band: int | None = None, chunk_pairs: int = 400_000):
+    """DTW distance between every sequence of ``A`` ``(nA, L, C)`` and of ``B``
+    ``(nB, L, C)`` (torch tensors, same device) -> ``(nA, nB)``.
+
+    Local cost = squared Euclidean distance between frames; steps (1,1),
+    (1,0), (0,1); ``band`` = Sakoe-Chiba half-width (``None`` = unconstrained);
+    ``band=0`` is lockstep (no warping). Filled one anti-diagonal at a time,
+    batched over pairs."""
+    import torch
+
+    nA, L, _ = A.shape
+    nB = B.shape[0]
+    out = torch.empty(nA, nB, device=A.device)
+    per = max(1, chunk_pairs // max(nB, 1))
+    ii, jj = torch.meshgrid(torch.arange(L, device=A.device), torch.arange(L, device=A.device), indexing="ij")
+    outside = (ii - jj).abs() > band if band is not None else torch.zeros(L, L, dtype=torch.bool, device=A.device)
+    b2 = (B * B).sum(-1)  # (nB, L)
+    for s in range(0, nA, per):
+        a = A[s:s + per]
+        a2 = (a * a).sum(-1)
+        C = a2[:, None, :, None] + b2[None, :, None, :] - 2 * torch.einsum("aic,bjc->abij", a, B)
+        C = C.clamp_min(0).masked_fill(outside, float("inf"))
+        if band == 0:
+            out[s:s + per] = torch.diagonal(C, dim1=-2, dim2=-1).sum(-1)
+            continue
+        D = torch.full((*C.shape[:2], L + 1, L + 1), float("inf"), device=A.device)
+        D[..., 0, 0] = 0
+        for k in range(2, 2 * L + 1):
+            i = torch.arange(max(1, k - L), min(L, k - 1) + 1, device=A.device)
+            j = k - i
+            prev = torch.minimum(torch.minimum(D[..., i - 1, j - 1], D[..., i - 1, j]), D[..., i, j - 1])
+            D[..., i, j] = C[..., i - 1, j - 1] + prev
+        out[s:s + per] = D[..., L, L]
+    return out
+
+
+def exemplar_nn(dist, ex_gloss: np.ndarray, test_gloss: np.ndarray, top: int = 5) -> dict:
+    """``dist`` ``(n_test, n_exemplars)`` torch tensor -> per gloss, the
+    distance to its nearest exemplar; top-1/top-``top`` accuracy."""
+    import torch
+
+    classes = np.unique(ex_gloss)
+    code = torch.as_tensor(np.searchsorted(classes, ex_gloss), device=dist.device)
+    per = torch.full((dist.shape[0], len(classes)), float("inf"), device=dist.device)
+    per = per.scatter_reduce(1, code.expand(dist.shape[0], -1), dist, reduce="amin")
+    order = per.argsort(1)[:, :top].cpu().numpy()
+    truth = np.searchsorted(classes, test_gloss)
+    return {"top1": float((order[:, 0] == truth).mean()), f"top{top}": float((order == truth[:, None]).any(1).mean())}
