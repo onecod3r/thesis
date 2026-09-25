@@ -3987,6 +3987,16 @@ for possible solutions.
   there's no real video (`videoWidth` 0, e.g. held-out replay), so replay's overlay is unchanged.
   `npm run build` + `npm test` (11/11) pass. **Awaiting redeploy** (same classifier block for
   Claude) — user to run `npm run deploy` in `apps/edge`, or approve the permission.
+- [x] **Mobile-friendly, modern redesign (user, 2026-09-25): "make the design mobile friendly and
+  modern."** CSS/HTML only, no `main.ts`/`speech-main.ts` logic touched (element IDs unchanged).
+  `style.css` rewritten: sticky blurred header, 44px min touch targets on every button/select,
+  custom checkbox styling (20px, checked state visibly filled), controls stack full-width under
+  600px (was a cramped `flex-wrap` row), softer radii/shadows/gradient accent, `dt`/`dd` stats
+  right-aligned and bolder, sentence cards without bullet markers, the browser-vs-Python check
+  table scrolls horizontally instead of overflowing. Both `index.html` and `speech.html` got a
+  `theme-color` meta (light/dark) and the cross-page link turned into a pill nav button. Verified
+  with `npm run build` only (pure CSS/markup, nothing the `npm test` parity suites or TS types
+  cover changed). **Awaiting redeploy**, same as the two fixes above.
 - [ ] **Fix 2:** landmark recorder in `apps/web` (download frames + timestamps), then 30–50 real known
   sentences as the first real continuous test set. Measures what the probes can't: real transitions and
   rest, and Tasks-vs-legacy Holistic differences.
