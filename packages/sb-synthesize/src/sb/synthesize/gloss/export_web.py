@@ -145,21 +145,33 @@ def split_parts(src: Path, dest_dir: Path, stem: str) -> dict:
     return {"parts": parts, "bytes": src.stat().st_size, "sha256": sha256_file(src)}
 
 
+SHIP_MODES = ("fp32", "int8", "mixed")
+
+
 def export(model_dir: str | Path, work_dir: str | Path, out_dir: str | Path, *, t5_cfg: dict,
-           preset: str = "guarded", parity_tol: float = 1e-3, ship: str = "fp32") -> dict:
+           preset: str = "guarded", parity_tol: float = 1e-3, ship: str = "mixed") -> dict:
     """Export, gate, quantize and chunk. ``work_dir`` keeps the fp32 and int8
-    ``.onnx`` files (for the Node parity tests) either way; ``out_dir`` gets
-    what the browser loads: ``ship``'s parts, ``tokenizer.json`` and
-    ``manifest.json``. **``ship="fp32"`` is the default** (2026-09-25): on the
-    team's checkpoint, int8 matched ``generate()`` on only 13/25 sentences
-    (some meaning-changing -- an invented subject), against 25/25 for fp32
-    (`apps/web/test/speech.test.ts`). fp32 is a larger download (~1 GB vs
-    ~260 MB, chunked either way for the 25 MiB Workers asset cap) but exact."""
+    ``.onnx`` files (for the Node parity tests) regardless of ``ship``;
+    ``out_dir`` gets what the browser loads: ``ship``'s parts,
+    ``tokenizer.json`` and ``manifest.json``.
+
+    ``ship`` (2026-09-25 measurements on the team's checkpoint, 40 sentences,
+    guard-acceptance against the fp32/beam=4 reference -- `apps/web/test/speech.test.ts`
+    covers the fp32 and int8 cases; the mixed case was a one-off benchmark, not a
+    standing test):
+    - ``"fp32"``: exact (25/25 vs `generate()`), ~1 GB.
+    - ``"int8"`` (both graphs): too lossy -- 13/25 exact, some meaning-changing
+      (an invented subject), ~260 MB.
+    - **``"mixed"`` (int8 encoder + fp32 decoder) -- the default.** The encoder
+      runs once per sentence, so its quantization error doesn't compound across
+      beam steps the way the decoder's does: 34/40 exact, **same guard-acceptance
+      rate as full fp32 (24/40)**, at ~730 MB (419 MB fp32 encoder -> 105 MB int8,
+      the decoder unchanged) -- most of fp32's quality at ~30% less download."""
     import torch
     from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
-    if ship not in ("fp32", "int8"):
-        raise ValueError(f"ship must be 'fp32' or 'int8', got {ship!r}")
+    if ship not in SHIP_MODES:
+        raise ValueError(f"ship must be one of {SHIP_MODES}, got {ship!r}")
     model_dir, work, out = Path(model_dir), Path(work_dir), Path(out_dir)
     work.mkdir(parents=True, exist_ok=True)
     tok = AutoTokenizer.from_pretrained(model_dir)
@@ -172,12 +184,14 @@ def export(model_dir: str | Path, work_dir: str | Path, out_dir: str | Path, *, 
     if worst > parity_tol:
         raise RuntimeError(f"ONNX vs PyTorch parity failed: {parity} (tol {parity_tol})")
     int8 = quantize(fp32, work)
-    shipped = fp32 if ship == "fp32" else int8
+    shipped_ext = {"fp32": {"encoder": "fp32", "decoder": "fp32"}, "int8": {"encoder": "int8", "decoder": "int8"},
+                   "mixed": {"encoder": "int8", "decoder": "fp32"}}[ship]
+    shipped = {name: (int8 if ext == "int8" else fp32)[name] for name, ext in shipped_ext.items()}
 
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
-    files = {name: split_parts(p, out, f"{name}.{ship}.onnx") for name, p in shipped.items()}
+    files = {name: split_parts(p, out, f"{name}.{shipped_ext[name]}.onnx") for name, p in shipped.items()}
     shutil.copy2(model_dir / "tokenizer.json", out / "tokenizer.json")
     cfg = model.config
     manifest = {

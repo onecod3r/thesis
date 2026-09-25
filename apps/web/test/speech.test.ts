@@ -77,12 +77,19 @@ test("T5 input ids are identical (tokenizer + truncation)", { skip: !haveOnnx &&
   for (const r of fx.sentences) assert.deepEqual(t5.encodeIds(buildInput(r.english, r.rules_v1)), r.input_ids, r.english);
 });
 
-for (const variant of ["fp32", "int8"] as const) {
+const GRAPH_SFX = { fp32: "", int8: ".int8" } as const;
+// "mixed" (int8 encoder + fp32 decoder) is what deploys by default (export_web.export's
+// `ship="mixed"`): the encoder runs once per sentence, so its quantization error doesn't
+// compound across beam steps the way the decoder's does -- measured 2026-09-25, 40 sentences,
+// same guard-acceptance rate as full fp32 (not asserted here as strictly as fp32 itself, but
+// kept as a real variant so a future regression shows up, not just a one-off benchmark).
+for (const variant of ["fp32", "int8", "mixed"] as const) {
   test(`T5 beam search on ${variant} ONNX vs generate() (${N_T5} sentences)`, { skip: !haveOnnx && "no export" }, async () => {
     const m = json<T5Manifest>(manifestPath);
-    const sfx = variant === "fp32" ? "" : ".int8";
-    const t5 = await T5Refiner.create(ort, m, readFileSync(join(WORK, `encoder${sfx}.onnx`)),
-      readFileSync(join(WORK, `decoder${sfx}.onnx`)), json<object>(join(ASSETS, "t5", "tokenizer.json")));
+    const encSfx = GRAPH_SFX[variant === "mixed" ? "int8" : variant];
+    const decSfx = GRAPH_SFX[variant === "mixed" ? "fp32" : variant];
+    const t5 = await T5Refiner.create(ort, m, readFileSync(join(WORK, `encoder${encSfx}.onnx`)),
+      readFileSync(join(WORK, `decoder${decSfx}.onnx`)), json<object>(join(ASSETS, "t5", "tokenizer.json")));
     let same = 0, sameText = 0;
     const rows = fx.sentences.slice(0, N_T5);
     for (const r of rows) {

@@ -12,13 +12,14 @@
     "team30_version": "v1"
   },
   "t5": {
-    "_comment": "The team's checkpoint (thesis_hybrid_dataset1/model). Not received yet: until it is on disk the hybrids fall back to rules. Limits copied from the team notebook / training_metadata.json.",
+    "_comment": "The team's checkpoint (thesis_hybrid_dataset1/model), received 2026-09-25. `team`'s limits are copied from the team notebook / training_metadata.json and stay pinned -- it must reproduce their exact generate() call. `guarded` is what the browser (apps/web/speech.html) and export_speech.py deploy. `generate.*` dicts are unpacked straight into model.generate()/the browser's beam search, so they hold only real generate() kwargs -- no _comment keys here; see `guarded_note` below for guarded's 2026-09-25 tuning.",
     "model_dir": "data/external/t5-text2gloss/thesis_hybrid_dataset1/model",
     "max_input_len": 128,
     "generate": {
       "team": {"max_length": 64, "num_beams": 4},
-      "guarded": {"max_length": 64, "num_beams": 4, "no_repeat_ngram_size": 2, "repetition_penalty": 1.3}
+      "guarded": {"max_length": 56, "num_beams": 2, "no_repeat_ngram_size": 2, "repetition_penalty": 1.3}
     },
+    "guarded_note": "num_beams 4->2, max_length 64->56 (2026-09-25, TODO §13: browser inference time). Benchmarked on the real checkpoint, 40 sentences: beams=2 is ~16% faster than beams=4 and keeps guard-acceptance near-identical (23/40 vs 24/40, 33/40 outputs byte-identical to beams=4); beams=1 was ~50% faster but guard-acceptance dropped more (19/40). max_length 56 keeps margin above this checkpoint's observed max gloss length (55 tokens over 330 sentences, p99 44) while bounding the rare non-terminating (prompt-echoing) case.",
     "guard": {"min_content_recall": 0.6}
   }
 }

@@ -140,33 +140,53 @@ async function logSentence(s: Sentence, note = "", mute = false): Promise<void> 
 
 const CONNECT_HAND = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [5, 9], [9, 10], [10, 11], [11, 12],
   [9, 13], [13, 14], [14, 15], [15, 16], [13, 17], [0, 17], [17, 18], [18, 19], [19, 20]];
+// Rows: face 0-467, left hand 468-488, pose 489-521, right hand 522-542.
+const POSE_OFFSET = 489;
+// The upper-body subset the model actually trains on (CLAUDE.md's ME-126: {11-16,23,24}) --
+// shoulders, elbows, wrists, hips -- drawn as a skeleton so the live overlay shows the same
+// landmarks the recognizer sees, not an arbitrary decoration.
+const POSE_JOINTS = [11, 12, 13, 14, 15, 16, 23, 24];
+const CONNECT_POSE: [number, number][] = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24]];
 
 function drawFrame(frame: Float32Array): void {
   const c = ui.overlay, g = c.getContext("2d")!;
-  const w = (c.width = c.clientWidth * devicePixelRatio), h = (c.height = c.clientHeight * devicePixelRatio);
+  const dpr = devicePixelRatio;
+  const w = (c.width = c.clientWidth * dpr), h = (c.height = c.clientHeight * dpr);
   g.clearRect(0, 0, w, h);
   const pt = (row: number): [number, number] | null => {
     const x = frame[row * 3], y = frame[row * 3 + 1];
     return Number.isNaN(x) || Number.isNaN(y) ? null : [x * w, y * h];
   };
-  g.lineWidth = 2 * devicePixelRatio;
+  const dot = (p: [number, number] | null, r: number) => {
+    if (!p) return;
+    g.beginPath();
+    g.arc(p[0], p[1], r * dpr, 0, 2 * Math.PI);
+    g.fill();
+  };
+  const line = (p: [number, number] | null, q: [number, number] | null) => {
+    if (!p || !q) return;
+    g.beginPath();
+    g.moveTo(...p);
+    g.lineTo(...q);
+    g.stroke();
+  };
+
+  // Face mesh: faint, so 468 points don't drown out the hands and pose that matter for signing.
+  g.fillStyle = "rgba(200, 214, 229, 0.35)";
+  for (let r = 0; r < 468; r++) dot(pt(r), 1);
+
+  // Upper-body pose skeleton, bright and unmissable.
+  g.strokeStyle = g.fillStyle = "#feca57";
+  g.lineWidth = 3 * dpr;
+  for (const [a, b] of CONNECT_POSE) line(pt(POSE_OFFSET + a), pt(POSE_OFFSET + b));
+  for (const i of POSE_JOINTS) dot(pt(POSE_OFFSET + i), 4);
+
+  // Hands: skeleton + joint dots, one color per hand.
+  g.lineWidth = 3 * dpr;
   for (const [offset, color] of [[468, "#ff9f43"], [522, "#48dbfb"]] as const) {
-    g.strokeStyle = color;
-    for (const [a, b] of CONNECT_HAND) {
-      const p = pt(offset + a), q = pt(offset + b);
-      if (!p || !q) continue;
-      g.beginPath();
-      g.moveTo(...p);
-      g.lineTo(...q);
-      g.stroke();
-    }
-  }
-  g.fillStyle = "#c8d6e5";
-  for (let r = 0; r < 543; r++) {
-    if (r >= 468 && r < 489) continue;
-    if (r >= 522) continue;
-    const p = pt(r);
-    if (p) g.fillRect(p[0] - 1, p[1] - 1, 2, 2);
+    g.strokeStyle = g.fillStyle = color;
+    for (const [a, b] of CONNECT_HAND) line(pt(offset + a), pt(offset + b));
+    for (let i = 0; i < 21; i++) dot(pt(offset + i), 3);
   }
 }
 

@@ -35,7 +35,8 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 | 0c | §12.5 **web app built 2026-09-24** (`apps/web`, `apps/edge`): sign → speech runs in the browser (Holistic → LiteRT.js step model → lag-2 lattice + trigram → rule English → browser voice). Parity tests pass and a headless Chrome replay of 24 held-out streams is identical to Python. **Next (user): first camera test**: `cd apps/web && npm run dev`; check mirroring, fps, a few known sentences | §12.5 | first time real webcam landmarks reach the model |
 | 0d | §12.6: next-gloss sweep **done 2026-09-24**: the trigram prior gives −6% GER (0.293 → 0.276); **noise is the real problem** (0.982 unfiltered; the confidence floor → 0.580 but 39% of noise still spoken). **Decide: retrain C1 with noise as null?** **Floor-recall experiment done (2026-09-24): on the evaluation signers the lag-2 lattice beats the floor on missed (−1.4/100 clean, −0.7 noisy), wrong and extra signs, and noise (−2.1 pts); GER 0.347→0.320 clean; about 27 frames delay. Now the web app's default rule** Clean floor deletes 511 correct signs (10.4%); `peak` scoring recovers +122 at equal errors on clean but not noisy Also: **add Cloudflare creds to `.env`** for the LLM/TTS arms; **review the 132 draft references** | §12.6 | stage 2 (prediction + fusion + noise rejection) and stage 3 (gloss → English) have no numbers on real decoding yet |
 | 0e | §12.7 custom-sign feature | §12.7 | product layer over 12.4 + 12.5 |
-| 0f | §13 **speech → gloss, with the real T5 checkpoint, built and deployed 2026-09-25**: **https://signbridge.onecoder1.workers.dev** (`apps/web/speech.html` + `/speech`, user decision: Free plan, no Containers). ASR via Workers AI; gloss via wink-nlp ports of rules_v1/v2 (76%/65% sentence-exact agreement with the Python/spaCy engines); T5 exported to **fp32** ONNX (int8 was too lossy on the real checkpoint — 52% exact, some meaning-changing) and deployed, manifest + all parts verified reachable. Found + fixed a real bug while verifying the first deploy: `wrangler.jsonc` had no `assets.binding`, so any true 404 crashed with a 500. **Not yet checked: an actual browser session running T5 end to end** (only server-side/HTTP checks done) | §13 | the gloss half of speech → sign runs end to end client-side, with the real T5 refiner, and is live |
+| 0f | §13 **speech → gloss, with the real T5 checkpoint, live and tuned for speed** — **https://signbridge.onecoder1.workers.dev**. Built + deployed 2026-09-25; then, on the user's request to reduce inference time, re-tuned same day: T5 ships **mixed precision** (int8 encoder + fp32 decoder — same guard-acceptance as full fp32, ~30% smaller) with `num_beams` 4→2 and `max_length` 64→56 for the browser's `guarded` preset, all benchmarked on the real checkpoint before shipping. Checkpoint files moved from `C:\Users\Public\Downloads\...` into the repo. Headless-Chrome-verified end to end (camera stream, Holistic, T5 manifest live) | §13 | the full speech → gloss pipeline runs client-side with the real T5 refiner, tuned for latency, and is live |
+| 0g | §12.5 **sign → speech camera overlay improved 2026-09-25** (user: "should show the video along with mediapipe overlay live"). Audit found the video + overlay were already both showing (verified live with headless Chrome + a fake camera device) — the overlay was just barely visible (2px pale dots, no pose skeleton). Rewrote `drawFrame` with a bright pose skeleton over the model's own ME-126 upper-body landmarks and clearer hand markers; `npm test` (11/11) and the 24/24 browser replay check still pass | §12.5 | the live camera view now reads as an obviously "live" overlay, not just technically-present dots |
 | ~~1~~ | ~~Restart the Jupyter kernels, then run one short training~~ — **effectively done**: the four §12.3 continuous runs trained end to end through the restructured stack on 2026-09-23 | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
 | 2 | ~~Run the first checkpoint backup~~ — **done 2026-09-04**: 42 on Kaggle, local copies pruned after hash verification. Model confirmed **private** 2026-09-24 | §9.3 | was the last single-copy risk |
 | 3 | **Notebook §5b: the three-arm AWP/LateDropout ablation** (~30 min) | §4.2 | the 1st-place port has collapsed at epoch 15 twice and neither switch has been run alone, so the recipe is still unmeasured |
@@ -3503,10 +3504,11 @@ duplicates.
   - verified with `wrangler dev --env offline`; the AI route needs `CLOUDFLARE_API_TOKEN`;
   - not deployed.
 - **2026-09-25, user decision: Holistic on CPU.** The GPU delegate was slower on their machine. `pipeline.config.json` `holistic_delegate: "CPU"` (`?delegate=GPU` on the URL to compare). The recognizer was already CPU (LiteRT.js WASM). Re-checked: `npm test` passes, headless replay 24/24 identical, Holistic smoke test runs on CPU.
-- [ ] **Next (user):** open `npm run dev` with a camera. Check mirroring on a one-handed sign,
-  note the achieved fps, and try a few known sentences. That is the first real-signing test.
-- [ ] Credentials → `npm run dev` in `apps/edge` for the LLM English route; then `npm run deploy`.
-- [ ] Later: Durable Object session, custom signs (§12.7), speech → sign page.
+- [x] **Deployed 2026-09-25**: https://signbridge.onecoder1.workers.dev (Workers Free plan). `wrangler deploy` from `apps/edge`; found and fixed a missing `assets.binding` in `wrangler.jsonc` (every genuine 404 was crashing with a 500 — `dev:offline` never exercised the path since `/` and `/speech` always matched a real file).
+- [x] **Camera + overlay, live-verified 2026-09-25** (user: "should show the video along with mediapipe overlay live"). Headless Chrome with a fake camera device confirmed the video and overlay canvas were already both showing and correctly stacked; the overlay itself was just too subtle to read as "live" (2px pale dots, face and pose lumped together, no skeleton). Rewrote `drawFrame` (`apps/web/src/main.ts`): faint face mesh, a bright pose skeleton over the model's own ME-126 upper-body subset ({11-16,23,24}), thicker hand skeletons with joint dots. Verified the new drawing code in isolation (synthetic landmarks, headless-Chrome screenshot) and re-ran `npm test` (11/11) + `browser-check.ts` (24/24 replay identical, Holistic smoke `ok: true`) — no regression.
+- [ ] **Next (user):** try the live camera with a real person and a few known sentences —
+  check mirroring, fps, and whether the new overlay reads as clearly "live."
+- [ ] Later: Durable Object session, custom signs (§12.7).
 
 **User decision (2026-09-24):** landmark extraction **and** inference run on the
 client. The user asked to "prepare the full sign to speech pipeline" and to research
@@ -4108,9 +4110,67 @@ uses **draft** references (written by Claude) until the team supplies real ones.
     - `wrangler deploy` re-run: `/assets/t5/manifest.json` and every `.onnx` part are live
       and fetch 200 (verified by curl on `manifest.json`'s own part list). `/speech` now
       has a real T5 refiner, not just rules.
-    - **Not yet checked**: an actual browser session loading and running T5 end to end
-      (only the Node-side onnxruntime-node parity test and raw HTTP reachability were
-      verified this session — no browser was driven).
+    - **Verified 2026-09-25 with headless Chrome** (`--use-fake-device-for-media-stream`,
+      CDP): the live site actually loads and runs, camera stream reaches 640×480,
+      MediaPipe Holistic runs (delegate `CPU`), the recognizer processes frames (fps
+      counter moves). One transient run negotiated a degenerate 2×2 stream — reproduced
+      once, not on retry, and matched locally too under the same COOP/COEP headers, so it
+      looks like Chrome's fake-device warm-up, not a `_headers` (COOP/COEP) interaction;
+      not chased further since it didn't reproduce.
+
+  **2026-09-25 (user): reduce speech → gloss inference time.** Checkpoint files moved from
+  `C:\Users\Public\Downloads\thesis_hybrid_dataset1\` into the repo
+  (`data/external/t5-text2gloss/thesis_hybrid_dataset1/`, gitignored) and the Downloads
+  copy deleted, per the user's instruction. (Found and left alone: an unrelated
+  `model_v2/` under the same directory — a different-sized `model.safetensors` with no
+  `config.json`, timestamped mid-session; provenance unclear, gitignored either way, not
+  touched.) Three changes, all benchmarked on the real checkpoint (40 sentences) before
+  shipping, none of them guesses:
+  - `sb.synthesize.gloss.export_web.export` gained `ship: "fp32" | "int8" | "mixed"`,
+    **default now `mixed`** (int8 encoder + fp32 decoder): the encoder runs once per
+    sentence, so its quantization error doesn't compound across beam steps the way the
+    decoder's does. Measured: 34/40 exact vs `generate()`, **same guard-acceptance rate as
+    full fp32 (24/40)**, at ~730 MB vs fp32's ~1 GB (encoder 419 MB → 105 MB int8, decoder
+    unchanged). `apps/web/test/speech.test.ts` now runs `fp32`/`int8`/`mixed` as three
+    variants (mixed isn't asserted exact, since it isn't meant to be — a future regression
+    would still show in its printed identical-count).
+  - `experiments/synthesis/configs/aslg.text2gloss.json`'s `guarded` preset (the browser's
+    only): `num_beams` 4→2, `max_length` 64→56. Beam=2 was ~16% faster than beam=4 on this
+    checkpoint and kept guard-acceptance near-identical (23/40 vs 24/40, 33/40 outputs
+    byte-identical to beam=4); beam=1 was ~50% faster but cost more quality (19/40
+    accepted). max_length 56 keeps margin above the checkpoint's observed max gloss length
+    (55 tokens over 330 sentences, p99 44). The `team` preset (frozen, must reproduce the
+    team notebook's exact `generate()` call) is untouched.
+  - **Not done: WebGPU.** Considered (onnxruntime-web's webgpu execution provider, with a
+    wasm fallback) as the highest-ceiling lever, but not shipped — this session has no way
+    to drive a real browser against a GPU backend to verify it actually helps or even
+    works (headless Chrome here has no GPU), and shipping unverified browser-only code
+    risks breaking what currently works. Left for whoever can test it with a real browser.
+  - Re-exported, rebuilt, redeployed; live-verified (`manifest.json` reports
+    `"precision": "mixed"`, `"generate": {"max_length": 56, "num_beams": 2, ...}`).
+  - **Not measured this session: actual wall-clock latency in a real browser tab.**
+    Everything above is a compute-cost argument (fewer beams × fewer steps × a smaller
+    download), backed by Python-side timing and quality benchmarks, not a stopwatch on the
+    deployed page itself.
+
+  **2026-09-25 (user): camera mode should show the video with a live MediaPipe overlay.**
+  Audited first rather than assumed broken: headless Chrome with a fake camera device
+  confirmed the video element and the overlay canvas were already both visible, correctly
+  stacked (identical bounding rects), and both painting (video: real pixels; canvas:
+  correctly resized) — `runLive()` already calls `drawFrame()` every processed frame for
+  both `camera` and `file`. The fake device has no human features, so Holistic found
+  nothing to draw, which looked like "no overlay" but wasn't a code bug. What **was** worth
+  fixing: the overlay itself was barely visible by design — 2px pale-grey dots for all 501
+  non-hand landmarks (face + pose lumped together), no pose skeleton. Rewrote
+  `apps/web/src/main.ts::drawFrame`: face mesh now faint on purpose (468 points would
+  otherwise drown out what matters), a bright pose skeleton over exactly the model's own
+  ME-126 upper-body subset ({11-16,23,24} — shoulders/elbows/wrists/hips, from CLAUDE.md),
+  and thicker/brighter hand skeletons with joint dots (hands previously had lines only, no
+  dots). Verified by feeding the exact new drawing code synthetic landmarks in an isolated
+  headless-Chrome render (bypassing detection) — screenshot confirms a clear, high-contrast
+  overlay. Re-ran `npm test` (11/11) and `browser-check.ts` (24/24 replay identical to
+  Python, Holistic smoke test `ok: true`) — no regression from the rewrite. Deployed with
+  the T5 changes above.
 
 **Results + state (2026-09-24, report §9):**
 - ASLG-PC12 test (2,000, independent of our refs): **rules_v2 BLEU 36.4 / WER 0.303 vs

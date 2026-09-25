@@ -9,8 +9,10 @@ e.g. the public ``t5-base`` for a dry run of the plumbing.
 
 ``assets``
     ``sb.synthesize.gloss.export_web.export``: encoder + decoder ONNX, parity-gated
-    against PyTorch, int8, cut into < 25 MiB parts. The fp32/int8 ``.onnx`` files stay in
-    ``data/cache/synthesis/t5-web/`` for the Node tests.
+    against PyTorch, quantized, cut into < 25 MiB parts. ``--ship`` picks what the browser
+    downloads (default ``mixed``: int8 encoder + fp32 decoder). The fp32 and int8 ``.onnx``
+    files for both graphs stay in ``data/cache/synthesis/t5-web/`` either way, for the Node
+    tests.
 
 ``fixtures``
     Python's answers on team30 + a fixed ASLG-PC12 test sample: ``spell_numbers``,
@@ -124,9 +126,9 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("what", choices=["assets", "fixtures"])
     ap.add_argument("--model-dir")
-    ap.add_argument("--ship", choices=["fp32", "int8"], default="fp32",
-                     help="assets: which precision the browser downloads (default fp32 -- "
-                          "int8 was too lossy on the team's checkpoint, see export_web.export)")
+    ap.add_argument("--ship", choices=["fp32", "int8", "mixed"], default="mixed",
+                     help="assets: which precision the browser downloads (default mixed -- "
+                          "int8 encoder + fp32 decoder; see export_web.export's docstring)")
     args = ap.parse_args()
     {"assets": assets, "fixtures": fixtures}[args.what](args)
 
