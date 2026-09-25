@@ -1528,6 +1528,12 @@ ranked top-N accuracy.
     the logits;
   - `ty` clean on new code; `sb-docs --check` up to date.
   - Built the `PH_55/xyz` val cache (0.47 GB).
+- **Observed 2026-09-25 ~15:10:**
+  - No phonology run exists yet.
+  - A new plain `gru` ME_126/xy run `1790327033` is in progress (epoch 38, val 0.7297, unfinished). It
+    looks like §5 is being re-run, which retrains the existing baselines. The phonology arms only need
+    §4 then §8b–§8e.
+  - The best streaming model is still `gru` ME_132/xy `1789559734`, **0.7517** canonical.
 - [ ] **Next (user):** in `gislr.1.models.training.ipynb`:
   - run §4 (builds the `PH_55/xyz` + `ME_134/xyz` caches);
   - §8b `gru_phono` (PH_55);
