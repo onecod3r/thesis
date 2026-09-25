@@ -6,7 +6,7 @@
   "compatibility_date": "2026-09-01",
   // The browser app: HTML, JS, the 3.5 MB step model, the 14 MB Holistic model, WASM runtimes, and the
   // speech page's int8 T5 cut into < 25 MiB parts (each file < 25 MiB).
-  "assets": { "directory": "../web/dist", "run_worker_first": ["/api/*"] },
+  "assets": { "directory": "../web/dist", "binding": "ASSETS", "run_worker_first": ["/api/*"] },
   // Optional: gloss -> English with an LLM. Without this binding the app uses its offline rules.
   "ai": { "binding": "AI" },
   "vars": { "LLM_MODEL": "@cf/meta/llama-3.1-8b-instruct-fp8", "ASR_MODEL": "@cf/openai/whisper-large-v3-turbo" },
