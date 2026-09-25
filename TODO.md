@@ -35,7 +35,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 | 0c | §12.5 **web app built 2026-09-24** (`apps/web`, `apps/edge`): sign → speech runs in the browser (Holistic → LiteRT.js step model → lag-2 lattice + trigram → rule English → browser voice). Parity tests pass and a headless Chrome replay of 24 held-out streams is identical to Python. **Next (user): first camera test**: `cd apps/web && npm run dev`; check mirroring, fps, a few known sentences | §12.5 | first time real webcam landmarks reach the model |
 | 0d | §12.6: next-gloss sweep **done 2026-09-24**: the trigram prior gives −6% GER (0.293 → 0.276); **noise is the real problem** (0.982 unfiltered; the confidence floor → 0.580 but 39% of noise still spoken). **Decide: retrain C1 with noise as null?** **Floor-recall experiment done (2026-09-24): on the evaluation signers the lag-2 lattice beats the floor on missed (−1.4/100 clean, −0.7 noisy), wrong and extra signs, and noise (−2.1 pts); GER 0.347→0.320 clean; about 27 frames delay. Now the web app's default rule** Clean floor deletes 511 correct signs (10.4%); `peak` scoring recovers +122 at equal errors on clean but not noisy Also: **add Cloudflare creds to `.env`** for the LLM/TTS arms; **review the 132 draft references** | §12.6 | stage 2 (prediction + fusion + noise rejection) and stage 3 (gloss → English) have no numbers on real decoding yet |
 | 0e | §12.7 custom-sign feature | §12.7 | product layer over 12.4 + 12.5 |
-| 0f | §13 **speech → gloss**: all 4 notebooks run 2026-09-24. No mic on the remote PC, so ASR is measured on synthesized speech (WER about 1%, turbo 1.7× faster; digit fix added). Next: human recordings when a mic exists; team reviews draft refs + writes a held-out set; authors send the T5 checkpoint | §13 | rules_v2 beats the team's engine on ASLG-PC12 (BLEU 36.4 vs 26.3); the guard blocks every meaning-changing T5 output; report §9 |
+| 0f | §13 **speech → gloss deployed to the browser 2026-09-25** (`apps/web/speech.html`, user decision: Free plan, no Containers). ASR via Workers AI; gloss via wink-nlp ports of rules_v1/v2 (76%/65% sentence-exact agreement with the Python/spaCy engines); T5 exported to int8 ONNX but **not deployed**: the checkpoint (`data/external/t5-text2gloss/.../model/`) still has no `model.safetensors`, only config/tokenizer files, so the export + parity tests ran against a public `google-t5/t5-base` stand-in. **Next: the team sends the weights, re-export, re-run `tools/export_speech.py fixtures` + `npm test`, then `wrangler deploy`** (needs the account's Cloudflare token scope confirmed — `user/tokens/verify` rejected the one in `.env`) | §13 | the gloss half of speech → sign now runs end to end client-side; only the real checkpoint and a deploy are missing |
 | ~~1~~ | ~~Restart the Jupyter kernels, then run one short training~~ — **effectively done**: the four §12.3 continuous runs trained end to end through the restructured stack on 2026-09-23 | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
 | 2 | ~~Run the first checkpoint backup~~ — **done 2026-09-04**: 42 on Kaggle, local copies pruned after hash verification. Model confirmed **private** 2026-09-24 | §9.3 | was the last single-copy risk |
 | 3 | **Notebook §5b: the three-arm AWP/LateDropout ablation** (~30 min) | §4.2 | the 1st-place port has collapsed at epoch 15 twice and neither switch has been run alone, so the recipe is still unmeasured |
@@ -4041,9 +4041,51 @@ uses **draft** references (written by Claude) until the team supplies real ones.
   `YESTERDAY MY BROTHER AND ME GO STORE | CAT WHERE` (large-v3 0.5 s for 4.9 s of audio).
   Also: the aslg.0/aslg.1 re-run by the user reproduces report §9 exactly (T5 still missing, so
   the hybrids equal the rules).
-- [ ] Cloudflare path (§12.5): Workers AI `whisper-large-v3-turbo` for ASR;
-  gloss in the Worker (rules port) or T5 via ONNX/transformers.js. §12.5 decides.
-  An `apps/` speech → gloss surface.
+- [x] **Cloudflare path built 2026-09-25 (user decision: browser-only, stay on the Workers
+  Free plan — no Containers, since spaCy has no browser runtime and running Python
+  server-side needs a paid plan + Docker).** `apps/web/speech.html` + `src/speech/`:
+  - ASR: `apps/edge` `POST /api/asr` → Workers AI `whisper-large-v3-turbo` (mic or a file →
+    16 kHz mono WAV → base64; `/api/health` reports `asr: bool`);
+  - gloss: `rules_v1`/`rules_v2` ported from `sb.synthesize.gloss` to TypeScript on
+    **wink-nlp** (`wink-eng-lite-web-model`, MIT) instead of spaCy — Pyodide has no spaCy
+    build (no dependency parse), so each `dep_`/tag test in `rules_v2` became a local
+    heuristic (documented in `rules_v2.ts`'s header). Agreement with the Python (spaCy)
+    engines on 330 sentences (team30 + a seeded ASLG-PC12 sample), after tuning the
+    heuristics on the mismatches: **rules_v1 218/330 (64.8%), rules_v2 251/330 (76.1%)**,
+    both 100% (v1) / 93–100% (v2, still tuning) on team30 itself. Not exact — a known gap,
+    tracked as agreement floors in `test/speech.test.ts`, not hidden;
+  - T5: `sb.synthesize.gloss.export_web` (new) exports the checkpoint to two ONNX graphs
+    (encoder, decoder — no KV cache, the client re-reads the whole prefix each beam step),
+    parity-gated against PyTorch (max logit diff < 1e-3) before writing anything,
+    quantized to int8, cut into < 25 MiB parts for Workers static assets, chained with a
+    manifest (`tools/export_speech.py assets`). Browser side: `src/speech/beam.ts` (an
+    exact port of transformers 5.x `_beam_search`, the vectorized merge-into-finished-beams
+    algorithm) + `src/speech/t5.ts` (tokenizer via `@huggingface/tokenizers`, onnxruntime-web
+    in a Worker so it never blocks the page) + `src/speech/loader.ts` (chunk fetch, SHA-256
+    check, Cache Storage). `sb.synthesize.gloss.hybrid`'s guard ported exactly
+    (`src/speech/guard.ts`);
+  - **Parity (dev run, public `google-t5/t5-base`; the team's checkpoint is still not on
+    disk — see below): fp32 ONNX beam search is byte-identical to `model.generate()` on
+    12/12 sentences (encoder diff 1.1e-6, decoder diff 2.7e-5). int8 quantization is too
+    lossy for a general-purpose model at this size** (2/12 identical; decoder logit diff up
+    to 4.8, garbled/foreign-language output) — **not yet re-measured on the real
+    gloss-refiner checkpoint**, which may tolerate it better (smaller effective vocabulary,
+    a narrower output distribution). If int8 stays unusable, fp32 is 620 MB decoder + 419 MB
+    encoder (≈ 27 + 18 parts): works under the Free plan's static-assets limits but is a
+    slow first load;
+  - `apps/edge/wrangler.jsonc`: `ASR_MODEL` var (`none` in `--env offline`); Worker still
+    Free plan, still no Durable Object session;
+  - `public/_headers` sets COOP/COEP so onnxruntime-web can use several WASM threads when
+    the browser allows it; single-threaded (`numThreads=1`) is the automatic fallback
+    otherwise, so it still works without those headers (e.g. behind a proxy that strips them).
+  - **Not done:** deploy (needs `wrangler login`/`CLOUDFLARE_API_TOKEN` — verified 2026-09-25
+    that the `.env` token authenticates to the account's `workers.dev` subdomain
+    (`onecoder1`) but fails the account-level `user/tokens/verify` check, so its exact scope
+    is unconfirmed; `wrangler deploy` itself was not attempted this session); re-export
+    `assets` and re-run `fixtures`/`speech.test.ts` once the team's checkpoint is at
+    `data/external/t5-text2gloss/thesis_hybrid_dataset1/model/` (only tokenizer/config
+    files were supplied 2026-09-25, no `model.safetensors` yet — the export path is proven
+    against public `t5-base` but never run on the real weights).
 
 **Results + state (2026-09-24, report §9):**
 - ASLG-PC12 test (2,000, independent of our refs): **rules_v2 BLEU 36.4 / WER 0.303 vs

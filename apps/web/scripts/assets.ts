@@ -1,12 +1,15 @@
 /**
  * Runtime files the page serves but the repo does not commit (all gitignored):
- * - public/wasm/litert, public/wasm/mediapipe: WASM runtimes copied from node_modules;
+ * - public/wasm/litert, public/wasm/mediapipe, public/wasm/ort: WASM runtimes copied from
+ *   node_modules (ort: only the single .wasm the T5 worker loads — the threaded build with
+ *   numThreads=1 as a fallback when the page is not cross-origin isolated, TODO §13);
  * - public/assets/holistic_landmarker.task: MediaPipe's model (about 14 MB), downloaded
  *   once (the app falls back to Google's URL if it is missing).
  * The model, prior, lexicon and replay streams come from Python:
  *   .venv/Scripts/python.exe apps/web/tools/export.py assets
+ *   .venv/Scripts/python.exe apps/web/tools/export_speech.py assets
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,6 +18,13 @@ const PUB = join(APP, "public");
 
 for (const [from, to] of [["@litertjs/core/wasm", "litert"], ["@mediapipe/tasks-vision/wasm", "mediapipe"]]) {
   cpSync(join(APP, "node_modules", from), join(PUB, "wasm", to), { recursive: true });
+}
+const ortDist = join(APP, "node_modules", "onnxruntime-web", "dist");
+mkdirSync(join(PUB, "wasm", "ort"), { recursive: true });
+for (const f of readdirSync(ortDist)) {
+  if (f === "ort-wasm-simd-threaded.wasm" || f === "ort-wasm-simd-threaded.mjs") {
+    cpSync(join(ortDist, f), join(PUB, "wasm", "ort", f));
+  }
 }
 console.log("wasm runtimes -> public/wasm/");
 

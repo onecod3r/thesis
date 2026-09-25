@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SignBridge — speech to gloss</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <header>
+    <h1>SignBridge <span class="sub">speech → gloss</span></h1>
+    <p><a href="/">sign → speech</a></p>
+    <p id="status" class="status">Loading…</p>
+  </header>
+
+  <main>
+    <section class="controls" aria-label="Input">
+      <div class="row">
+        <button id="record" disabled>Hold to record</button>
+        <input id="file" type="file" accept="audio/*" hidden />
+        <button id="pick-file">…or pick an audio file</button>
+        <label>Engine
+          <select id="engine">
+            <option value="hybrid_guarded">Guarded hybrid (rules_v2, T5 only if it keeps meaning)</option>
+            <option value="rules_v2">rules_v2 only (no T5)</option>
+            <option value="rules_v1">rules_v1 only (T5's frozen training input)</option>
+          </select>
+        </label>
+      </div>
+      <p class="legend" id="t5-status">T5 model: loading…</p>
+    </section>
+
+    <section>
+      <h2>Transcript</h2>
+      <p id="transcript" class="waiting">Say something, or pick an audio file.</p>
+      <dl class="stats">
+        <dt>ASR</dt><dd id="asr-ms">–</dd>
+        <dt>Gloss</dt><dd id="gloss-ms">–</dd>
+      </dl>
+    </section>
+
+    <section>
+      <h2>Gloss</h2>
+      <div id="gloss-chips" class="chips" aria-live="polite"></div>
+      <p id="gloss-source" class="legend"></p>
+    </section>
+
+    <section>
+      <h2>History</h2>
+      <ol id="history" class="sentences" reversed></ol>
+    </section>
+  </main>
+
+  <footer>
+    <p>Whisper (large-v3-turbo, Cloudflare Workers AI) → rules_v2 / rules_v1 → T5 gloss refiner
+      (int8 ONNX, in this browser) → the guarded hybrid (<code>sb.synthesize.gloss.hybrid</code>).
+      Everything except ASR runs on this device. See TODO §13.</p>
+  </footer>
+  <script type="module" src="/src/speech-main.ts"></script>
+</body>
+</html>

@@ -10,8 +10,15 @@ Target platform: **Cloudflare Workers** (TODO §12.5).
   held-out streams matches Python exactly;
 - `edge/` serves it as static assets, with an optional LLM English route.
 
-Speech → sign is not in the app yet (user decision, 2026-09-24). Its gloss engine needs spaCy,
-and there are no sign videos to play.
+**Speech → gloss runs in the browser as of 2026-09-25** (`web/speech.html`, user decision:
+Free plan, no server-side Containers): mic or an audio file → `apps/edge` `/api/asr`
+(Workers AI `whisper-large-v3-turbo`) → English → `rules_v1`/`rules_v2` (ported from
+`sb.synthesize.gloss` to TypeScript on **wink-nlp**, since Pyodide has no spaCy) → an
+optional T5 refiner (int8 ONNX in a Worker, beam search ported from transformers) → the
+guarded hybrid. **T5 is exported but not deployed**: the checkpoint has no
+`model.safetensors` yet, only config/tokenizer files, so parity was proven against a public
+`t5-base` stand-in — see TODO §13. Gloss → *signs* (rendering) is still deferred: the gloss
+engine now runs, but there are no sign videos to play.
 
 ```
 apps/
@@ -59,7 +66,8 @@ candidates cross the network. §12.5 quantifies this.
 |---|---|---|
 | deployment research | §12.5 | **done 2026-09-24**: `docs/reports/deployment-research.md`. Recognizer confirmed client-side (LiteRT.js, step export) |
 | **web app, sign → speech** | §12.5 step 1, §12.6 | **built 2026-09-24** (`web/`): parity tests pass, browser replay 24/24 identical to Python. **Not yet tried on a camera** |
-| edge Worker | §12.5 step 4 | **built 2026-09-24** (`edge/`): static assets + `/api/english` (Workers AI, prompt v1). Verified offline; LLM route and deploy need Cloudflare credentials |
+| **web app, speech → gloss** | §13 Phase 4 | **built 2026-09-25** (`web/speech.html`): ASR + gloss run client-side, `npm test` passes. T5 int8 export proven on a public stand-in checkpoint only — the real weights aren't on disk |
+| edge Worker | §12.5 step 4, §13 | **built 2026-09-24/25** (`edge/`): static assets + `/api/english` + `/api/asr` (Workers AI). Verified offline; LLM/ASR routes and deploy need Cloudflare credentials |
 | LLM + TTS | §12.6 | rules English + browser voices in the app; LLM route in `edge/`; Workers AI TTS not wired |
 | custom signs | §12.4 / §12.7 | plan pending |
 | live MediaPipe mode | §10.2 | folded into §12.5 |

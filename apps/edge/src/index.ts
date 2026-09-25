@@ -10,6 +10,12 @@
  * - `GET /api/health` tells the app whether the LLM is available; if not, it keeps
  *   using its offline rules.
  *
+ * - `POST /api/asr` (body: base64 of a 16 kHz mono WAV, `text/plain`) -> `{"text", "model"}`:
+ *   speech -> English on Workers AI `whisper-large-v3-turbo` (TODO §13 Phase 4, the model
+ *   `speech.2.asr.eval.ipynb` measured). The browser encodes the base64 so the Worker only
+ *   passes a string through (Free plan: 10 ms CPU). The speech -> gloss page (`speech.html`)
+ *   glosses the text in the browser.
+ *
  * No session state yet: the app sends one finished sentence per request.
  */
 
@@ -19,9 +25,11 @@ interface Env {
   ASSETS: Fetcher;
   AI?: Ai;
   LLM_MODEL: string;
+  ASR_MODEL: string;
 }
 
 const MAX_GLOSSES = 40;
+const MAX_AUDIO_B64 = 3_000_000; // ~70 s of 16 kHz mono 16-bit WAV
 
 async function sha256(text: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text.replace(/\r\n/g, "\n")));
@@ -44,7 +52,8 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/api/health") {
-      return json({ llm: Boolean(env.AI), model: env.LLM_MODEL, prompt_sha256: await sha256(prompt) });
+      return json({ llm: Boolean(env.AI), model: env.LLM_MODEL, prompt_sha256: await sha256(prompt),
+        asr: Boolean(env.AI) && env.ASR_MODEL !== "none", asr_model: env.ASR_MODEL });
     }
     if (url.pathname === "/api/english" && request.method === "POST") {
       if (!env.AI) return json({ error: "no AI binding" }, 503);
@@ -60,6 +69,17 @@ export default {
         temperature: 0,
       } as never)) as { response?: string };
       return json({ english: cleanSentence(out.response ?? ""), model: env.LLM_MODEL, prompt_sha256: await sha256(prompt) });
+    }
+    if (url.pathname === "/api/asr" && request.method === "POST") {
+      if (!env.AI || env.ASR_MODEL === "none") return json({ error: "no AI binding" }, 503);
+      const audio = (await request.text()).trim();
+      if (!audio || audio.length > MAX_AUDIO_B64 || !/^[A-Za-z0-9+/]+=*$/.test(audio.slice(-64))) {
+        return json({ error: `body: base64 WAV, at most ${MAX_AUDIO_B64} characters` }, 400);
+      }
+      const out = (await env.AI.run(env.ASR_MODEL as Parameters<Ai["run"]>[0], {
+        audio, task: "transcribe", language: "en", vad_filter: true, condition_on_previous_text: false,
+      } as never)) as { text?: string; transcription_info?: { text?: string } };
+      return json({ text: (out.text ?? out.transcription_info?.text ?? "").trim(), model: env.ASR_MODEL });
     }
     if (url.pathname.startsWith("/api/")) return json({ error: "not found" }, 404);
     return env.ASSETS.fetch(request);

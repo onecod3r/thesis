@@ -31,6 +31,11 @@
         "nltk>=3.9.0",
         # ASLG-PC12 download (a single parquet on the Hugging Face hub).
         "huggingface-hub>=0.26.0",
+        # T5 -> ONNX (int8) for the browser speech -> gloss page (apps/web, TODO §13 Phase 4).
+        # onnxruntime: int8 quantization and the Python reference run.
+        "onnx>=1.19.0",
+        "onnxscript>=0.5.0",
+        "onnxruntime>=1.22.0",
     ]
 
 [build-system]
