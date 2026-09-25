@@ -1452,7 +1452,10 @@ ranked top-N accuracy.
     dominant hand raises top-1 from 3.8% to 4.9%.
 - [x] **Parameter-level patterns: done (user said "start on the sign pattern first", 2026-09-25).** B1 + B2 from
   `improvements-research.md`, no training. Report `sign-patterns.md` §7.
-  - New code: `sb.recognize.aslex` (ASL-LEX 2.0: 229/250 glosses mapped, 209 exact + 20 synonyms) and
+  - New code: `sb.recognize.aslex` (ASL-LEX 2.0: **233/250 glosses mapped as of 2026-09-25**,
+    209 exact + 24 synonyms — 4 more synonyms added 2026-09-25: `eye`=`eyes`/`shoe`=`shoes`
+    (`_norm` doesn't collapse singular/plural), `wake`=`awake`, `police`=`policeman`; was
+    229/250, 209+20) and
     `patterns.phonology_descriptors` (handshape / orientation / location / movement / signtype, left hand
     mirrored).
   - Notebook §7 of `gislr.0.dataset.sign-patterns.ipynb` (run by Claude).
@@ -2251,6 +2254,36 @@ Figure out whether this is overfitting, underfitting or a data/label ceiling
   re-run §2-§4 of the notebook once it has. Two borderline pairs surfaced by the noisier
   current matrix, below the merge bar for now: `mouth`/`tooth` (0.063), `lips`/`tooth`
   (0.057) -- watch after more runs land, don't merge yet.
+- [x] **Direct answer to "how similar are the signs, really" (2026-09-25, user: "run an
+  experiment... no model training, work with the landmark files").** `gislr.0.dataset.
+  sign-patterns.ipynb` §9: intra- vs. inter-gloss DTW distance (GPU, unconstrained,
+  reused §8's cached per-frame phonology sequences -- no recomputation, no training) for
+  the 9 merge pairs, the 12 rejected-but-confused pairs, and 12 random pairs. **Merge
+  pairs are kinematically near-indistinguishable (confusability 1.043 mean) and clearly
+  separable from random pairs (1.271)** -- validates the merge decision as a real
+  property of the sign. **Correction to this section's own earlier framing**: the
+  rejected pairs turned out just as kinematically close (1.060, barely above the merge
+  groups) -- `goose`/`duck` and `wait`/`finger` are *more* identical than several merge
+  pairs. These are true near-homophones for unrelated concepts, not a separate,
+  non-kinematic model weakness as speculated; the label-merge decision to keep them
+  distinct is unaffected (different meanings regardless of how alike the signs look),
+  but the "why" changes. Per-family breakdown names which parameter each merge pair
+  shares (mostly all four; `look`/`see` shares only location, the weakest pair by both
+  this test and raw confusion -- consistent across two methods). `docs/reports/
+  sign-patterns.md` §9; data `data/cache/gislr/sign_patterns/sign_similarity.csv`.
+- [x] **ASL-LEX coverage improved while checking the above (2026-09-25): 229/250 ->
+  233/250** (209 exact + 24 synonym, was +20). Investigated the surprisingly-unmapped
+  basic words (`eye`, `shoe`, `wake`, `police`) instead of assuming ASL-LEX genuinely
+  lacked them: found real near-misses (`_norm` doesn't collapse ASL-LEX's plural
+  `EntryID`s against GISLR's singular gloss) and added 4 well-justified `SYNONYMS`
+  entries to `sb.recognize.aslex` (`eye`=`eyes`, `shoe`=`shoes`, `wake`=`awake`,
+  `police`=`policeman`). **A real tension surfaced, not resolved**: ASL-LEX's own
+  docstring explicitly treats `look`/`see` and `sleepy`/`tired` as *different* citation
+  signs, while both this section's empirical confusion matrix and the new DTW check
+  above find them (`look`/`see`, and `sleepy` via the `sleep` group) kinematically
+  near-identical *in GISLR's actual clips*. Flagged in `sign-patterns.md` §7 rather than
+  silently picking a side — a citation-form lexicon and a corpus of real signing can
+  legitimately disagree.
 
 ### 7.2 Phase 2 — Fix normalization (remove signer-appearance bias)
 

@@ -39,6 +39,16 @@ SYNONYMS: dict[str, list[str]] = {
     "haveto": ["must"], "hesheit": ["he"], "into": ["in"], "kitty": ["cat", "cat_2", "cat_3"],
     "minemy": ["mine", "my"], "mom": ["mother"], "nuts": ["nut", "nut_2"], "owie": ["hurt"],
     "potty": ["toilet"], "store": ["shop_1", "shop_2"], "tooth": ["teeth"], "weus": ["we", "us"],
+    # Found 2026-09-25 (TODO §3.8/§7.1): `_norm` strips digits/punctuation but not number,
+    # so GISLR's singular has no exact match where ASL-LEX's EntryID is plural.
+    "eye": ["eyes"], "shoe": ["shoes"],
+    # `wake`/`awake` -- the same ASL sign by two independent checks the same day: the
+    # aggregate confusion matrix (mean rate 0.36, `sb.recognize.label_merge`) and a direct
+    # landmark DTW comparison (confusability 0.988, `docs/reports/sign-patterns.md` §9).
+    "wake": ["awake"],
+    # ASL-LEX only has the gendered "policeman"; GISLR's "police" is the occupation, not
+    # specifically a man, but it is the only entry for this sign.
+    "police": ["policeman", "policeman_2"],
 }
 
 #: the parameters tested, and the ASL-LEX 2.0 column of each (first morpheme)

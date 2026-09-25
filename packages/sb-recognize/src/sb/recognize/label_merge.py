@@ -28,7 +28,12 @@ confused pairs with no semantic relation (`cut`/`scissors`, `goose`/`duck`, `bed
 `bed`, `wait`/`finger`, `touch`/`find`, `please`/`minemy`, `bad`/`thankyou`, `stay`/
 `that`, `animal`/`have` — a tool vs. its action, a compound sign sharing a component, or
 just similar handshapes) are also excluded: real confusion, but not a labeling question —
-merging them would hide a model weakness behind a relabeling, not fix a semantic one.
+`cut` and `scissors` mean different things regardless of how alike the signs look, so
+merging them would hide the distinction a downstream consumer needs, not fix anything.
+**A direct landmark check found most of these are in fact just as kinematically
+near-identical as the merge groups** (`docs/reports/sign-patterns.md` §9,
+`gislr.0.dataset.sign-patterns.ipynb`) -- true near-homophones for unrelated concepts,
+not a separate, fixable model weakness the way an earlier draft of this module guessed.
 
 **Canonical name per group**: whichever member has the higher true-class recall in the
 aggregate matrix (the model's own more reliably-recognized form of the shared concept) —

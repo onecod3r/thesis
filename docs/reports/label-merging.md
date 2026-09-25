@@ -32,8 +32,14 @@ accuracy reason) and on the empirical side alone (`cut`/`scissors`, `goose`/`duc
 `bedroom`/`bed`, `wait`/`finger`, `touch`/`find`, `please`/`minemy`, `bad`/`thankyou`,
 `stay`/`that`, `animal`/`have`: real confusion, but a tool vs. its action, a compound
 sign sharing a component, or an unrelated meaning that likely shares a handshape — not a
-labeling question, and merging them would hide a model weakness instead of fixing a
-semantic one).
+labeling question, since the two concepts differ regardless of how the signs look).
+**A direct landmark-similarity check (`sign-patterns.md` §9) found most of these
+"rejected" pairs are in fact just as kinematically near-identical as the merge groups**
+(mean confusability 1.060 vs. the merge groups' 1.043, both far below random pairs'
+1.271) — true near-homophones for unrelated concepts. The decision to keep them as
+separate labels is still right; the earlier framing here (that merging them "would hide
+a model weakness instead of fixing a semantic one") assumed they were kinematically
+separable, which turned out not to be the case for most of them.
 
 ## The nine merge groups
 

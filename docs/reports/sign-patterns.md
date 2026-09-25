@@ -159,12 +159,24 @@ ASL phonological parameter:
 The left hand is computed mirrored, so relabeling to the dominant hand is an exact mirror.
 
 **Ground truth.** ASL-LEX 2.0 phonological codes (`sb.recognize.aslex`, CC BY-NC 4.0, downloaded to
-`data/external/asl_lex/`). 229 of 250 glosses map:
+`data/external/asl_lex/`). **233 of 250 glosses map** (updated 2026-09-25 — see below):
 
 - 209 exactly;
-- 20 through same-sign synonyms (MOM = MOTHER, GARBAGE = TRASH, …);
-- 21 unmapped, including `look`, `say`, `shhh`, `sleepy` and `puppy`, where the closest entry is a
-  different sign.
+- 24 through same-sign synonyms (MOM = MOTHER, GARBAGE = TRASH, EYE = EYES, WAKE = AWAKE, …);
+- 17 unmapped, including `say`, `shhh`, `puppy` and `sleepy`, where ASL-LEX's own docstring
+  (`sb.recognize.aslex`) explicitly treats the closest entry as a *different* sign — `sleepy` vs.
+  `tired`, and (originally) `look` vs. `see`.
+
+**A real tension worth naming.** §9's direct landmark check finds `look`/`see` and (via the
+`sleep`/`sleepy`/`nap` group) `sleepy` kinematically near-identical *in this GISLR data*
+(confusability 1.147 and 0.951 — both far below the random-pair baseline of ~1.27), and
+`sb.recognize.label_merge` treats them as the same sign for evaluation on that basis. ASL-LEX's
+curators — a broader, citation-form reference lexicon, not GISLR's signers — apparently
+disagree for at least `look`/`see` and `sleepy`/`tired`. Both can be right: a citation-form
+lexicon records the sign as ASL formally distinguishes it, while a corpus of extemporaneous
+child-directed signing can show two citation-distinct signs produced identically, or one
+gloss's actual GISLR clips drifting toward a near-synonym's form. Not resolved here — flagged
+for whoever curates ASL-LEX's next release, or for inspecting individual GISLR clips by hand.
 
 A parameter counts for a gloss only if all its ASL-LEX variants agree.
 
@@ -309,3 +321,81 @@ and noisy single clips (each hand is detected in only ~30% of frames).
 - a learned per-parameter embedding (the PhonSSM idea) instead of hand-set channel weights;
 - using DTW templates for custom-sign enrollment (§12.4/§12.7) and comparing them with the cosine-head
   imprinting planned there.
+
+## 9. How similar are the signs, directly? Intra- vs. inter-gloss DTW distance (2026-09-25)
+
+**User: "run an experiment to see just how similar the signs are. No model training, work
+with the landmark files."** §7.3 had listed this as a follow-up ("the confusable pairs
+… can be checked for which parameter they share"). Direct answer, from the same cached
+per-frame phonology sequences §8 built from the raw landmark files — no training,
+no classifier.
+
+**Method.** For a pair of glosses, sample 40 clips of each; compute GPU DTW distance
+(`patterns.dtw_distances`, unconstrained band) between same-gloss clips (**within**,
+pooled over both glosses) and between-gloss clips (**between**). **Confusability index**
+= mean(between) / mean(within): 1.0 means the two glosses are indistinguishable by this
+metric; higher means kinematically separable. Three groups tested, so the metric checks
+itself:
+
+1. **`sb.recognize.label_merge`'s 9 merge groups** — semantically the same and
+   empirically confused. Expected near 1.0.
+2. **Rejected pairs** (empirically confused, but judged *not* a semantic duplicate:
+   `cut`/`scissors`, `goose`/`duck`, `bedroom`/`bed`, `bedroom`/`room`, `dryer`/`dry`,
+   `hear`/`ear`, `wait`/`finger`, `touch`/`find`, `please`/`minemy`, `bad`/`thankyou`,
+   `stay`/`that`, `animal`/`have`).
+3. **12 random gloss pairs** — this notebook's usual calibration control.
+
+### Results
+
+| group | mean confusability | median | min | max | n |
+|---|---|---|---|---|---|
+| merge | **1.043** | 1.051 | 0.951 | 1.147 | 11 |
+| rejected | **1.060** | 1.058 | 0.998 | 1.143 | 12 |
+| random | **1.271** | 1.234 | 1.081 | 1.457 | 12 |
+
+**The merge groups are kinematically near-indistinguishable** (4.3% farther apart
+between-gloss than within-gloss on average) **and clearly separable from random pairs**
+(1.271, ~3x further from 1.0) — the merge decision is a real property of the signs, not a
+relabeling of a modeling gap.
+
+**Correction, found by actually running this**: the *rejected* pairs are **just as
+kinematically close as the merge groups** (1.060 vs 1.043). §7.3 speculated that if these
+came out separable here, their confusion would have "a different, non-kinematic source" —
+they didn't come out separable. `goose`/`duck` (0.998) and `wait`/`finger` (1.023) are
+*more* kinematically identical than several merge pairs. **These are true near-homophones
+in this vocabulary** — visually near-identical signs for unrelated concepts, ordinary
+lexical homophony, not a separate fixable model weakness. Leaving them as distinct
+*labels* (`label-merging.md`'s decision) is still correct — `cut` and `scissors` mean
+different things — but "the model should tell these apart from landmarks alone" was too
+optimistic specifically for these pairs.
+
+**Per-family — which parameter each merge pair actually shares** (near 1.0 = shared;
+`other_hand` is the noisiest column — each hand is tracked in only ~30% of frames, so its
+ratios swing widest, 0.50–1.63):
+
+| pair | handshape | orientation | location | other_hand |
+|---|---|---|---|---|
+| `sleep`/`sleepy` | 0.985 | 0.981 | 0.983 | 0.499 |
+| `awake`/`wake` | 1.016 | 0.994 | 0.998 | 0.845 |
+| `mouth`/`lips` | 1.034 | 0.982 | 0.961 | 0.890 |
+| `listen`/`hear` | 1.046 | 0.959 | 1.025 | 1.223 |
+| `give`/`gift` | 1.076 | 1.045 | 0.998 | 0.500 |
+| `pencil`/`pen` | 1.024 | 1.066 | 1.047 | 1.493 |
+| `nap`/`sleep` | 1.096 | 1.152 | 1.060 | 0.770 |
+| `nap`/`sleepy` | 1.120 | 1.052 | 1.054 | 1.019 |
+| `puppy`/`dog` | 1.033 | 1.084 | 1.081 | 1.094 |
+| `kitty`/`cat` | 1.117 | 1.119 | 1.051 | 1.265 |
+| `look`/`see` | 1.130 | 1.287 | 0.988 | 1.627 |
+
+- `sleep`/`sleepy`, `awake`/`wake`, `mouth`/`lips` share **every** family near-exactly —
+  uniformly, not through one dominant channel.
+- `give`/`gift` and `pencil`/`pen` share **location** most tightly — the handoff position
+  and the pinch-grip position, respectively.
+- `look`/`see` is the **weakest** merge pair by this test too (1.147) — separable on
+  orientation (1.287) and `other_hand` (1.627), sharing only location (0.988, both near
+  the eyes). Matches it also being the weakest by raw empirical confusion (0.080 mean
+  rate, the lowest of the 9 — `label-merging.md`): two independent methods agree
+  `look`/`see` is the most marginal of the nine merges.
+
+Data: `data/cache/gislr/sign_patterns/sign_similarity.csv`. Method:
+`experiments/recognition/gislr.0.dataset.sign-patterns.ipynb` §9.
