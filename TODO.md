@@ -876,6 +876,14 @@ existing content is known:
     Contributions / Research Questions / Organization sections). New finding: the 2050 hearing projection is cited
     to `world2019world` but comes from the 2021 World Report on Hearing (`world2021world`); the 43 M blind figure
     has no citation.
+  - 2026-09-26: Ch 2 reviewed (only the "proposed system" paragraph contradicts the repo: WLASL/BiLSTM/large-v3/
+    SignASL/robustness) and Ch 3 (requirements/impacts) checked claim by claim against the repo. Ch 3 errors: 92% is
+    depth-axis (z) noise, not image-plane motion; FR6 reset at sign boundaries (repo: resets hurt; reset only at
+    sentence end); FR3/overview video rendering is the Colab prototype; ~75% accuracy (now 0.7632, ensembles 0.8048);
+    ≈22-pt gap (current models ~18); 17.5-min runs (repo: 14–18); POPSIGN deprecation "prevented downloading" (it was
+    downloaded, ~870 GB, then deleted); "no cloud servers" (ASR on Workers AI, site on Cloudflare free plan); phase
+    table stops before continuous model / web app / speech→gloss / phonology (23–26 Sep). User rule (memory
+    `thesis-edit-scope`): in-place, repo-grounded edits only.
 - [ ] Decide the destination: a new `docs/reports/landmark-reduction.md`
   (this repo's existing convention) vs content destined for the external
   paper — depends on what the paper already contains.
