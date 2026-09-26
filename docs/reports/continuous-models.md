@@ -205,6 +205,15 @@ deliberate, paused signing (a learner, or someone signing to a camera).
   that must *agree* before accepting trades substitutions for deletions and loses on GER.
   `sign-to-speech-downstream.md` §2.
 
+## Follow-up (2026-09-26): a phonology-only continuous model, P1
+
+`P1` = C1's recipe on the 130 phonological features only (`gru_continuous_phono130`, training streams composed
+in feature space). Same protocol: **GER 0.587 (D3 c) vs C1 0.293**, hard-cut 0.731; frame accuracy 0.458,
+in-context vote 0.505 vs isolated read-out 0.671, 1.21 extra signs per 1k rest frames, commits 11 frames late.
+The isolated classifier is fine; context breaks it, most likely because the feature-space composer's gaps and
+rest do not look like the real extractor's output on composed sentences. Not shipped.
+`phonology-models.md` section 9.
+
 ## Caveats
 
 - **Synthetic streams.** GISLR-Sentences v1 joins isolated test clips with interpolated

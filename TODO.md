@@ -30,7 +30,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 | 0a | **§12.8 live camera fails on sentences (user, 2026-09-25).** Probes: low fps (repeated frames) → missed signs, jitter → extra signs, landscape framing → both; app-side interp + EMA + reframe measured (`live-streaming-gap.md`). **Next: user answers fps/mirror/distance, and decides Fix 1 (app) / Fix 2 (record real sentences) / Fix 3 (retrain C1 v2)** | §12.8 | the deployed model is unusable live until this is fixed |
 | 0a2 | **§3.8 sign patterns**: the first variables gave no per-sign pattern; **with handshape/orientation/location/movement, every ASL-LEX parameter is recovered on unseen signs and templates reach 38.8% top-1 (was 4.9%)**; **B3 done: DTW over per-frame phonology 41.6% top-1, 15.2% from one example**, no training. **Follow-up built as §3.9 (see row 0a3)** | §3.8 | the user's current priority (2026-09-25: "start on the sign pattern first") |
 | 0a3 | **§3.9 phonology models, run 2026-09-25 + evaluated 2026-09-26: `gru_phono_raw` ME_134 = 0.7632 canonical, new best, streaming** (+1.2 over raw `gru`). **Next (user): finish §8e `bilstm_phono` (stopped at epoch 14; auto-resumes in place)**; then (Claude) the continuous port `gru_continuous_phono` + a Keras port of the front-end for web export. `docs/reports/phonology-models.md` | §3.9 | the first input change that beats the raw-landmark plateau on the current split |
-| 0a4 | **§3.10 phonology models, 2026-09-26:** `gru_phono130` 0.7487 ≈ raw `gru` on half the inputs; **exact streaming ensembles 0.7912 (2) / 0.8048 (3)**. P1 trained (val seg 0.697); continuous-eval crashed on a missing allow-list entry, fixed. **Next (user): re-run `gislr.3.streaming.continuous-eval.ipynb`** for P1's sentence GER vs C1 (0.293) | §3.10 | P1 is the path to phonology (and ensembles) in the live app |
+| 0a4 | **§3.10 phonology models, 2026-09-26:** `gru_phono130` 0.7487 ≈ raw `gru` on half the inputs; **exact streaming ensembles 0.7912 (2) / 0.8048 (3)**. **P1 (continuous phonology) failed on sentences: GER 0.587 vs C1 0.293** (feature-space composer ≠ real streams); CNN retrain 0.7330; all checkpoints on Kaggle. **Next: user saves the continuous-eval notebook; decides whether to build P1 v2** (landmark-space composition + real extractor) | §3.10 | phonology in the live app needs a continuous model that survives real context |
 | ~~0~~ | ~~Re-run `gislr.3.streaming.continuous-eval.ipynb`~~ — **done 2026-09-24**: C1 D3 c **GER 0.293** (eval signers) vs baseline 0.507, oracle 0.221 → `docs/reports/continuous-models.md`. Optional follow-up: D5 = D3 ∪ D1 decoder for hard-cut | §12.3 | — |
 | 0b | Plan §12.4 add-a-sign (enroll C-open's 20 held-out glosses from 1/5/10 examples) | §12.4 | C-open (`1790146838`) is trained and waiting; decides how custom signs (§12.7) work |
 | 0c | §12.5 **web app built 2026-09-24** (`apps/web`, `apps/edge`): sign → speech runs in the browser (Holistic → LiteRT.js step model → lag-2 lattice + trigram → rule English → browser voice). Parity tests pass and a headless Chrome replay of 24 held-out streams is identical to Python. **Next (user): first camera test**: `cd apps/web && npm run dev`; check mirroring, fps, a few known sentences | §12.5 | first time real webcam landmarks reach the model |
@@ -1688,8 +1688,20 @@ This answers the probe question below for now: **no training**, statistics and n
 - [x] 2026-09-26: `gislr.3.streaming.continuous-eval.ipynb` failed in §2 (parity) with `RecurrentSession only
   supports ... got 'gru_continuous_phono130'` -- the arch was missing from `streaming.RECURRENT_ARCHS`. Fixed;
   P1 session-vs-batch parity checked on 5 streams (max |diff| 2.6e-06). Rest of the notebook is generic over runs.
-- [ ] **Next (user): re-run `gislr.3.streaming.continuous-eval.ipynb` from the top** for P1's sentence GER vs C1 (0.293).
-- [ ] **Then (Claude), if P1 ≥ C1:** port `sb.recognize.phonology.extract` to TypeScript with parity fixtures,
+- [x] 2026-09-26: continuous-eval re-run (results 16:52; **the saved .ipynb still has the crashed 16:25 outputs --
+  user to save it, then commit**). **P1 GER 0.587 vs C1 0.293** (D3 c, eval signers); hard-cut 0.731; frame acc
+  0.458; isolated read-out 0.671 but in-context vote 0.505; 1.21 extra signs / 1k rest frames (C1 0.17); commit
+  lag 11 frames. Context breaks it: the feature-space composer's gaps/rest don't match the real extractor on
+  composed sentences. **Not shipped; the app keeps C1.** `phonology-models.md` §9.
+- [x] 2026-09-26: `cnn1d_phono130` retrain 1790416770 **0.7330** canonical (+1.2 over 0.7208); ensembles unchanged.
+  P1 canonical isolated 0.7260. P1's process exited 0xC0000409 *after* "DONE" (Windows exit crash; run complete).
+- [x] 2026-09-26: Kaggle: `sb-sync push --apply` -> 48/48 local checkpoints uploaded (new variations
+  `cnn1d-phono130`, `gru-continuous-phono130`); public card updated (`publish_kaggle.py --only cards`). Web
+  bundles (C1, T5) unchanged, not re-uploaded.
+- [ ] **P1 v2 (optional, user decides):** compose training streams in landmark space (`continuous.data.compose`)
+  and run the real phonology extractor on them, precomputed offline as a stream pool; retrain; re-evaluate. Only
+  then reconsider the TS port + app ensemble.
+- [ ] ~~**Then (Claude), if P1 ≥ C1:**~~ (P1 < C1; blocked on P1 v2) port `sb.recognize.phonology.extract` to TypeScript with parity fixtures,
   export P1's step model, and run an ensemble in the web app. Not before: the app needs a continuous model.; then Claude evaluates. Compare with `gru_phono_raw` ME_134 0.7632 and `gru` ME_132
   0.7517. Later: an ablation without non-manual + hand arrangement (−50 features); per-signer feature
   standardization; a TS port of the extractor for the web app if it wins.

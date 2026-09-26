@@ -9,6 +9,7 @@ landmarks, 250 signs. Part of SignBridge, a sign ↔ speech thesis project.
 |---|---|---|
 | `gru`, `lstm`, `gru-deep`, `bilstm`, `cnn1d`, `conv1d-transformer` | PyTorch | isolated-sign classifiers, one version per training run |
 | `gru-phono`, `gru-phono-raw`, `bilstm-phono` | PyTorch | the same models behind a phonology front-end (handshape, palm orientation, location) |
+| `gru-phono130`, `lstm-phono130`, `cnn1d-phono130`, `gru-continuous-phono130` | PyTorch | phonology-only models: their only input is 130 per-frame phonological features (`sb.recognize.phonology`), no raw coordinates |
 | `gru-continuous`, `lstm-continuous` | PyTorch | continuous-signing models: per-frame gloss + "no sign" + sign-boundary outputs |
 | `c1-web` | TFLite | the browser bundle of the deployed continuous model (see below) |
 
@@ -25,6 +26,10 @@ run, not the best one.
 | 1789559734 | `gru/20` (ME_132, xy) | 0.7517 | yes | 861k |
 | 1790347646 | `bilstm/8` (ME_126, xy) | 0.7502 | no | 2.75M |
 
+Phonology-only: `gru-phono130` 0.7487 (streams, 758k params). Averaging the probabilities of
+streaming models that read different inputs is better than any single one: `gru` + `gru-phono130`
+0.7912; + `gru-phono-raw` 0.8048.
+
 Counting a synonym as correct (e.g. `wake`/`awake`, `see`/`look`), the best model reaches 0.7774.
 
 Runs trained before 2026-09-16 used an older 90/10 split (9,448 validation videos). Their
@@ -39,6 +44,9 @@ ckpt = torch.load(f"{path}/best.pt", map_location="cpu", weights_only=False)
 # ckpt: arch, hyp, feature_dim, landmarks, coords, model_state
 # Build the model with sb.recognize.architectures.build_model(ckpt["arch"], ckpt["feature_dim"], 250, ckpt["hyp"])
 ```
+
+A `*-phono130` checkpoint (its `features` is `phono130_v1`) takes
+`sb.recognize.phonology.model_features(clip)` of the full 543 × 3 clip instead of a landmark subset.
 
 Input: GISLR landmark frames (543 × 3: face 0–467, left hand 468–488, pose 489–521, right hand
 522–542), the run's `landmarks` subset selected, NaN → 0, up to 128 frames.

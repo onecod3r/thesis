@@ -191,3 +191,40 @@ training streams composed in feature space by `sb.recognize.continuous.phono`, e
 through the real extractor) is set up; both train in parallel from `gislr.1.models.phonology-training.ipynb`,
 which then rebuilds the exact ensemble table. The web app ensemble waits for P1: the app runs a continuous
 model (per-frame "no sign" output), which the isolated models above do not have.
+
+## 9. Follow-up results: P1 on real sentences, the CNN retrain (2026-09-26)
+
+P1 (run `1790416771`, 824k params, 49 epochs; best validation segment accuracy 0.697 on its own
+feature-space streams vs C1's 0.723) was scored in `gislr.3.streaming.continuous-eval.ipynb` exactly like
+C1-C3 (same 16 evaluation signers, decoder settings chosen on the 5 selection signers, sentence streams
+through the real extractor):
+
+| model | frame acc | isolated read-out | in-context vote | boundary F1 | best GER (D3 c) | GER hard-cut | extra signs / 1k rest frames | median commit lag |
+|---|---|---|---|---|---|---|---|---|
+| C1 (raw ME_132 xy) | 0.723 | 0.746 | 0.750 | 0.435 | **0.293** | 0.546 | 0.17 | 1 frame |
+| **P1 (130 phonological)** | 0.458 | 0.671 | 0.505 | 0.342 | **0.587** | 0.731 | 1.21 | 11 frames |
+| best reset-on-accept baseline (`gru` B4) | | | | | 0.507 | 0.669 | 0.65 | |
+
+**P1 fails on sentences: GER 0.587, twice C1's and worse than the streaming baseline.** Its per-sign
+classifier is fine (canonical isolated 0.7260; the isolated `gru_phono130` is 0.7487, above C1's 0.7188), and
+a sign cut out of its stream is still read at 0.671. What breaks is **context**: read inside its stream the
+same sign drops to 0.505 (for C1 context *helps*: 0.750), frame accuracy is 0.458, rest frames produce 7x more
+extra signs and commits come 11 frames late. The model's state carries over wrongly from real transitions and
+rest into the next sign.
+
+The likely cause is the **feature-space composer** (`sb.recognize.continuous.phono`): P1 trained on gaps
+interpolated between feature vectors and on a synthetic rest (hands absent, arms ramped to a measured pose),
+but the evaluation streams are the real extractor run on landmark-composed sentences, where transitions
+produce velocities, contacts, locations and a per-stream dominant hand that the composer never shows. Its own
+validation streams (same composer) gave 0.697, so the gap is a train/test mismatch, not the features.
+**Not shipped; the app keeps C1.** Fix (not built): compose training streams in landmark space
+(`continuous.data.compose`, as for C1) and run the real extractor on them, precomputed offline as a pool of
+streams since per-batch extraction is too slow.
+
+**CNN retrain:** `cnn1d_phono130` with the standard patience 15 (run `1790416770`, 102 epochs):
+**0.7330** canonical (macro 0.7308), +1.2 over the first run's 0.7208, still below the GRU. It enters no
+top-4 exact ensemble; the ensemble table is unchanged (best 3 = 0.8048, 4 = 0.8075).
+
+All checkpoints, the two new runs included, are on Kaggle (`signbridge-gislr/pyTorch/cnn1d-phono130`,
+`.../gru-continuous-phono130`); the public model card lists the phonology-only variations.
+
