@@ -1,0 +1,117 @@
+{
+  "schema_version": 4,
+  "run_id": 1790327942,
+  "created": "2026-09-25T15:19:02",
+  "dataset": "gislr",
+  "architecture": "gru",
+  "model_name": "StreamingGRU",
+  "streaming": true,
+  "subset": "ME_132",
+  "coords": "xy",
+  "n_landmarks": 132,
+  "feature_dim": 264,
+  "n_classes": 250,
+  "n_params": 860938,
+  "split": {
+    "strategy": "stratified 80/20 (fixed, GISLR_Stratified-provided)",
+    "random_state": 42,
+    "n_val": 18896
+  },
+  "training": {
+    "regime": "v2-plateau-300",
+    "source": "gislr.1.models.training.ipynb",
+    "epoch_cap": 300,
+    "epochs_trained": 109,
+    "best_epoch": 94,
+    "early_stopped": true,
+    "finished": true,
+    "wall_time_min": 25.9
+  },
+  "hyperparameters": {
+    "batch_size": 1024,
+    "lr": 0.001414,
+    "hidden_size": 256,
+    "num_layers": 2,
+    "dropout": 0.3,
+    "weight_decay": 0.0001,
+    "epochs": 300,
+    "grad_clip": 5.0,
+    "lr_factor": 0.5,
+    "lr_patience": 5,
+    "es_patience": 15,
+    "es_min_delta": 0.001,
+    "frontend": "phono",
+    "mirror_p": 0.0,
+    "landmark_subset": "ME_132",
+    "seed": 42,
+    "max_seq_len": 128,
+    "num_workers": 0,
+    "loss": "CE + label smoothing 0.1",
+    "precision": "AMP"
+  },
+  "provenance": {
+    "git_commit": "242c9c47de111cb5870b7f5bd1c0b2c899783856",
+    "git_branch": "main",
+    "git_dirty": true,
+    "code_dirty": true,
+    "dirty_code_paths": [
+      "packages/sb-synthesize/src/sb/synthesize/gloss/export_web.py"
+    ],
+    "config_path": "experiments/recognition/configs/gislr.training.json",
+    "config_sha256": "sha256:5ff42f7d2e6d3e4ca75c96471a310391e33ceb563df72af4c8984543fe2ffa45",
+    "feature_pipeline": "base_v1",
+    "feature_cache_key": "b94308e09d35b436",
+    "source": {
+      "name": "gislr",
+      "kaggle_ref": "bracu23101281/gislr-stratified",
+      "version": null,
+      "n_videos": 94477,
+      "manifest": "train.csv",
+      "manifest_sha256": "sha256:1a1d3a1fa62e83e57ed4df30925c3aeee631910f960841f8bb877e3bbf7801b4",
+      "resolved_dir": "C:\\Users\\user2\\.cache\\kagglehub\\datasets\\bracu23101281\\gislr-stratified\\versions\\1"
+    },
+    "env": {
+      "python": "3.12.3",
+      "platform": "win32-AMD64",
+      "gpu": "NVIDIA GeForce RTX 4080 SUPER",
+      "cuda": "13.0",
+      "torch": "2.13.0+cu130",
+      "numpy": "2.5.1",
+      "pandas": "3.0.3",
+      "pyarrow": "24.0.0",
+      "scikit-learn": "1.9.0",
+      "mediapipe": "0.10.35"
+    },
+    "captured_at": "2026-09-25T16:14:40"
+  },
+  "metrics": {
+    "train_val_acc": 0.7511,
+    "eval_status": "canonical",
+    "overall_accuracy": 0.7510584250635055,
+    "macro_accuracy": 0.7492717360816734,
+    "median_class_accuracy": 0.7564102564102564,
+    "n_classes_below_50pct": 6
+  },
+  "checkpoints": {
+    "best": "best.pt",
+    "last": "last.pt"
+  },
+  "assets": {
+    "landmarks": "assets/landmarks.npy",
+    "history": "assets/history.json",
+    "per_class_csv": "assets/per_class_accuracy.csv",
+    "per_class_png": "assets/per_class_accuracy.png",
+    "eval_summary": "assets/eval_summary.json",
+    "val_predictions": "assets/val_predictions.npz"
+  },
+  "submission": {
+    "tested": true,
+    "platform": "local",
+    "submitted_at": "2026-09-26T08:10:32",
+    "public_score": 0.7510584250635055,
+    "private_score": null,
+    "reference": "gislr canonical eval",
+    "notes": "scored on gislr's held-out test split (18896 videos) via sb.recognize.evaluate \u2014 no external leaderboard"
+  },
+  "notes": "ME_132 \u00b7 gru \u00b7 regime v2-plateau-300."
+}

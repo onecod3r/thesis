@@ -1,0 +1,115 @@
+{
+  "schema_version": 4,
+  "run_id": 1790356714,
+  "created": "2026-09-25T23:18:34",
+  "dataset": "gislr",
+  "architecture": "bilstm_phono",
+  "model_name": "PhonoBiLSTM",
+  "streaming": false,
+  "subset": "ME_134",
+  "coords": "xyz",
+  "n_landmarks": 134,
+  "feature_dim": 402,
+  "n_classes": 250,
+  "n_params": 2956218,
+  "split": {
+    "strategy": "stratified 80/20 (fixed, GISLR_Stratified-provided)",
+    "random_state": 42,
+    "n_val": 18896
+  },
+  "training": {
+    "regime": "v2-plateau-300",
+    "source": "gislr.1.models.training.ipynb",
+    "epoch_cap": 300,
+    "epochs_trained": 14,
+    "best_epoch": 14,
+    "early_stopped": false,
+    "finished": false,
+    "wall_time_min": 6.9
+  },
+  "hyperparameters": {
+    "batch_size": 1024,
+    "lr": 0.001414,
+    "hidden_size": 256,
+    "num_layers": 2,
+    "dropout": 0.3,
+    "weight_decay": 0.0001,
+    "epochs": 300,
+    "grad_clip": 5.0,
+    "lr_factor": 0.5,
+    "lr_patience": 5,
+    "es_patience": 15,
+    "es_min_delta": 0.001,
+    "frontend": "phono+raw",
+    "mirror_p": 0.0,
+    "landmark_subset": "ME_134",
+    "seed": 42,
+    "max_seq_len": 128,
+    "num_workers": 0,
+    "loss": "CE + label smoothing 0.1",
+    "precision": "AMP"
+  },
+  "provenance": {
+    "git_commit": "829cc94ac111b0d22d434d96285fc4918c9ba790",
+    "git_branch": "main",
+    "git_dirty": true,
+    "code_dirty": false,
+    "dirty_code_paths": [],
+    "config_path": "experiments/recognition/configs/gislr.training.json",
+    "config_sha256": "sha256:5ff42f7d2e6d3e4ca75c96471a310391e33ceb563df72af4c8984543fe2ffa45",
+    "feature_pipeline": "base_v1",
+    "feature_cache_key": "e266b312e6a1954a",
+    "source": {
+      "name": "gislr",
+      "kaggle_ref": "bracu23101281/gislr-stratified",
+      "version": null,
+      "n_videos": 94477,
+      "manifest": "train.csv",
+      "manifest_sha256": "sha256:1a1d3a1fa62e83e57ed4df30925c3aeee631910f960841f8bb877e3bbf7801b4",
+      "resolved_dir": "C:\\Users\\user2\\.cache\\kagglehub\\datasets\\bracu23101281\\gislr-stratified\\versions\\1"
+    },
+    "env": {
+      "python": "3.12.3",
+      "platform": "win32-AMD64",
+      "gpu": "NVIDIA GeForce RTX 4080 SUPER",
+      "cuda": "13.0",
+      "torch": "2.13.0+cu130",
+      "numpy": "2.5.1",
+      "pandas": "3.0.3",
+      "pyarrow": "24.0.0",
+      "scikit-learn": "1.9.0",
+      "mediapipe": "0.10.35"
+    },
+    "captured_at": "2026-09-25T23:18:32"
+  },
+  "metrics": {
+    "train_val_acc": 0.7053,
+    "eval_status": "pending",
+    "overall_accuracy": null,
+    "macro_accuracy": null,
+    "median_class_accuracy": null,
+    "n_classes_below_50pct": null
+  },
+  "checkpoints": {
+    "best": "best.pt",
+    "last": "last.pt"
+  },
+  "assets": {
+    "landmarks": "assets/landmarks.npy",
+    "history": "assets/history.json",
+    "per_class_csv": "assets/per_class_accuracy.csv",
+    "per_class_png": "assets/per_class_accuracy.png",
+    "eval_summary": "assets/eval_summary.json",
+    "val_predictions": "assets/val_predictions.npz"
+  },
+  "submission": {
+    "tested": false,
+    "platform": null,
+    "submitted_at": null,
+    "public_score": null,
+    "private_score": null,
+    "reference": null,
+    "notes": ""
+  },
+  "notes": "TODO \u00a73.9 item 3 \u2014 offline-only BiLSTM on the phonology front-end. Default = the expected winner (phono+raw on ME_134); if \u00a711 of the notebook picks another arm, change subsets/overrides here before running. Stopped mid-training (epoch 14); interim canonical eval 2026-09-26 read 0.7054. Left pending so a resumed run is re-evaluated."
+}

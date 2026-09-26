@@ -18,7 +18,7 @@ kept but marked paused, not deleted. GISLR is the only active dataset.
 
 ---
 
-## Current focus (2026-09-25)
+## Current focus (2026-09-26)
 
 The workstream sections below are the source of truth; this is just the short
 list of what is actually next, in order. Re-derived at each audit — if it looks
@@ -29,7 +29,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 |---|---|---|---|
 | 0a | **§12.8 live camera fails on sentences (user, 2026-09-25).** Probes: low fps (repeated frames) → missed signs, jitter → extra signs, landscape framing → both; app-side interp + EMA + reframe measured (`live-streaming-gap.md`). **Next: user answers fps/mirror/distance, and decides Fix 1 (app) / Fix 2 (record real sentences) / Fix 3 (retrain C1 v2)** | §12.8 | the deployed model is unusable live until this is fixed |
 | 0a2 | **§3.8 sign patterns**: the first variables gave no per-sign pattern; **with handshape/orientation/location/movement, every ASL-LEX parameter is recovered on unseen signs and templates reach 38.8% top-1 (was 4.9%)**; **B3 done: DTW over per-frame phonology 41.6% top-1, 15.2% from one example**, no training. **Follow-up built as §3.9 (see row 0a3)** | §3.8 | the user's current priority (2026-09-25: "start on the sign pattern first") |
-| 0a3 | **§3.9 phonology front-end models, built 2026-09-25; user runs:** `gislr.1.models.training.ipynb` §4 → §8b `gru_phono` → §8c `gru_phono_raw` (PH_55, ME_134) → §8d importance → (config check) → §8e `bilstm_phono` → §10 evals. Streaming-ready (RecurrentSession parity 2e-5) with a continuous port (`gru_continuous_phono`) | §3.9 | the user's request: a streamable model from the pattern findings, subset combos + explainability, and the best offline model |
+| 0a3 | **§3.9 phonology models, run 2026-09-25 + evaluated 2026-09-26: `gru_phono_raw` ME_134 = 0.7632 canonical, new best, streaming** (+1.2 over raw `gru`). **Next (user): finish §8e `bilstm_phono` (stopped at epoch 14; auto-resumes in place)**; then (Claude) the continuous port `gru_continuous_phono` + a Keras port of the front-end for web export. `docs/reports/phonology-models.md` | §3.9 | the first input change that beats the raw-landmark plateau on the current split |
 | ~~0~~ | ~~Re-run `gislr.3.streaming.continuous-eval.ipynb`~~ — **done 2026-09-24**: C1 D3 c **GER 0.293** (eval signers) vs baseline 0.507, oracle 0.221 → `docs/reports/continuous-models.md`. Optional follow-up: D5 = D3 ∪ D1 decoder for hard-cut | §12.3 | — |
 | 0b | Plan §12.4 add-a-sign (enroll C-open's 20 held-out glosses from 1/5/10 examples) | §12.4 | C-open (`1790146838`) is trained and waiting; decides how custom signs (§12.7) work |
 | 0c | §12.5 **web app built 2026-09-24** (`apps/web`, `apps/edge`): sign → speech runs in the browser (Holistic → LiteRT.js step model → lag-2 lattice + trigram → rule English → browser voice). Parity tests pass and a headless Chrome replay of 24 held-out streams is identical to Python. **Next (user): first camera test**: `cd apps/web && npm run dev`; check mirroring, fps, a few known sentences | §12.5 | first time real webcam landmarks reach the model |
@@ -47,7 +47,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 | ~~6~~ | ~~Re-run the evaluation notebook~~ — **done 2026-09-19** (55 runs, 37 canonical; 5 skipped for missing `best.pt`) | §6.1 | it last ran against 18 runs; only 1 of 42 run folders has a confusion matrix |
 | ~~7~~ | ~~Run `gislr.1.models.landmark-importance.ipynb`~~ — **done 2026-09-18** | §3.3 | custom DNN/LSTM/GRU + full-543 engineered features + rotating k-fold — the model-derived complement to the motion-energy/probe landmark rankings (§1/§3.0) |
 | ~~8~~ | ~~Run `gislr.0.dataset.motion-energy.ipynb`~~ — **done 2026-09-21**: all three scopes, 0 failed units, results in `docs/reports/motion-energy.md` §5 | §1 | — |
-| 9 | **Run `gislr.1.models.training.ipynb` §§5b/6/7/8** (`gru_deep`/`lstm`/`bilstm`/`cnn1d` × 3 subsets, 12 runs) | §4.3 | closes the current-split benchmark gap — 52 of 55 registry runs are on the retired split, only `gru` has been re-run since the reset; no porting needed, the cells are already correct, just never executed |
+| 9 | ~~Run the §4.3 grid~~ — **mostly done 2026-09-25**: `gru_deep`/`lstm` × 3 and `bilstm` ME_126/ME_132 evaluated; `gru` still leads. **Left (user): §7 `bilstm` FP_118 (stopped at epoch 22, resumes in place) and §8 `cnn1d` × 3 (never run)** | §4.3 | completes the current-split benchmark |
 | ~~10~~ | ~~Run `gislr.1.models.five-arch-benchmark.ipynb`~~ — **done 2026-09-21**: `bilstm` 0.7392 (offline) > `gru` 0.7380 > `lstm` 0.7286 > `cnn` 0.6696 > `dnn` 0.6485; `dnn`'s mean true-class confidence (0.24) a quarter of the rest — results in `docs/reports/five-arch-benchmark.md` | §3.7 | — |
 | 12 | **Run `gislr.0.dataset.sentences-kaggle.ipynb` on Kaggle**, then Output → New Dataset (private) | §12.1 | first of the continuous-signing experiments; 12.2–12.4 all read this dataset |
 | ~~11~~ | ~~Run `gislr.3.streaming.confidence-eval.ipynb`~~ — **done 2026-09-22**: fresh-start confidence is already well-calibrated (`gru` late-third 0.58); the blocker is un-reset state (bleed-through cut 96-98% by resetting), not the training objective — §11.2's retrain downgraded to optional. `docs/reports/streaming-confidence.md` | §11.1 | — |
@@ -1488,7 +1488,7 @@ ranked top-N accuracy.
 - [x] ~~Follow-up (optional, no training): add handshape; keep time with DTW; speed normalization~~ —
   **done 2026-09-25**: handshape (§7), DTW over per-frame phonology with time resampling (§8).
 
-### 3.9 Phonology front-end models: streaming GRU, subset combos, feature importance, BiLSTM (2026-09-25, built, awaiting the user's run)
+### 3.9 Phonology front-end models: streaming GRU, subset combos, feature importance, BiLSTM (2026-09-25, built + run; evaluated 2026-09-26: new best 0.7632)
 
 **User request (2026-09-25), after §3.8:**
 1. train a model that can stream later, with its training set up to match downstream, so an isolated win
@@ -1539,24 +1539,57 @@ ranked top-N accuracy.
     looks like §5 is being re-run, which retrains the existing baselines. The phonology arms only need
     §4 then §8b–§8e.
   - The best streaming model is still `gru` ME_132/xy `1789559734`, **0.7517** canonical.
-- [ ] **Next (user):** in `gislr.1.models.training.ipynb`:
-  - run §4 (builds the `PH_55/xyz` + `ME_134/xyz` caches);
-  - §8b `gru_phono` (PH_55);
-  - §8c `gru_phono_raw` (PH_55, ME_134);
-  - §8d importance, which names the best arm; if it isn't phono+raw on ME_134, edit `bilstm_phono`
-    in the config;
-  - §8e `bilstm_phono`;
-  - then `sb-evaluate` each run (§10).
-
-  Estimated ~25–45 min per GRU run (the `gru` baseline regime), longer for BiLSTM. Compare against
-  `gru` ME_132/xy **0.7517** (canonical) and `bilstm`.
-- [ ] After the runs: Claude analyzes (arm comparison, importance, BiLSTM gap). If a phonology arm
-  beats `gru`, the continuous port needs:
+- [x] **Run by the user (2026-09-25 15:00 → 23:25), evaluated by Claude (2026-09-26).** Full
+  write-up: `docs/reports/phonology-models.md`.
+  - `gru_phono_raw` ME_134 `1790355555`: **0.7632 canonical, new best on the current split, streaming**
+    (929k params). +1.2 over `gru` ME_132/xy 0.7517. Only 4 classes under 50%.
+  - `gru_phono_raw` PH_55 `1790354810`: 0.7429. `gru_phono` PH_55 `1790352947` (phonology only):
+    0.7010 — the gain needs raw landmarks too.
+  - §8d importance on the winner: shuffling raw hands −0.681, right handshape −0.443, left handshape
+    −0.340, right orientation −0.214, raw face −0.183; location −0.04/−0.05, elbows −0.02. The model
+    uses the engineered handshape features even with raw hand xy present.
+  - `bilstm_phono` `1790356714` **stopped at epoch 14** (0.7054, still at the starting LR, 3 points ahead
+    of plain `bilstm` at the same epoch). Left `pending` so a resumed run is re-evaluated.
+  - Recorded-but-unused: every run in this notebook, plain `gru` included, stores
+    `hyperparameters.frontend: "phono"` because it's a `shared` config key. The old classes ignore it
+    (identical params and features to pre-phono runs). Cosmetic; a fix would record it only for
+    phonology archs.
+- [ ] **Next (user): finish §8e `bilstm_phono`** — re-run the cell; the driver resumes `1790356714` in
+  place. Then `sb-evaluate` it (it is `pending`).
+- [ ] After the runs: Claude analyzes (arm comparison, importance, BiLSTM gap). **The phonology arm
+  beats `gru` (2026-09-26)**, so the continuous port needs:
   - a continuous config run with `subset`/`coords` = the winner's and `arch: gru_continuous_phono`
     (its global `subset`/`coords` are ME_132/xy today);
   - the export (`sb.recognize.export.step`) to support the front-end (it has cross products and
     divisions; it would need a Keras port) before the web app can use it.
 - [ ] Optional ablation later: `mirror_p` 0.5 on the winning arm (handedness invariance).
+
+### 3.10 Per-sample phonology: can every clip's phonology be read? (FUTURE, filed 2026-09-26)
+
+**User request (2026-09-26), marked FUTURE:** "Perform a separate phonology experiment. I want to see
+if phonology can be discerned from every sample." Not started; needs a plan + the user's review.
+
+**What exists already.** §3.8 answered this at the *gloss* level: every ASL-LEX parameter is recovered
+on unseen signs (balanced acc 0.39–0.81). Its clip-level column (`sign-patterns.md` §7.1) is much weaker,
+0.25–0.68, using nearest mean templates only. So the per-sample question is open, and that is the
+baseline to beat.
+
+**Sketch (to confirm with the user):**
+- Labels per clip = its gloss's ASL-LEX codes (233/250 glosses mapped; a parameter only where all
+  variants agree), for the 13 `sb.recognize.aslex.PARAMETERS`.
+- Per-parameter classifier on the clip's phonology sequence (`sb.recognize.patterns` per-frame
+  features), **gloss-disjoint** folds so it has to generalize to unseen signs.
+- Report, per clip rather than per gloss: accuracy per parameter; the share of clips with *every*
+  parameter right; how that splits by signer (GISLR has 21) and by landmark quality (missing hands,
+  frames).
+- Failure analysis: are wrong clips a few signers, few glosses, or low-quality extractions? Do they
+  line up with §3.8's "lexicon vs corpus" tension (`look`/`see`, `sleepy`/`tired`)?
+
+**Open questions for the user:**
+- [?] Is a small trained probe (logistic regression / tiny MLP) acceptable, and does the user run it
+  (CLAUDE.md's "never train" rule), or should it stay model-free like §3.8?
+- [?] Parameters from ASL-LEX only, or also free-form (e.g. cluster handshapes without labels, then
+  compare)?
 
 ## 4. Architecture Benchmarking
 
@@ -1829,9 +1862,26 @@ all 3 subsets for one architecture per cell (`train_from_config(ARCH,
 subsets=None)`). Current status:
 - [x] `gru` × 3 subsets — **already run 2026-09-16**, the only current-split
   entries so far (0.7517/0.7450/0.7425).
-- [ ] `gru_deep`, `lstm`, `bilstm`, `cnn1d` × 3 subsets each = **12 runs** —
-  cells built, **never executed even once** (`execution_count: null` in the
-  notebook as of this audit) — run notebook §§5b/6/7/8 (user).
+- [~] `gru_deep`, `lstm`, `bilstm`, `cnn1d` × 3 subsets each = **12 runs** —
+  **run 2026-09-25, evaluated 2026-09-26: 8 done, 1 stopped, 3 never run.**
+  `gru_deep` 0.7343/0.7332/0.7304 (ME_126/ME_132/FP_118), `lstm` 0.7366/0.7261/0.7261, `bilstm`
+  0.7502/0.7417 (ME_126/ME_132). `gru` still leads (0.7517); `gru_deep` (4× params) is worse on
+  every subset — answers §4.1: depth/width does not close any gap. The notebook also re-ran `gru` × 3,
+  reproducing the 2026-09-16 numbers exactly on ME_126/FP_118.
+  - [ ] **`bilstm` FP_118 `1790351435` stopped at epoch 22** (0.7049 interim, left `pending`): re-run §7,
+    it resumes in place.
+  - [ ] **`cnn1d` × 3 never ran** (§8 has no output): run §8 (user).
+  - Junk: `gru` ME_126 `1790352803` (interrupted §5 at epoch 9, 0.6098, `pending`) — a duplicate of an
+    existing run; ignore.
+- [x] **Registry defect found + fixed (Claude, 2026-09-26).** Ten 2026-09-13 runs trained on the
+  retired 9,448 split (`gru`/`gru_deep`/`lstm` × 3, `bilstm` ME_126) had been scored by the
+  2026-09-18 backfill (`300e7a7`) on the current 18,896 split, which overlaps their training data:
+  0.847–0.872, marked `canonical`, ranked first on any legacy-inclusive leaderboard (the default), and
+  `1789258464` had been exported to TFLite as "best". Fixed: `evaluate_run` refuses a run whose
+  `split.n_val` differs from the canonical split's; the evaluation notebook's backfill skips
+  `legacy_split` runs; the ten records are `pending` with metrics, local-test `submission` and the
+  four eval files cleared (git history keeps them). No report had quoted the inflated numbers.
+  (`docs/reports/phonology-models.md` §5.)
 - [ ] `conv1d_transformer` (1st-place port) × `FP_118`/xy — **not a simple
   re-run**: §4.2 tracks its own unresolved collapse investigation
   independently of the split reset; its next run (once that's fixed) will
@@ -2255,6 +2305,16 @@ Figure out whether this is overfitting, underfitting or a data/label ceiling
   re-run §2-§4 of the notebook once it has. Two borderline pairs surfaced by the noisier
   current matrix, below the merge bar for now: `mouth`/`tooth` (0.063), `lips`/`tooth`
   (0.057) -- watch after more runs land, don't merge yet.
+- [x] **Final numbers on the finished grid (2026-09-26, user: "test the best models... when the
+  model predicts a similar word to the test label, consider it accurate").** Re-ran the notebook
+  over all 25 current-split canonical runs, adding a third tier. Best model `gru_phono_raw` ME_134:
+  **strict 0.7632 → merged (synonym groups) 0.7774 → lenient 0.7822** (lenient also accepts the 60
+  WordNet pairs at Wu-Palmer ≥ 0.85, e.g. `horse`/`zebra`: an upper bound, not a claim). Synonym
+  lift is +1.39 to +1.48 on every one of the top 10, so it never changes the ranking; even the
+  lenient ceiling adds only ~2 points, so similar-word confusions are a small share of the ~24% error.
+  `mouth`/`tooth` 0.054, `lips`/`tooth` 0.056 on 25 runs: still below the bar. Test set = the
+  canonical val split, GISLR_Stratified's own held-out 18,896 videos. Also fixed the notebook's
+  subset column (it read a nonexistent `landmark_subset` key and printed `None`).
 - [x] **Direct answer to "how similar are the signs, really" (2026-09-25, user: "run an
   experiment... no model training, work with the landmark files").** `gislr.0.dataset.
   sign-patterns.ipynb` §9: intra- vs. inter-gloss DTW distance (GPU, unconstrained,

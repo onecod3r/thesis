@@ -85,11 +85,11 @@
   },
   "metrics": {
     "train_val_acc": 0.7416,
-    "eval_status": "canonical",
-    "overall_accuracy": 0.860182049110923,
-    "macro_accuracy": 0.859024277525565,
-    "median_class_accuracy": 0.8661691542288557,
-    "n_classes_below_50pct": 0
+    "eval_status": "pending",
+    "overall_accuracy": null,
+    "macro_accuracy": null,
+    "median_class_accuracy": null,
+    "n_classes_below_50pct": null
   },
   "checkpoints": {
     "best": "best.pt",
@@ -97,20 +97,16 @@
   },
   "assets": {
     "landmarks": "assets/landmarks.npy",
-    "history": "assets/history.json",
-    "per_class_csv": "assets/per_class_accuracy.csv",
-    "per_class_png": "assets/per_class_accuracy.png",
-    "eval_summary": "assets/eval_summary.json",
-    "val_predictions": "assets/val_predictions.npz"
+    "history": "assets/history.json"
   },
   "submission": {
-    "tested": true,
-    "platform": "local",
-    "submitted_at": "2026-09-16T20:21:11",
-    "public_score": 0.860182049110923,
+    "tested": false,
+    "platform": null,
+    "submitted_at": null,
+    "public_score": null,
     "private_score": null,
-    "reference": "gislr canonical eval",
-    "notes": "scored on gislr's held-out test split (18896 videos) via sb.recognize.evaluate \u2014 no external leaderboard"
+    "reference": null,
+    "notes": ""
   },
-  "notes": "same StreamingGRU class as gru, deeper+wider (256x2 -> 384x4) \u2014 tests whether GRU capacity alone closes the gap to bilstm's 0.7569 without sacrificing streaming (TODO \u00a74.1)."
+  "notes": "same StreamingGRU class as gru, deeper+wider (256x2 -> 384x4) \u2014 tests whether GRU capacity alone closes the gap to bilstm's 0.7569 without sacrificing streaming (TODO \u00a74.1). Eval removed 2026-09-26: scored 0.8602 on the current 18,896 val split, which overlaps its training data (trained on the retired 9,448 split). No valid eval exists."
 }

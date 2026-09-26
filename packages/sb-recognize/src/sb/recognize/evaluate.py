@@ -126,6 +126,13 @@ def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True,
     idx2sign = {v: k for k, v in sign2idx.items()}
     _, val_split = source.canonical_split(data_dir, sign2idx)
     log(f"dataset: {source.name} · val split: {len(val_split)} videos")
+    # A run trained on another split has seen part of this val set, so its score here would
+    # be inflated: ten 2026-09-13 runs from the retired 9,448 split read 0.85-0.87 this way.
+    trained_n_val = meta.get("split", {}).get("n_val")
+    if trained_n_val is not None and trained_n_val != len(val_split):
+        raise ValueError(
+            f"run {run_dir.name} was trained with a {trained_n_val}-video val split, but the "
+            f"canonical split has {len(val_split)}; its training data overlaps this val set.")
 
     # Checkpoints normally live on Kaggle, not on this disk, so an absent file
     # is the expected case rather than a broken run: fetch it (sha256-verified

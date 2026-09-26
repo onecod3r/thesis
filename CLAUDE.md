@@ -77,7 +77,8 @@ Keep the "Current focus" table at the top current — re-derive it whenever what
 ## Key domain facts
 
 - GISLR frames: 543 landmarks (`ROWS_PER_FRAME`), xyz, subsampled to `MAX_SEQ_LEN=128`, NaN→0 (`sb.recognize.data`).
-- **ME-126** subset (hands + upper-body pose {11-16,23,24} + lips + eyes/nose) is the current leaderboard winner: ~75.7% canonical val acc (gru/bilstm tied, xy coords, `v2-plateau-300` regime — `registry/index.csv` can lag; regenerate with `sb-docs.exe` or run `gislr.2.models.evaluation.ipynb` for the live number). Motivated by a pre-registry-reset comparison (73.73% vs full-543's 70.59%) showing the z channel is mostly noise for pose landmarks (~92% of pose "motion"). Evidence: `docs/logs/daily/2026-07-15.md`, `2026-07-16.md`.
+- **Current-split leader (2026-09-26): `gru_phono_raw` on ME_134, 0.7632 canonical, streaming** — the `PhonologyFrontend` (84 handshape/orientation/location features) plus ME_134 raw xy. Best raw-landmark model: `gru` ME_132/xy 0.7517. `registry/index.csv` can lag; regenerate with `sb-docs.exe` for the live number (`docs/reports/phonology-models.md`).
+- **ME-126** subset (hands + upper-body pose {11-16,23,24} + lips + eyes/nose) was chosen for the raw-landmark models. Motivated by a pre-registry-reset comparison (73.73% vs full-543's 70.59%) showing the z channel is mostly noise for pose landmarks (~92% of pose "motion"). Evidence: `docs/logs/daily/2026-07-15.md`, `2026-07-16.md`.
 
 ## Known broken / stale
 

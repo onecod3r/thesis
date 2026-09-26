@@ -85,11 +85,11 @@
   },
   "metrics": {
     "train_val_acc": 0.746,
-    "eval_status": "canonical",
-    "overall_accuracy": 0.8540961049957663,
-    "macro_accuracy": 0.8526836331470208,
-    "median_class_accuracy": 0.858058608058608,
-    "n_classes_below_50pct": 0
+    "eval_status": "pending",
+    "overall_accuracy": null,
+    "macro_accuracy": null,
+    "median_class_accuracy": null,
+    "n_classes_below_50pct": null
   },
   "checkpoints": {
     "best": "best.pt",
@@ -97,20 +97,16 @@
   },
   "assets": {
     "landmarks": "assets/landmarks.npy",
-    "history": "assets/history.json",
-    "per_class_csv": "assets/per_class_accuracy.csv",
-    "per_class_png": "assets/per_class_accuracy.png",
-    "eval_summary": "assets/eval_summary.json",
-    "val_predictions": "assets/val_predictions.npz"
+    "history": "assets/history.json"
   },
   "submission": {
-    "tested": true,
-    "platform": "local",
-    "submitted_at": "2026-09-16T20:20:04",
-    "public_score": 0.8540961049957663,
+    "tested": false,
+    "platform": null,
+    "submitted_at": null,
+    "public_score": null,
     "private_score": null,
-    "reference": "gislr canonical eval",
-    "notes": "scored on gislr's held-out test split (18896 videos) via sb.recognize.evaluate \u2014 no external leaderboard"
+    "reference": null,
+    "notes": ""
   },
-  "notes": "ME_126 \u00b7 lstm \u00b7 regime v2-plateau-300."
+  "notes": "ME_126 \u00b7 lstm \u00b7 regime v2-plateau-300. Eval removed 2026-09-26: scored 0.8541 on the current 18,896 val split, which overlaps its training data (trained on the retired 9,448 split). No valid eval exists."
 }
