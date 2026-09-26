@@ -871,6 +871,11 @@ existing content is known:
   targets Deaf-Blind" claim. Additions listed for Ch 1 (contributions, RQs, definitions, scope, ethics, outline)
   and Ch 2 (restructure + comparison table, datasets, GISLR/Kaggle, continuous/online SLR, phonology, text-to-gloss
   evaluation, sign production, priors, on-device ML). Ch 3–5 not seen yet.
+  - 2026-09-26: user pasted Ch 1's LaTeX and asked for edit locations; Claude gave section-by-section replacements
+    (S2V and V2S methodology rewritten to the deployed system, objectives, problem statement, challenges, new
+    Contributions / Research Questions / Organization sections). New finding: the 2050 hearing projection is cited
+    to `world2019world` but comes from the 2021 World Report on Hearing (`world2021world`); the 43 M blind figure
+    has no citation.
 - [ ] Decide the destination: a new `docs/reports/landmark-reduction.md`
   (this repo's existing convention) vs content destined for the external
   paper — depends on what the paper already contains.
