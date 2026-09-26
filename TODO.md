@@ -4274,6 +4274,20 @@ for possible solutions.
 - [ ] **Next (user): run `gislr.1.models.continuous.ipynb` §6b** (C4 + C5 in parallel; then §7 curves, §8
   canonical eval), then `gislr.3.streaming.continuous-eval.ipynb` and `gislr.3.streaming.live-robustness.ipynb`.
   Judge by `continuous-v2.md` §4: clean GER ≈ 0.293, hard-cut < 0.546, `live_like` ≪ 0.592, mirror/aspect ≈ clean.
+- [?] **User proposal (2026-09-26):** instead of per-frame streaming, feed ~3 s windows (or the mean sign
+  length) to two models offset by ~500 ms, combine their predictions, and fuse with an independent next-gloss
+  model. Claude's assessment (from existing numbers, nothing new run):
+  - windowed isolated classification is §12.2's B4 (16–32-frame windows, stride 2 + voting): GER 0.507 vs C1 D3
+    0.293, and 0.669 hard-cut; a 3 s window (~90 frames) holds ~3–4 signs (sign median ~20 frames; 25% < 12), and
+    two windows 500 ms apart each emit every 3 s, so short signs fall between them; commit latency up to 3 s vs
+    C1's +1 frame;
+  - the next-gloss model already exists and runs in the app (held-out trigram prior + lag-2 lattice: 0.293 → 0.276;
+    λ=1 hurts; it cannot fix missed signs or noise);
+  - the parts worth keeping: **two models combined** (exact isolated ensembles +4 pts: 0.763 → 0.805) as a
+    per-frame probability average of two continuous models, and **offset copies** as staggered state resets
+    (two copies of one recurrent model reset alternately, answering long-session drift).
+  - Offered: an inference-only test of the user's exact scheme (window 1/2/3 s × offset, ensemble, + prior) vs
+    C1 D3 + prior on the evaluation signers. **Awaiting the user's answer.**
 - [ ] **Then (Claude), if C4 wins:** Keras port of `StreamNormFrontend` in `apps/web/tools/export.py` with a parity
   fixture, re-export, swap the app's model; D5 = D3 ∪ D1 decoder sweep on C4.
 
