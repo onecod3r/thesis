@@ -1,0 +1,20 @@
+{
+  "_note": "Public Kaggle Models bundles (MIT) the web app can load: `npm run models` downloads them into public/assets/, `?models=kaggle` makes the pages fetch them from Kaggle at runtime. Published by tools/publish_kaggle.py; bump `version` after a re-publish.",
+  "owner": "bracu23101281",
+  "bundles": {
+    "c1-web": {
+      "model": "signbridge-gislr",
+      "framework": "tfLite",
+      "version": 1,
+      "dest": "",
+      "files": ["model/manifest.json", "model/model.tflite", "model/classes.f32", "pipeline.json", "prior.json", "lexicon.json"]
+    },
+    "t5-web": {
+      "model": "signbridge-speech-to-gloss",
+      "framework": "onnx",
+      "version": 1,
+      "dest": "t5",
+      "files": ["manifest.json", "tokenizer.json"]
+    }
+  }
+}

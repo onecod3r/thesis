@@ -23,6 +23,18 @@ npm run build     # dist/, what apps/edge serves
 node scripts/browser-check.ts   # headless Chrome: replays every held-out stream, compares with Python
 ```
 
+**Models from Kaggle instead of Python** (public, MIT; versions pinned in `kaggle.models.json`):
+
+```bash
+npm run models            # sign -> speech bundle + T5 web bundle -> public/assets/, sha256-checked
+```
+
+Or leave the models off the server entirely: open either page with **`?models=kaggle`** and it
+fetches its model bundle from Kaggle at runtime (Kaggle serves both download hops with CORS).
+The replay streams and MediaPipe's `.task` still come from this site. Publishing:
+`.venv/Scripts/python.exe apps/web/tools/publish_kaggle.py --apply`, then bump the version in
+`kaggle.models.json`.
+
 With no camera (a remote machine, for example), choose **Held-out replay**. It feeds GISLR
 landmarks of evaluation-signer streams straight to the recognizer, and **Check all**
 compares every stream with Python.

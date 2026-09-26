@@ -9,6 +9,7 @@
  * rules_v2 alone, same as `sb.synthesize.gloss.GlossEngine` without a checkpoint.
  */
 
+import { bundleBase } from "./models.ts";
 import { durationSeconds, MicRecorder, wavBase64 } from "./speech/mic.ts";
 import type { Recording } from "./speech/mic.ts";
 import { convertV1 } from "./speech/rules_v1.ts";
@@ -18,6 +19,7 @@ import type { HybridOutput } from "./speech/guard.ts";
 import { spellNumbers, splitSentences } from "./speech/text.ts";
 
 const BASE = import.meta.env.BASE_URL;
+const T5_BASE = bundleBase("t5-web", `${BASE}assets/t5`);
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const ui = {
   status: $<HTMLParagraphElement>("status"),
@@ -65,7 +67,7 @@ function startT5(): void {
       else { t5State = "unavailable"; ui.t5Status.textContent = `T5 model: unavailable (${m.message})`; }
     }
   };
-  t5Worker.postMessage({ type: "load", base: BASE });
+  t5Worker.postMessage({ type: "load", base: BASE, t5: T5_BASE });
 }
 
 function refineWithT5(english: string, ruleV1: string): Promise<string | null> {

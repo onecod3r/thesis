@@ -12,6 +12,7 @@
 
 import type { Lexicon, NgramJson, PipelineConfig, ReplayIndex, ReplayStream } from "../../shared-ts/src/contracts.ts";
 import { holisticToFrame, rowsToFrame } from "../../shared-ts/src/landmarks.ts";
+import { bundleBase } from "./models.ts";
 import { Holistic } from "./pipeline/holistic.ts";
 import type { HolisticResult } from "./pipeline/holistic.ts";
 import { NgramPrior } from "./pipeline/prior.ts";
@@ -23,6 +24,7 @@ import { onVoicesChanged, speak, voices } from "./pipeline/speech.ts";
 const BASE = import.meta.env.BASE_URL;
 const POSE_ROW = 489 + 11; // left shoulder: present whenever Holistic finds a body
 const ASSETS = `${BASE}assets`;
+const MODELS = bundleBase("c1-web", ASSETS); // the recognizer bundle; replay + Holistic stay local
 const WASM = `${BASE}wasm`;
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -497,13 +499,13 @@ async function start(): Promise<void> {
 
 async function main(): Promise<void> {
   const [cfg, priorJson, lexicon, replay] = await Promise.all([
-    getJson<PipelineConfig>(`${ASSETS}/pipeline.json`),
-    getJson<NgramJson>(`${ASSETS}/prior.json`),
-    getJson<Lexicon>(`${ASSETS}/lexicon.json`),
+    getJson<PipelineConfig>(`${MODELS}/pipeline.json`),
+    getJson<NgramJson>(`${MODELS}/prior.json`),
+    getJson<Lexicon>(`${MODELS}/lexicon.json`),
     getJson<ReplayIndex>(`${ASSETS}/replay/index.json`),
   ]);
-  setStatus("Loading the recognizer (LiteRT.js)…");
-  const rec = await Recognizer.load(ASSETS, `${WASM}/litert/`);
+  setStatus(`Loading the recognizer (LiteRT.js)${MODELS === ASSETS ? "" : " from Kaggle"}…`);
+  const rec = await Recognizer.load(MODELS, `${WASM}/litert/`);
   app = { cfg, rec, prior: new NgramPrior(priorJson, rec.glosses), lexicon, replay, holistic: null };
   $("target-fps").textContent = String(cfg.target_fps);
   $("uncertain-below").textContent = String(cfg.display.uncertain_below);

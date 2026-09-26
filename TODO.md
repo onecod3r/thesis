@@ -2985,6 +2985,45 @@ the thing worth losing.
   versioning + a frozen eval set is a genuinely good idea and belongs under §8
   the moment §8's scope question is answered — not before.
 
+### 9.10 Public Kaggle Models, MIT, loadable by the web apps (2026-09-26, user request)
+
+**User request (2026-09-26):** "Update the models in Kaggle, both sign to speech and speech to sign
+models. Make it public and use MIT license. I want to be able to download the models straight from
+Kaggle in any case, for example using it in the web apps."
+
+- [x] **`signbridge-gislr` (PyTorch checkpoints)**: `sb-sync push` with `KAGGLE_ARTIFACT_LICENSE=MIT`.
+  **All 37 never-uploaded runs are up (2026-09-26; `sb-sync status`: 0 never uploaded).** A session
+  ended mid-push once; the manifest and Kaggle's version counts were checked equal (no orphan
+  version) before resuming. Local `best.pt` copies are still on disk (`sb-sync prune` would clear them). New variations: `gru-deep`, `gru-continuous`, `lstm-continuous`, `gru-phono`,
+  `gru-phono-raw`, `bilstm-phono`. All variations are MIT.
+- [x] **`signbridge-gislr/tfLite/c1-web` v1**: the sign → speech browser bundle (step model,
+  class matrix, manifest, `pipeline.json`, `prior.json`, `lexicon.json`), same layout as
+  `apps/web/public/assets/`. Holistic's `.task` and the replay streams are not included.
+- [x] **`signbridge-gislr` made public** with a model card (`apps/web/tools/kaggle_cards/`).
+  Anonymous download verified; **CORS verified on both hops** (kaggle.com 302 echoes the page's
+  origin; storage.googleapis.com answers `*`; preflight OK), so browsers can fetch it directly.
+- [~] **`signbridge-speech-to-gloss`** (new model): `transformers/t5-hybrid` (the fine-tuned
+  checkpoint, `model/` only: `model_v2/` has no config and unclear provenance, and
+  `training_args.bin`, a pickle, is left out) and `onnx/t5-web` (the browser export, 33 files).
+  Upload in progress; **if interrupted: `.venv/Scripts/python.exe apps/web/tools/publish_kaggle.py
+  --apply --only t5-hybrid t5-web`, then `--only cards`** to make it public with its card.
+- [x] **Tooling**: `apps/web/tools/publish_kaggle.py` (stage + upload the three bundles, set cards and
+  visibility); `apps/web/kaggle.models.json` pins bundle versions; `npm run models`
+  (`scripts/fetch-models.ts`) downloads them into `public/assets/` with sha256 checks (verified on
+  `c1-web`: byte-identical to the deployed model); `?models=kaggle` makes both pages load their
+  models from Kaggle at runtime (`src/models.ts`). **Verified in headless Chrome under the real
+  COOP/COEP headers (`wrangler dev`):** `/?models=kaggle&check` loads all six files from Kaggle and
+  replays **24/24 streams identical to Python**.
+- [x] **Bug found on the way: the live speech page never loaded T5.** The worker fetched
+  `/t5/manifest.json`; the files are served at `/assets/t5/` (live: 404 vs 200), so the page always
+  fell back to rules. Fixed by passing the bundle URL to the worker. **Verified**: live site shows
+  "T5 model: unavailable (t5/manifest.json: HTTP 404)"; the fixed build (local `wrangler dev`) loads
+  726 MiB and reports ready in 14 s. **Needs a redeploy** (`cd apps/edge && npm run deploy`, user:
+  Claude's deploys are blocked by the auto-mode classifier).
+- [?] Licensing, flagged to the user, not resolved: the T5 checkpoint was fine-tuned by the team
+  (Maimuna/Raiyan) on a corpus that isn't confirmed (NCSLGR or marker-stripped ASLG-PC12, §13), and
+  GISLR's own terms were not checked. MIT covers the weights only; the model cards say so.
+
 ## 10. Extraction in TypeScript, staged environments, artifact naming (2026-09-05)
 
 Three changes requested together. §10.1 is the large one and is **not finished** —

@@ -4,7 +4,7 @@
     "backend": "kaggle",
     "location": "kaggle://models/bracu23101281/signbridge-gislr/pyTorch"
   },
-  "updated": "2026-09-05T03:31:56",
+  "updated": "2026-09-26T08:48:59",
   "objects": {
     "1784385530/best.pt": {
       "run_id": 1784385530,
@@ -383,6 +383,339 @@
       "backend": "kaggle",
       "remote_key": "bracu23101281/signbridge-gislr/pyTorch/conv1d-transformer/6/best.pt",
       "uploaded_at": "2026-09-05T03:31:56"
+    },
+    "1789251515/best.pt": {
+      "run_id": 1789251515,
+      "file": "best.pt",
+      "bytes": 10244560,
+      "sha256": "62d683fb6706a2517bcd39e3cbd77c2eaef12fa54e1f14688d69e6b20e0f5a3b",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru/16/best.pt",
+      "uploaded_at": "2026-09-26T08:27:04"
+    },
+    "1789252196/best.pt": {
+      "run_id": 1789252196,
+      "file": "best.pt",
+      "bytes": 10355344,
+      "sha256": "2e99cb0728d32b43dd5aaf1ce51269abee12c7dea6f20caf1e1beabcb28d1e55",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru/17/best.pt",
+      "uploaded_at": "2026-09-26T08:27:36"
+    },
+    "1789252933/best.pt": {
+      "run_id": 1789252933,
+      "file": "best.pt",
+      "bytes": 10097040,
+      "sha256": "e8a9d63749879ae4ca3f05fd02d10b59cc33074e2635a5d5680796a38cb7afe5",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru/18/best.pt",
+      "uploaded_at": "2026-09-26T08:27:51"
+    },
+    "1789253641/best.pt": {
+      "run_id": 1789253641,
+      "file": "best.pt",
+      "bytes": 41955208,
+      "sha256": "1209d83b1d3fc4bdf4daa1b62a69a5e6dbe5c1a7e451b594627d411f4cbf33e2",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru-deep/1/best.pt",
+      "uploaded_at": "2026-09-26T08:28:26"
+    },
+    "1789254670/best.pt": {
+      "run_id": 1789254670,
+      "file": "best.pt",
+      "bytes": 42120648,
+      "sha256": "aa3f2cd751e2298819dc5b606726ac54b452e5e43b2466eff4b35de142aed7ca",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru-deep/2/best.pt",
+      "uploaded_at": "2026-09-26T08:29:03"
+    },
+    "1789255418/best.pt": {
+      "run_id": 1789255418,
+      "file": "best.pt",
+      "bytes": 41733192,
+      "sha256": "9bdfa37a876c8334ae17c15640f97fa928b9dd550b235d0180008be0e4c0eabd",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru-deep/3/best.pt",
+      "uploaded_at": "2026-09-26T08:29:38"
+    },
+    "1789256241/best.pt": {
+      "run_id": 1789256241,
+      "file": "best.pt",
+      "bytes": 13390608,
+      "sha256": "ecc7e585d7a779a5158cdc8fb3f3c81c2359fc25731ad34a220601c80e47f9c2",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/lstm/10/best.pt",
+      "uploaded_at": "2026-09-26T08:29:54"
+    },
+    "1789257008/best.pt": {
+      "run_id": 1789257008,
+      "file": "best.pt",
+      "bytes": 13538320,
+      "sha256": "57eaeef901ed362d21620c7d5b843750b2bc76ef6fedaebe298b18aa01d3a21f",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/lstm/11/best.pt",
+      "uploaded_at": "2026-09-26T08:30:12"
+    },
+    "1789257785/best.pt": {
+      "run_id": 1789257785,
+      "file": "best.pt",
+      "bytes": 13193424,
+      "sha256": "2fcdb00459460652ca5b8f541b2ad82005386869da1fde18f0181fbfb6f04263",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/lstm/12/best.pt",
+      "uploaded_at": "2026-09-26T08:30:29"
+    },
+    "1789258464/best.pt": {
+      "run_id": 1789258464,
+      "file": "best.pt",
+      "bytes": 33045320,
+      "sha256": "115049379f824260ae237b2c3b11e7530470aec30bae069b5a5f815873778681",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/bilstm/7/best.pt",
+      "uploaded_at": "2026-09-26T08:30:59"
+    },
+    "1789558839/best.pt": {
+      "run_id": 1789558839,
+      "file": "best.pt",
+      "bytes": 10243984,
+      "sha256": "11910eacaeb0d2395880d9c6626a1a921f20ef536e2554926ee9881a0acad2fd",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru/19/best.pt",
+      "uploaded_at": "2026-09-26T08:31:15"
+    },
+    "1789559734/best.pt": {
+      "run_id": 1789559734,
+      "file": "best.pt",
+      "bytes": 10355792,
+      "sha256": "9c2ab790cad1d76ce39dc140a651571411dd1b4511dafed016cd4851700eed8f",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru/20/best.pt",
+      "uploaded_at": "2026-09-26T08:31:31"
+    },
+    "1789560829/best.pt": {
+      "run_id": 1789560829,
+      "file": "best.pt",
+      "bytes": 10096656,
+      "sha256": "18bf6d817be72b0aa9fd751c73ba62ee2142d1b1c2a65522bfd43bde93a038c6",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru/21/best.pt",
+      "uploaded_at": "2026-09-26T08:31:50"
+    },
+    "1790139949/best.pt": {
+      "run_id": 1790139949,
+      "file": "best.pt",
+      "bytes": 11163217,
+      "sha256": "540ec32eb6ec7526d38af1f0fcf7ff496cef1790983db2f86ecf60197c7b29ac",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru-continuous/1/best.pt",
+      "uploaded_at": "2026-09-26T08:32:07"
+    },
+    "1790141422/best.pt": {
+      "run_id": 1790141422,
+      "file": "best.pt",
+      "bytes": 14345233,
+      "sha256": "ffb921cf36a1d0288d60987db4431e69414959c552bb15e7d6eec6a98cb3dc5a",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/lstm-continuous/1/best.pt",
+      "uploaded_at": "2026-09-26T08:32:25"
+    },
+    "1790142624/best.pt": {
+      "run_id": 1790142624,
+      "file": "best.pt",
+      "bytes": 11153909,
+      "sha256": "d03a8e4c30eb404157369c671a88b4a6be85f883a78b0392d72c2a4881b7d4f4",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru-continuous/2/best.pt",
+      "uploaded_at": "2026-09-26T08:32:41"
+    },
+    "1790143122/best.pt": {
+      "run_id": 1790143122,
+      "file": "best.pt",
+      "bytes": 11163217,
+      "sha256": "587f959eac495cc93cb3399662bfa0077c21ddd524337a8741e9f5784ad3ca5c",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru-continuous/3/best.pt",
+      "uploaded_at": "2026-09-26T08:41:32"
+    },
+    "1790144582/best.pt": {
+      "run_id": 1790144582,
+      "file": "best.pt",
+      "bytes": 14345233,
+      "sha256": "2c2947b7cab4dea30083d2393c93b316baf55175ecdc9fa34b95d49edb6a4b21",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/lstm-continuous/2/best.pt",
+      "uploaded_at": "2026-09-26T08:41:50"
+    },
+    "1790146838/best.pt": {
+      "run_id": 1790146838,
+      "file": "best.pt",
+      "bytes": 11164305,
+      "sha256": "1ce4106facfe8bfebeba02d6769a7eb41af77a3b3d9f38b8428490542dcd9d87",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru-continuous/4/best.pt",
+      "uploaded_at": "2026-09-26T08:42:06"
+    },
+    "1790327033/best.pt": {
+      "run_id": 1790327033,
+      "file": "best.pt",
+      "bytes": 10244048,
+      "sha256": "6a61e72de30bc71d66ddc2d1af32ac64568f014f0acba200dd76825fa3db6866",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru/22/best.pt",
+      "uploaded_at": "2026-09-26T08:42:22"
+    },
+    "1790327942/best.pt": {
+      "run_id": 1790327942,
+      "file": "best.pt",
+      "bytes": 10356688,
+      "sha256": "69f1a543343f0266a92c654395972a77204bed9b1505ca872c6d075ce4aedfda",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru/23/best.pt",
+      "uploaded_at": "2026-09-26T08:42:39"
+    },
+    "1790330305/best.pt": {
+      "run_id": 1790330305,
+      "file": "best.pt",
+      "bytes": 10244048,
+      "sha256": "f5ca1ecbf9ccd161c47938a53172e19f31a75560137228230490b42f6ea5585f",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru/24/best.pt",
+      "uploaded_at": "2026-09-26T08:42:54"
+    },
+    "1790332037/best.pt": {
+      "run_id": 1790332037,
+      "file": "best.pt",
+      "bytes": 10096720,
+      "sha256": "0c3eb46de542431d96763af2d6223a9aa0b65a15268c0bedf01b0461a8b9bd68",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru/25/best.pt",
+      "uploaded_at": "2026-09-26T08:43:09"
+    },
+    "1790333188/best.pt": {
+      "run_id": 1790333188,
+      "file": "best.pt",
+      "bytes": 41954888,
+      "sha256": "ec0bf0956e9a268798601ecd28c3ae21868bcd84c7d191b70449997a73db66b6",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru-deep/4/best.pt",
+      "uploaded_at": "2026-09-26T08:43:48"
+    },
+    "1790334584/best.pt": {
+      "run_id": 1790334584,
+      "file": "best.pt",
+      "bytes": 42121800,
+      "sha256": "f7ffbcb06a5840617c1415b82672ed457a40fb6d31d4044b5bc28c4036dba900",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru-deep/5/best.pt",
+      "uploaded_at": "2026-09-26T08:44:25"
+    },
+    "1790336517/best.pt": {
+      "run_id": 1790336517,
+      "file": "best.pt",
+      "bytes": 41733768,
+      "sha256": "bc77839111173c248eb0335138a65749ef4c2fa84105a4bbaccfa5d111879d21",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru-deep/6/best.pt",
+      "uploaded_at": "2026-09-26T08:45:00"
+    },
+    "1790338279/best.pt": {
+      "run_id": 1790338279,
+      "file": "best.pt",
+      "bytes": 13390672,
+      "sha256": "06bd8f54a9a1df366fe3208a05a167ac2022e6450b402b1a214dbce366785ce3",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/lstm/13/best.pt",
+      "uploaded_at": "2026-09-26T08:45:17"
+    },
+    "1790339908/best.pt": {
+      "run_id": 1790339908,
+      "file": "best.pt",
+      "bytes": 13537744,
+      "sha256": "c510c09d8f2b27c332f9ea6cab65e2f4783bb1db6463eeb637e45d9b9c23b25c",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/lstm/14/best.pt",
+      "uploaded_at": "2026-09-26T08:45:35"
+    },
+    "1790341214/best.pt": {
+      "run_id": 1790341214,
+      "file": "best.pt",
+      "bytes": 13193360,
+      "sha256": "09072a7f2b9b68a494fe53008935e0e97aaab62eddcd97b085e144944ea92f76",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/lstm/15/best.pt",
+      "uploaded_at": "2026-09-26T08:45:52"
+    },
+    "1790347646/best.pt": {
+      "run_id": 1790347646,
+      "file": "best.pt",
+      "bytes": 33046472,
+      "sha256": "e709126b74bafa5244a3fee23c1dd39dc08602d7fa8b2c7b73083c5aa3f21af0",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/bilstm/8/best.pt",
+      "uploaded_at": "2026-09-26T08:46:25"
+    },
+    "1790349689/best.pt": {
+      "run_id": 1790349689,
+      "file": "best.pt",
+      "bytes": 33341256,
+      "sha256": "45e824439173033fd070747566d6bf8e42e1f0d44cd237bb87a86168f91f4840",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/bilstm/9/best.pt",
+      "uploaded_at": "2026-09-26T08:46:55"
+    },
+    "1790351435/best.pt": {
+      "run_id": 1790351435,
+      "file": "best.pt",
+      "bytes": 32650440,
+      "sha256": "895b01ea0f2ef96532c3561600963a85bab882bef2d09fd3ac43e6e188fdb8ea",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/bilstm/10/best.pt",
+      "uploaded_at": "2026-09-26T08:47:29"
+    },
+    "1790352803/best.pt": {
+      "run_id": 1790352803,
+      "file": "best.pt",
+      "bytes": 10241680,
+      "sha256": "d59424952196f46c051d4b27c160112cb311756d8e6504800e30260b5a40934b",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru/26/best.pt",
+      "uploaded_at": "2026-09-26T08:47:45"
+    },
+    "1790352947/best.pt": {
+      "run_id": 1790352947,
+      "file": "best.pt",
+      "bytes": 8691280,
+      "sha256": "62cc3740e8e88d2f9814c2aee636cd4e362e27dc8adc563e3b10d9e7db47828f",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru-phono/1/best.pt",
+      "uploaded_at": "2026-09-26T08:47:59"
+    },
+    "1790354810/best.pt": {
+      "run_id": 1790354810,
+      "file": "best.pt",
+      "bytes": 9707600,
+      "sha256": "ac2eb0066e106bad4e3e166c0279003cf4d7c4619e7a9d0abffbd9ffdeae6611",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru-phono-raw/1/best.pt",
+      "uploaded_at": "2026-09-26T08:48:12"
+    },
+    "1790355555/best.pt": {
+      "run_id": 1790355555,
+      "file": "best.pt",
+      "bytes": 11167888,
+      "sha256": "02f47837130e5be31931998818eefac65e7f54f17dd8477aab5e237dca5aec3b",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru-phono-raw/2/best.pt",
+      "uploaded_at": "2026-09-26T08:48:27"
+    },
+    "1790356714/best.pt": {
+      "run_id": 1790356714,
+      "file": "best.pt",
+      "bytes": 35503944,
+      "sha256": "ca10de115c2fd351dc6b9e2bd3b9ac266cdb8b9bc13d5d252778e60ffcdae453",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/bilstm-phono/1/best.pt",
+      "uploaded_at": "2026-09-26T08:48:59"
     }
   }
 }

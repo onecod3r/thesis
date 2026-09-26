@@ -42,5 +42,5 @@ if (!existsSync(task)) {
   }
 }
 if (!existsSync(join(PUB, "assets", "pipeline.json"))) {
-  console.warn("public/assets/pipeline.json missing: run .venv/Scripts/python.exe apps/web/tools/export.py assets");
+  console.warn("public/assets/pipeline.json missing: run `npm run models` (download from Kaggle) or .venv/Scripts/python.exe apps/web/tools/export.py assets");
 }
