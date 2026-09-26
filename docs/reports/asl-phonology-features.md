@@ -407,6 +407,27 @@ random frame subsets are noisier than one mean, so "ordered minus shuffled" over
 of a static parameter; the fair comparison for it is ordered K = 8 vs K = 1 (no gain). For the dynamic
 parameters, ordered K = 8 beats both.
 
+### 4.9 Trajectories: approaching and leaving a place (notebook §12, added 2026-09-26)
+
+The user's example: a hand brought close to the mouth, then taken away. For each clip, the dominant hand's
+distance to 8 places (forehead, eyes, nose, mouth, chin, cheek, ear, torso) over the frames where the hand
+is detected (GISLR detects a hand only when it is up, so these are the sign, not the rise from rest).
+
+| the only features | 1-NN top-1 | template top-1 |
+|---|---|---|
+| 8 distance curves × 8 time steps, **in order** | **15.8%** | 7.6% |
+| the same, frames shuffled | 6.2% | 4.7% |
+| the same, test clip reversed | 5.1% | 3.7% |
+| the 8 average distances (no time) | 7.6% | 4.7% |
+
+**How the hand moves relative to places doubles what where it is gives (15.8% vs 7.6%), and shuffling or
+reversing removes all of that gain.** Discrete codes (approach / withdraw / approach-withdraw / still, change
+≥ 0.1 shoulder widths) are weak on their own: about half the clips read "still" at every place and within-gloss
+agreement is barely above chance (NMI 0.03). Where a clip's forward and reversed codes differ in how well they
+match the gloss's train signature, forward wins 90%. Consistent examples: SAD, SLEEP and BECAUSE withdraw from
+the forehead; YESTERDAY withdraws from the chin; FLOWER approaches the chin. The information is in the continuous
+curves, which a sequence model reads directly.
+
 ## 5. Conclusions
 
 1. **Phonological features are a better input than raw landmarks at a fraction of the size.** 130 per
