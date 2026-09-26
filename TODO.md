@@ -30,6 +30,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 | 0a | **§12.8 live camera fails on sentences (user, 2026-09-25).** Probes: low fps (repeated frames) → missed signs, jitter → extra signs, landscape framing → both; app-side interp + EMA + reframe measured (`live-streaming-gap.md`). **Next: user answers fps/mirror/distance, and decides Fix 1 (app) / Fix 2 (record real sentences) / Fix 3 (retrain C1 v2)** | §12.8 | the deployed model is unusable live until this is fixed |
 | 0a2 | **§3.8 sign patterns**: the first variables gave no per-sign pattern; **with handshape/orientation/location/movement, every ASL-LEX parameter is recovered on unseen signs and templates reach 38.8% top-1 (was 4.9%)**; **B3 done: DTW over per-frame phonology 41.6% top-1, 15.2% from one example**, no training. **Follow-up built as §3.9 (see row 0a3)** | §3.8 | the user's current priority (2026-09-25: "start on the sign pattern first") |
 | 0a3 | **§3.9 phonology models, run 2026-09-25 + evaluated 2026-09-26: `gru_phono_raw` ME_134 = 0.7632 canonical, new best, streaming** (+1.2 over raw `gru`). **Next (user): finish §8e `bilstm_phono` (stopped at epoch 14; auto-resumes in place)**; then (Claude) the continuous port `gru_continuous_phono` + a Keras port of the front-end for web export. `docs/reports/phonology-models.md` | §3.9 | the first input change that beats the raw-landmark plateau on the current split |
+| 0a4 | **§3.10 phonology features, done 2026-09-26 (no training):** 130 features/frame from all 543 landmarks → 41.4% template / 54.3% 1-NN vs raw 3.1% / 13.0%; handshape carries it; scaling makes no difference on GISLR; signer variation is the biggest effect. **Next (user decides): train a GRU on the 130 features** | §3.10 | the user's goal: fewer parameters, more accuracy |
 | ~~0~~ | ~~Re-run `gislr.3.streaming.continuous-eval.ipynb`~~ — **done 2026-09-24**: C1 D3 c **GER 0.293** (eval signers) vs baseline 0.507, oracle 0.221 → `docs/reports/continuous-models.md`. Optional follow-up: D5 = D3 ∪ D1 decoder for hard-cut | §12.3 | — |
 | 0b | Plan §12.4 add-a-sign (enroll C-open's 20 held-out glosses from 1/5/10 examples) | §12.4 | C-open (`1790146838`) is trained and waiting; decides how custom signs (§12.7) work |
 | 0c | §12.5 **web app built 2026-09-24** (`apps/web`, `apps/edge`): sign → speech runs in the browser (Holistic → LiteRT.js step model → lag-2 lattice + trigram → rule English → browser voice). Parity tests pass and a headless Chrome replay of 24 held-out streams is identical to Python. **Next (user): first camera test**: `cd apps/web && npm run dev`; check mirroring, fps, a few known sentences | §12.5 | first time real webcam landmarks reach the model |
@@ -1565,7 +1566,7 @@ ranked top-N accuracy.
     divisions; it would need a Keras port) before the web app can use it.
 - [ ] Optional ablation later: `mirror_p` 0.5 on the winning arm (handedness invariance).
 
-### 3.10 Per-sample phonology: can every clip's phonology be read? (FUTURE, filed 2026-09-26)
+### 3.10 Per-sample phonology: can every clip's phonology be read? (filed 2026-09-26; started same day)
 
 **User request (2026-09-26), marked FUTURE:** "Perform a separate phonology experiment. I want to see
 if phonology can be discerned from every sample." Not started; needs a plan + the user's review.
@@ -1585,6 +1586,48 @@ baseline to beat.
   frames).
 - Failure analysis: are wrong clips a few signers, few glosses, or low-quality extractions? Do they
   line up with §3.8's "lexicon vs corpus" tension (`look`/`see`, `sleepy`/`tired`)?
+
+**User request (2026-09-26, started):** "Let's do an experiment on the phonology of ASL signs. The target
+is to reduce parameters and increase accuracy. No model training yet. Research all phonological features used
+in ASL. Create a system that converts the (t,543,3) into only the phonological features. No subsets yet. Use
+coordinate normalization to a specific point. Try the experiment once with scaling by inter-shoulder width and
+once without. Find how similar the phonological combinations are among same-gloss samples and how different
+they are between labels, with room for tolerance within a gloss. Output all statistics for an in-depth report."
+This answers the probe question below for now: **no training**, statistics and nearest-template only.
+
+- [x] **Built (Claude, 2026-09-26):** `sb.recognize.phonology` (130 per-frame features by parameter,
+  all 543 landmarks in, mid-shoulder anchor, dominance mirror, optional shoulder-width scale; clip summaries
+  = onset/medial/final means + std; 16 discrete codes) and `sb.recognize.phonology_stats`; notebook
+  `experiments/recognition/gislr.0.dataset.phonology-features.ipynb` (smoke run clean on 3,000 clips).
+- **Data findings while building (verified):**
+  - both hands are detected together in **0.28% of GISLR frames** (2,000 clips); identical in the
+    original `asl-signs` competition parquet, so it is the source data, not our npz conversion;
+  - two-handed citation signs show both wrists raised in only 11–14% of clips, like one-handed signs
+    (15%); hand arrangement is barely observable in GISLR. Non-dominant hand + sign type read from the
+    pose arms (present in every frame);
+  - shoulder width varies only ±11% (CV) across clips, so scaled vs unscaled should differ little;
+  - the raw 543-landmark input is 86% face mesh; a no-face raw baseline is added for fairness.
+- [x] **Full run (Claude, 2026-09-26), all 94,477 clips; report `docs/reports/asl-phonology-features.md`**
+  (research catalog of ASL phonology with sources, the system, every statistic). Test = canonical `test.csv`.
+  - **130 phonological numbers per frame (520 per clip) → 41.4% nearest-template top-1, 54.3% 1-NN, no
+    training.** Raw 543 landmarks (12.5× more numbers): 3.1% / 13.0%; raw hands + pose (no face): 15.1% /
+    22.2%. Beats §3.8's training-free best (38.8%). The raw face mesh identifies the signer, not the sign.
+  - Handshape alone 25.8% / 39.8% (AUC 0.770); orientation, then location; movement, hand arrangement and
+    non-manuals add little (non-manuals track the signer like the raw face). Top Fisher features: dominant
+    hand non-base flexion in the medial third (η² 0.65); medial third carries 2× the onset/final.
+  - **Scaled vs unscaled: no difference (≤ 0.6 points anywhere)**; GISLR shoulder width CV 0.11. Kept for
+    live cameras.
+  - Tolerance: per feature, same-gloss pairs agree on 68% of features within 0.5 SD vs 64% for different
+    glosses (most features are shared). On the combination of 9 informative codes (train NMI ≥ 0.04):
+    exact match 5.4% vs 0.3% (18×), within 1 code 18.5% vs 2.2%, within 2 38% vs 9%. Signature-only
+    classification 11.1% (28× chance).
+  - Signer effect is the largest: same-gloss cosine 0.435 same signer vs 0.195 other signer; per-signer
+    template top-1 17–59%.
+  - ASL-LEX validity: selected fingers balanced 0.51 vs 0.14 chance, major location 0.46 vs 0.33; movement
+    shape below chance; repetition and sign type at chance.
+- [ ] **Next (user's call; nothing started):** train `StreamingGRU` on the 130 per-frame features (all 543
+  in) vs `gru_phono_raw` ME_134 0.7632, with an ablation dropping non-manual + hand arrangement (−50);
+  per-signer feature standardization; DTW on the saved 32-step sequences for movement.
 
 **Open questions for the user:**
 - [?] Is a small trained probe (logistic regression / tiny MLP) acceptable, and does the user run it
