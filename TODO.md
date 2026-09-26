@@ -862,6 +862,15 @@ existing content is known:
   Possible solutions/next steps to include: the pending global xy-only re-run
   (§1.8), the face-anchor-reduction candidate (§3.0), and the normalization-first
   re-validation of ME-126 vs FP-118 (§7.7).
+- [x] **2026-09-26: thesis abstract + Ch 1 + Ch 2 reviewed against the repo** (user uploaded PDFs; asked for
+  discrepancies and additions) -> `docs/reports/thesis-ch1-ch2-review.md`. Main discrepancies: S2V said to be trained
+  on WLASL (it is GISLR, 250 signs); a BiLSTM claimed for robustness (deployed model is the streaming GRU); 252-dim
+  input + coordinate normalization (C1: ME-132 xy = 264, raw coords); word-level (deployed is continuous); robustness
+  claimed but live camera fails (§12.8); V2S video rendering described but the deployed page outputs gloss; T5 said
+  to refine (deployed: guarded hybrid); inconsistent WHO / blindness statistics; [6] contradicts the "no system
+  targets Deaf-Blind" claim. Additions listed for Ch 1 (contributions, RQs, definitions, scope, ethics, outline)
+  and Ch 2 (restructure + comparison table, datasets, GISLR/Kaggle, continuous/online SLR, phonology, text-to-gloss
+  evaluation, sign production, priors, on-device ML). Ch 3–5 not seen yet.
 - [ ] Decide the destination: a new `docs/reports/landmark-reduction.md`
   (this repo's existing convention) vs content destined for the external
   paper — depends on what the paper already contains.
