@@ -136,3 +136,39 @@ same for every architecture, so it does not change the ranking.
 - Port the winner to continuous signing (TODO §3.9): a `gru_continuous_phono` run on ME_134,
   then the step-model export, which needs a Keras port of the front-end before the web app can
   use it.
+
+## 8. Phonology-only streaming models (2026-09-26, TODO §3.10)
+
+The user asked for models that read **only** the 130 per-frame phonological features of
+`sb.recognize.phonology` (from all 543 landmarks; `docs/reports/asl-phonology-features.md`), in sequence,
+streaming-capable only, trained as fast as possible. `gislr.1.models.phonology-training.ipynb` trained three
+at once (one process each on the GPU, ~18 min wall for all three; `es_patience` 10).
+
+| model | inputs / frame | params | canonical | macro | top-5 | similar-word (merged) | classes < 50% | train − val gap |
+|---|---|---|---|---|---|---|---|---|
+| **`gru_phono130`** `1790413039` | 130 phonological | 758k | **0.7487** | 0.7466 | 0.896 | 0.7627 | 7 | 0.18 |
+| `lstm_phono130` `1790413040` | 130 phonological | 989k | 0.7359 | 0.7338 | 0.890 | 0.7521 | 10 | 0.20 |
+| `cnn1d_phono130` `1790413038` | 130 phonological | 1.55M | 0.7208 | 0.7186 | 0.899 | 0.7357 | 16 | 0.06 |
+| *ref* `gru` ME_132 `1789559734` | 264 raw xy | 861k | 0.7517 | 0.7499 | 0.900 | 0.7657 | 5 | 0.18 |
+| *ref* `lstm` ME_126 `1790338279` | 252 raw xy | 1.11M | 0.7366 | 0.7342 | 0.890 | 0.7526 | 10 | 0.20 |
+| *ref* `gru_phono_raw` ME_134 `1790355555` | 84 phonological + 268 raw | 929k | 0.7632 | 0.7614 | 0.907 | 0.7774 | 4 | 0.17 |
+
+- **Phonology alone matches raw landmarks with half the inputs and fewer parameters.** `gru_phono130` is
+  0.3 points below the raw `gru` (130 vs 264 inputs per frame, 758k vs 861k parameters); `lstm_phono130`
+  equals the raw `lstm` (0.7359 vs 0.7366). Combining phonology with raw coordinates is still best
+  (`gru_phono_raw`, +1.45).
+- **The same overfitting gap as every model** (train 0.93 vs val 0.75): the input is not what limits them.
+- **They make different mistakes.** Per class, `gru_phono130` beats the raw `gru` on 110 glosses and
+  loses on 111 (correlation 0.89). Per clip, only one of the two is right 8.4% / 8.7% of the time; at least
+  one is right 83.6%.
+- **So averaging them helps a lot, with no training** (mean of the saved top-5 probabilities, a lower bound):
+  `gru_phono130` + raw `gru` **0.7914**; + `gru_phono_raw` as a third **0.8049**; the three phonology-only
+  models together 0.7747. All members are streaming GRUs, so the ensemble streams too (three small
+  recurrent states per frame).
+- **`cnn1d_phono130` is under-trained**: its learning rate never decayed (1.4e-3 throughout). Validation
+  accuracy kept improving by less than the early stop's 0.001 threshold, so early stopping (patience 10,
+  shortened for time) fired before the plateau scheduler halved the rate. It has the smallest
+  overfitting gap (0.06), so it probably has room to improve with the standard patience of 15.
+- Biggest per-class changes vs the raw `gru`: better DUCK +0.22, PAJAMAS +0.14, BAD / MAD +0.12;
+  worse DROP / HAVE / JACKET −0.15, CEREAL / SLEEP / THANKYOU −0.13. No link with ASL-LEX sign type,
+  location, flexion change or repetition (mean differences ≤ 0.016 per category).

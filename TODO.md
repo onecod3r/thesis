@@ -30,7 +30,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 | 0a | **§12.8 live camera fails on sentences (user, 2026-09-25).** Probes: low fps (repeated frames) → missed signs, jitter → extra signs, landscape framing → both; app-side interp + EMA + reframe measured (`live-streaming-gap.md`). **Next: user answers fps/mirror/distance, and decides Fix 1 (app) / Fix 2 (record real sentences) / Fix 3 (retrain C1 v2)** | §12.8 | the deployed model is unusable live until this is fixed |
 | 0a2 | **§3.8 sign patterns**: the first variables gave no per-sign pattern; **with handshape/orientation/location/movement, every ASL-LEX parameter is recovered on unseen signs and templates reach 38.8% top-1 (was 4.9%)**; **B3 done: DTW over per-frame phonology 41.6% top-1, 15.2% from one example**, no training. **Follow-up built as §3.9 (see row 0a3)** | §3.8 | the user's current priority (2026-09-25: "start on the sign pattern first") |
 | 0a3 | **§3.9 phonology models, run 2026-09-25 + evaluated 2026-09-26: `gru_phono_raw` ME_134 = 0.7632 canonical, new best, streaming** (+1.2 over raw `gru`). **Next (user): finish §8e `bilstm_phono` (stopped at epoch 14; auto-resumes in place)**; then (Claude) the continuous port `gru_continuous_phono` + a Keras port of the front-end for web export. `docs/reports/phonology-models.md` | §3.9 | the first input change that beats the raw-landmark plateau on the current split |
-| 0a4 | **§3.10 phonology, 2026-09-26:** 130 features/frame → 41.4% template / 54.3% 1-NN, no training; order matters (shuffle −12.6, reverse −18–20); hand-to-place trajectories in order double what places alone give (15.8% vs 7.6%). **Next (user): run `gislr.1.models.phonology-training.ipynb`** — `gru`/`lstm`/`cnn1d` on the 130 features, in parallel on the GPU, streaming only | §3.10 | phonology-only streaming models |
+| 0a4 | **§3.10 phonology-only models, trained 2026-09-26:** `gru_phono130` 0.7487 ≈ raw `gru` 0.7517 with half the inputs; **ensembles of streaming GRUs 0.7914 (2) / 0.8049 (3), no training**. Next (user): an app ensemble, or `cnn1d_phono130` with patience 15, or a continuous phono130 model | §3.10 | best accuracy so far comes from combining models |
 | ~~0~~ | ~~Re-run `gislr.3.streaming.continuous-eval.ipynb`~~ — **done 2026-09-24**: C1 D3 c **GER 0.293** (eval signers) vs baseline 0.507, oracle 0.221 → `docs/reports/continuous-models.md`. Optional follow-up: D5 = D3 ∪ D1 decoder for hard-cut | §12.3 | — |
 | 0b | Plan §12.4 add-a-sign (enroll C-open's 20 held-out glosses from 1/5/10 examples) | §12.4 | C-open (`1790146838`) is trained and waiting; decides how custom signs (§12.7) work |
 | 0c | §12.5 **web app built 2026-09-24** (`apps/web`, `apps/edge`): sign → speech runs in the browser (Holistic → LiteRT.js step model → lag-2 lattice + trigram → rule English → browser voice). Parity tests pass and a headless Chrome replay of 24 held-out streams is identical to Python. **Next (user): first camera test**: `cd apps/web && npm run dev`; check mirroring, fps, a few known sentences | §12.5 | first time real webcam landmarks reach the model |
@@ -1660,8 +1660,19 @@ This answers the probe question below for now: **no training**, statistics and n
   Consistent examples: SAD / SLEEP / BECAUSE withdraw from the forehead, YESTERDAY from the chin, FLOWER
   approaches the chin. The 5-way discrete codes alone are weak (NMI ≈ 0.03): the information is in the
   continuous curves, i.e. for a sequence model.
-- [ ] **Next (user): run `gislr.1.models.phonology-training.ipynb` top to bottom** (§2 trains all three at
-  once, §3 scores them); then Claude evaluates. Compare with `gru_phono_raw` ME_134 0.7632 and `gru` ME_132
+- [x] **Run by the user (2026-09-26), analyzed by Claude** (`phonology-models.md` §8). Canonical:
+  `gru_phono130` **0.7487** (758k params, 130 inputs), `lstm_phono130` 0.7359, `cnn1d_phono130` 0.7208; ~18 min
+  wall for all three in parallel. Phonology alone ≈ raw landmarks with half the inputs (raw `gru` 0.7517,
+  raw `lstm` 0.7366); phono+raw still best (0.7632). The notebook file was not saved with outputs; the runs
+  and logs (`data/temp/phono130_train_*.log`) are the record. Checkpoints pushed to Kaggle.
+  - **Ensembles (no training, top-5 probabilities, a lower bound): `gru_phono130` + raw `gru` 0.7914;
+    + `gru_phono_raw` 0.8049** — the models err on different clips (either right 83.6%). All streaming.
+  - `cnn1d_phono130` under-trained: LR never decayed (early stop at patience 10 fired first); smallest
+    overfitting gap (0.06).
+- [ ] **Next (user's call):** (a) an ensemble in the app: run 2–3 GRUs per frame and average (needs the
+  phonology extractor ported to TS); (b) re-run `cnn1d_phono130` with the standard `es_patience` 15;
+  (c) a continuous (sentence) version of the phonology GRU (`gru_continuous_phono` exists; a phono130 variant
+  would need the §12.3 composer to work on phonology features).; then Claude evaluates. Compare with `gru_phono_raw` ME_134 0.7632 and `gru` ME_132
   0.7517. Later: an ablation without non-manual + hand arrangement (−50 features); per-signer feature
   standardization; a TS port of the extractor for the web app if it wins.
 

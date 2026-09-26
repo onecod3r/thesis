@@ -4,7 +4,7 @@
     "backend": "kaggle",
     "location": "kaggle://models/bracu23101281/signbridge-gislr/pyTorch"
   },
-  "updated": "2026-09-26T08:48:59",
+  "updated": "2026-09-26T15:32:18",
   "objects": {
     "1784385530/best.pt": {
       "run_id": 1784385530,
@@ -716,6 +716,42 @@
       "backend": "kaggle",
       "remote_key": "bracu23101281/signbridge-gislr/pyTorch/bilstm-phono/1/best.pt",
       "uploaded_at": "2026-09-26T08:48:59"
+    },
+    "1790411081/best.pt": {
+      "run_id": 1790411081,
+      "file": "best.pt",
+      "bytes": 8691536,
+      "sha256": "4fbb51d3a14b029729b906ac71cf5893840a4e82f79ed303654ead360169e2e0",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru-phono/2/best.pt",
+      "uploaded_at": "2026-09-26T15:31:27"
+    },
+    "1790413038/best.pt": {
+      "run_id": 1790413038,
+      "file": "best.pt",
+      "bytes": 18593263,
+      "sha256": "bcaff4b26210d7f3b81e32b5a28512833ca954d9782e3bed08a2f52172303980",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/cnn1d-phono130/1/best.pt",
+      "uploaded_at": "2026-09-26T15:31:47"
+    },
+    "1790413039/best.pt": {
+      "run_id": 1790413039,
+      "file": "best.pt",
+      "bytes": 9117136,
+      "sha256": "43251a859842ac051f4cd232a49b46d85c7ee8309795af535b7a9006b5d0edeb",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru-phono130/1/best.pt",
+      "uploaded_at": "2026-09-26T15:32:02"
+    },
+    "1790413040/best.pt": {
+      "run_id": 1790413040,
+      "file": "best.pt",
+      "bytes": 11888272,
+      "sha256": "631c90d0397c5b09ee55ba1c306e29771890ebb00d9aeff7ff33e64ef224df84",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/lstm-phono130/1/best.pt",
+      "uploaded_at": "2026-09-26T15:32:18"
     }
   }
 }
