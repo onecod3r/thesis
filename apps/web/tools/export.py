@@ -10,6 +10,10 @@ outputs next to the inputs:
 ``assets``
     - ``model/``: the C1 step export (``sb.recognize.export.step``). It is built
       if the registry has none.
+    - ``models/<run>/``: the same for every run a recognizer *variant* uses
+      (``variants`` in ``pipeline.config.json``: single models and per-frame
+      ensembles, TODO §12.8). A variant is offered only when all its runs are
+      trained; its D3 setting is the one the window-ensemble notebook selected.
     - ``prior.json``: the deployed trigram (``sb.rescore.prior.NgramLM.to_dict``).
     - ``lexicon.json``: the corpus POS lexicon that gloss -> English reads.
     - ``pipeline.json``: ``pipeline.config.json`` plus D3's settings and hashes.
@@ -50,6 +54,7 @@ from sb.rescore import gloss2en as G
 from sb.rescore import prior as P
 
 APP = Path(__file__).resolve().parents[1]
+ENSEMBLE_PARTS = CACHE_DIR / "gislr" / "window_ensemble" / "parts"  # per-variant D3 selection
 CFG = json.loads((APP / "pipeline.config.json").read_text(encoding="utf-8"))
 ASSETS, FIXTURES = APP / "public" / "assets", APP / "test" / "fixtures"
 SEED, N_SELECT = 42, 5  # the signer split every §12 notebook uses
@@ -64,13 +69,40 @@ def write_json(path: Path, obj) -> None:
     path.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":"), default=float), encoding="utf-8")
 
 
-def web_export() -> tuple[Path, dict]:
-    run_dir = run_dir_for(CFG["run"])
-    assert run_dir is not None, f"no registry run for {CFG['run']}"
+def web_export(run: str | None = None) -> tuple[Path, dict]:
+    run_dir = run_dir_for(run or CFG["run"])
+    assert run_dir is not None, f"no registry run for {run or CFG['run']}"
     web = run_dir / "export" / "web"
     if not (web / "manifest.json").exists():
         export_web(run_dir, register=False)
     return web, json.loads((web / "manifest.json").read_text())
+
+
+def trained(run: str) -> bool:
+    d = run_dir_for(run)
+    return d is not None and (d / "meta.json").exists() and json.loads((d / "meta.json").read_text())["training"]["finished"]
+
+
+def available_variants() -> dict[str, dict]:
+    """Variants whose runs are all trained, each with its D3 decoder: the window-ensemble notebook's
+    selection (5 selection signers) or the config's own; a variant with neither is skipped."""
+    out = {}
+    for name, v in CFG.get("variants", {}).items():
+        if not all(trained(r) for r in v["runs"]):
+            print(f"variant {name}: not all of {v['runs']} trained -- skipped")
+            continue
+        part = ENSEMBLE_PARTS / f"{name}.json"
+        if part.exists():
+            nu, min_len = json.loads(part.read_text())["params"]
+            dec = {"name": "D3", "collapsed": True, "nu": float(nu), "min_len": int(min_len),
+                   "source": "gislr.3.streaming.window-ensemble.ipynb selection"}
+        elif v.get("decoder"):
+            dec = {**v["decoder"], "source": "pipeline.config.json"}
+        else:
+            print(f"variant {name}: no D3 selection yet (run gislr.3.streaming.window-ensemble.ipynb) -- skipped")
+            continue
+        out[name] = {"runs": v["runs"], "label": v["label"], "decoder": dec}
+    return out
 
 
 def fitted_prior(manifest: dict):
@@ -95,8 +127,8 @@ def deployed_rule():
     return FU.Rule(mode=r["mode"], lam=r["lam"], theta=r["theta"], max_len=r["max_len"])
 
 
-def run_decoder(gp: np.ndarray, rule, prior, manifest: dict) -> list[list]:
-    d = manifest["decoder"]
+def run_decoder(gp: np.ndarray, rule, prior, manifest: dict, decoder: dict | None = None) -> list[list]:
+    d = decoder or manifest["decoder"]
     dec = OnlineDecoder(manifest["null_index"], d["nu"], d["min_len"], rule, prior, collapse=CFG["collapse"])
     out = []
     for t, p in enumerate(gp):
@@ -125,12 +157,39 @@ def assets() -> None:
     lex = load_lexicon(CFG["corpus_version"])
     write_json(ASSETS / "lexicon.json", lex)
 
+    # recognizer variants: every run they use exported under models/<run>/ (same glosses, same inputs)
+    variants = available_variants()
+    runs = sorted({r for v in variants.values() for r in v["runs"]})
+    run_web = {}
+    for r in runs:
+        w, m = web_export(r)
+        assert m["glosses"] == manifest["glosses"] and m["null_index"] == manifest["null_index"], f"{r}: label space differs"
+        assert m["landmarks"] == manifest["landmarks"], f"{r}: reads other landmarks than the replay streams store"
+        d = ASSETS / "models" / r
+        d.mkdir(parents=True, exist_ok=True)
+        for name in ("model.tflite", "classes.f32", "manifest.json"):
+            shutil.copyfile(w / name, d / name)
+        run_web[r] = (w, m)
+
     # replay: seeded held-out streams + what Python's TFLite + OnlineDecoder accept on them
     import tensorflow as tf  # the same interpreter the demo notebook uses
 
-    step = tf.lite.Interpreter(model_path=str(web / "model.tflite")).get_signature_runner()
-    W = np.fromfile(web / "classes.f32", np.float32).reshape(-1, manifest["embed_dim"])
     lms_idx = np.asarray(manifest["landmarks"])
+
+    def step_probs(w: Path, m: dict, frames: np.ndarray) -> np.ndarray:
+        """One run's TFLite step model over a stream, state fed back, as the browser runs it."""
+        step = tf.lite.Interpreter(model_path=str(w / "model.tflite")).get_signature_runner()
+        W = np.fromfile(w / "classes.f32", np.float32).reshape(-1, m["embed_dim"])
+        state = np.zeros(m["state_shape"], np.float32)
+        gp = np.zeros((len(frames), W.shape[0]), np.float32)
+        for t, f in enumerate(frames):
+            o = step(frame=f, state=state)
+            state = o["state_out"]
+            logits = m["cos_scale"] * (W @ o["embedding"])
+            e = np.exp(logits - logits.max())
+            gp[t] = e / e.sum()
+        return gp
+
     root, ev = eval_rows()
     rng = np.random.default_rng(CFG["replay"]["seed"])
     rows = ev.iloc[sorted(rng.choice(len(ev), CFG["replay"]["n_streams"], replace=False))]
@@ -141,15 +200,13 @@ def assets() -> None:
         xy = raw[:, lms_idx, :2]  # what the app stores and rebuilds
         frames = np.full((len(raw), 543, 3), np.nan, np.float32)
         frames[:, lms_idx, :2] = xy
-        state = np.zeros(manifest["state_shape"], np.float32)
-        gp = np.zeros((len(frames), W.shape[0]), np.float32)
-        for t, f in enumerate(frames):
-            o = step(frame=f, state=state)
-            state = o["state_out"]
-            logits = manifest["cos_scale"] * (W @ o["embedding"])
-            e = np.exp(logits - logits.max())
-            gp[t] = e / e.sum()
+        gp = step_probs(web, manifest, frames)
         em = run_decoder(gp, rule, prior, manifest)
+        gps = {r: (gp if r == CFG["run"] else step_probs(*run_web[r], frames)) for r in runs}
+        by_variant = {name: [{"gloss": manifest["glosses"][c], "frame": f, "conf": conf, "decided_at": at}
+                             for c, f, conf, at in run_decoder(np.mean([gps[r] for r in v["runs"]], axis=0),
+                                                               rule, prior, manifest, v["decoder"])]
+                      for name, v in variants.items()}
         glosses = str(row["glosses"]).split()
         rec = [manifest["glosses"][c] for c, _, _, _ in em]
         name = f"{row['seq_id']}.f32"
@@ -159,16 +216,21 @@ def assets() -> None:
                       "sentence_id": row["sentence_id"], "signed": glosses, "english_signed": G.convert(glosses, lex),
                       "expected": [{"gloss": manifest["glosses"][c], "frame": f, "conf": conf, "decided_at": at}
                                    for c, f, conf, at in em],
+                      "expected_by_variant": by_variant,
                       "expected_english": G.convert(rec, lex) if rec else ""})
     write_json(ASSETS / "replay" / "index.json", {"landmarks": manifest["landmarks"], "coords": "xy", "streams": index})
 
     pipe = {k: v for k, v in CFG.items() if not k.startswith("_")}
     pipe["decoder"] = manifest["decoder"]
     pipe["model"] = {"run_id": manifest["run_id"], "sha256": {n: sha256(model_dir / n) for n in ("model.tflite", "classes.f32")}}
+    pipe["variants"] = {name: {**v, "run_ids": [run_web[r][1]["run_id"] for r in v["runs"]],
+                               "sha256": {r: sha256(ASSETS / "models" / r / "model.tflite") for r in v["runs"]}}
+                        for name, v in variants.items()}
+    pipe["default_variant"] = CFG["run"]
     pipe["prior"]["sha256"] = sha256(ASSETS / "prior.json")
     write_json(ASSETS / "pipeline.json", pipe)
     print(f"assets -> {ASSETS}: model ({(model_dir / 'model.tflite').stat().st_size / 1e6:.2f} MB), prior, lexicon, "
-          f"{len(index)} replay streams")
+          f"{len(index)} replay streams, variants {list(variants)}")
 
 
 def fixtures() -> None:

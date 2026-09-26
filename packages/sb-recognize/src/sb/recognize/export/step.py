@@ -29,6 +29,14 @@ gated: the exported file is stepped frame by frame against the PyTorch batch
 Measured 2026-09-24 on C1 (``1790143122``): 3.46 MB, 17 builtin ops, max prob
 diff 2e-6 vs PyTorch, 0.20 ms/step median in headless Chrome on LiteRT.js WASM
 (``docs/reports/deployment-research.md`` §3).
+
+**Other bodies (2026-09-26, TODO §12.8):**
+
+- ``lstm_continuous`` (C2): the LSTM in PyTorch's gate order ``[i, f, g, o]``. Its state is
+  ``(2L, H)``: the L hidden rows, then the L cell rows.
+- ``gru_continuous_norm`` (C4): the :class:`~sb.recognize.architectures.StreamNormFrontend`
+  (hands re-slotted by pose wrist, shoulder-centred, shoulder-width scaled) written in TF ops
+  before the input LayerNorm, so the browser feeds the same raw frame to every model.
 """
 
 from __future__ import annotations
@@ -46,12 +54,61 @@ from sb.recognize.data import ROWS_PER_FRAME
 from sb.recognize.export.tflite import load_run_model
 
 LAYER_NORM_EPS = 1e-5  # PyTorch nn.LayerNorm default
-STEP_ARCHS = ("gru_continuous",)
+STEP_ARCHS = ("gru_continuous", "lstm_continuous", "gru_continuous_norm")
+
+
+def state_shape(model) -> tuple[int, int]:
+    """``(rows, hidden)`` of the step graph's recurrent state: ``(L, H)`` for a GRU, ``(2L, H)``
+    (hidden rows, then cell rows) for an LSTM."""
+    rnn = getattr(model, model.cell)
+    return (rnn.num_layers * (2 if model.cell == "lstm" else 1), rnn.hidden_size)
+
+
+def _stream_norm_tf(x, fe):
+    """:class:`StreamNormFrontend` on one ``(1, 2 * rows)`` xy frame (0 = missing), in TF ops."""
+    import tensorflow as tf
+
+    n = fe.n_rows
+    p = tf.reshape(x, [n, 2])
+    valid = tf.reduce_any(tf.not_equal(p, 0.0), -1)
+    i_lh, i_rh = fe.i_lh.cpu().numpy(), fe.i_rh.cpu().numpy()
+    s0, s1 = (int(v) for v in fe.i_sh.cpu().numpy())
+    w0, w1 = (int(v) for v in fe.i_wr.cpu().numpy())
+    lh, rh = tf.gather(p, i_lh), tf.gather(p, i_rh)
+    lok, rok = valid[int(i_lh[0])], valid[int(i_rh[0])]
+    pl, pr = p[w0], p[w1]
+    wok = tf.logical_and(valid[w0], valid[w1])
+
+    def d(a, b):
+        return tf.sqrt(tf.reduce_sum(tf.square(a - b)))
+
+    lw, rw = lh[0], rh[0]
+    both = tf.logical_and(tf.logical_and(lok, rok), d(lw, pr) + d(rw, pl) < d(lw, pl) + d(rw, pr))
+    only_l = tf.logical_and(tf.logical_and(lok, tf.logical_not(rok)), d(lw, pr) < d(lw, pl))
+    only_r = tf.logical_and(tf.logical_and(rok, tf.logical_not(lok)), d(rw, pl) < d(rw, pr))
+    swap = tf.logical_and(wok, tf.logical_or(both, tf.logical_or(only_l, only_r)))
+    new_l, new_r = tf.where(swap, rh, lh), tf.where(swap, lh, rh)
+    # put the (maybe swapped) hands back in place: concatenate, then one gather restores row order
+    keep = np.setdiff1d(np.arange(n), np.r_[i_lh, i_rh])
+    order = np.argsort(np.r_[keep, i_lh, i_rh])
+    p = tf.gather(tf.concat([tf.gather(p, keep), new_l, new_r], 0), order)
+    valid = tf.reduce_any(tf.not_equal(p, 0.0), -1)
+    a, b = p[s0], p[s1]
+    sok = tf.logical_and(valid[s0], valid[s1])
+    centre = (a + b) / 2.0
+    width = tf.maximum(tf.sqrt(tf.reduce_sum(tf.square(a - b))), 1e-3)
+    keep_pt = tf.cast(tf.logical_and(valid, sok), tf.float32)[:, None]
+    out = (p - centre) / width * keep_pt
+    flags = tf.cast(tf.stack([valid[int(i_lh[0])], valid[int(i_rh[0])]]), tf.float32) * tf.cast(sok, tf.float32)
+    return tf.reshape(tf.concat([tf.reshape(out, [-1]), flags], 0), [1, -1])
 
 
 def _build_step_module(model, rows: np.ndarray, cols: np.ndarray, feature_dim: int):
-    """PyTorch ContinuousGRU -> tf.Module with one ``step`` signature."""
+    """PyTorch continuous model (GRU, LSTM, or GRU behind the stream norm) -> tf.Module with one
+    ``step`` signature."""
     import tensorflow as tf
+
+    from sb.recognize.architectures import StreamNormFrontend
 
     def const(t):
         return tf.constant(t.detach().cpu().numpy().astype(np.float32))
@@ -61,11 +118,16 @@ def _build_step_module(model, rows: np.ndarray, cols: np.ndarray, feature_dim: i
         var = tf.reduce_mean(tf.square(x - mu), -1, keepdims=True)
         return (x - mu) * tf.math.rsqrt(var + LAYER_NORM_EPS) * const(ln.weight) + const(ln.bias)
 
-    gru = model.gru
-    n_layers, hidden = gru.num_layers, gru.hidden_size
-    weights = [tuple(const(getattr(gru, f"{w}_l{i}"))
+    rnn = getattr(model, model.cell)
+    lstm = model.cell == "lstm"
+    n_layers, hidden = rnn.num_layers, rnn.hidden_size
+    weights = [tuple(const(getattr(rnn, f"{w}_l{i}"))
                      for w in ("weight_ih", "weight_hh", "bias_ih", "bias_hh"))
                for i in range(n_layers)]
+    norm = model.input_norm
+    fe, ln_in = (norm[0], norm[1]) if isinstance(norm, torch.nn.Sequential) else (None, norm)
+    assert fe is None or isinstance(fe, StreamNormFrontend), f"no step port for front-end {type(fe).__name__}"
+    rows_state = n_layers * (2 if lstm else 1)
     emb_ln, emb_lin = model.head.embed[0], model.head.embed[1]
     b_ln, b_lin = model.boundary[0], model.boundary[1]
     rows_c = tf.constant(rows, tf.int32)
@@ -74,23 +136,35 @@ def _build_step_module(model, rows: np.ndarray, cols: np.ndarray, feature_dim: i
     class Step(tf.Module):
         @tf.function(input_signature=[
             tf.TensorSpec([ROWS_PER_FRAME, 3], tf.float32, name="frame"),
-            tf.TensorSpec([n_layers, hidden], tf.float32, name="state"),
+            tf.TensorSpec([rows_state, hidden], tf.float32, name="state"),
         ])
         def step(self, frame, state):
             # NaN -> 0 with a NaN-only test (no IsInf op), as in keras.serving_module
             x = tf.where(tf.math.is_nan(frame), tf.zeros_like(frame), frame)
             x = tf.gather(tf.gather(x, rows_c, axis=0), cols_c, axis=1)
-            x = layer_norm(tf.reshape(x, [1, feature_dim]), model.input_norm)
-            new_state = []
+            x = tf.reshape(x, [1, feature_dim])
+            if fe is not None:
+                x = _stream_norm_tf(x, fe)
+            x = layer_norm(x, ln_in)
+            new_h, new_c = [], []
             for i, (w_ih, w_hh, b_ih, b_hh) in enumerate(weights):
                 h = state[i:i + 1]
-                i_r, i_z, i_n = tf.split(tf.matmul(x, w_ih, transpose_b=True) + b_ih, 3, axis=1)
-                h_r, h_z, h_n = tf.split(tf.matmul(h, w_hh, transpose_b=True) + b_hh, 3, axis=1)
-                r = tf.sigmoid(i_r + h_r)
-                z = tf.sigmoid(i_z + h_z)
-                h = (1.0 - z) * tf.tanh(i_n + r * h_n) + z * h
-                new_state.append(h)
+                if lstm:  # PyTorch gate order [i, f, g, o]; cell rows follow the hidden rows
+                    c = state[n_layers + i:n_layers + i + 1]
+                    g_i, g_f, g_g, g_o = tf.split(tf.matmul(x, w_ih, transpose_b=True) + b_ih
+                                                  + tf.matmul(h, w_hh, transpose_b=True) + b_hh, 4, axis=1)
+                    c = tf.sigmoid(g_f) * c + tf.sigmoid(g_i) * tf.tanh(g_g)
+                    h = tf.sigmoid(g_o) * tf.tanh(c)
+                    new_c.append(c)
+                else:
+                    i_r, i_z, i_n = tf.split(tf.matmul(x, w_ih, transpose_b=True) + b_ih, 3, axis=1)
+                    h_r, h_z, h_n = tf.split(tf.matmul(h, w_hh, transpose_b=True) + b_hh, 3, axis=1)
+                    r = tf.sigmoid(i_r + h_r)
+                    z = tf.sigmoid(i_z + h_z)
+                    h = (1.0 - z) * tf.tanh(i_n + r * h_n) + z * h
+                new_h.append(h)
                 x = h
+            new_state = new_h + new_c
             e = tf.matmul(layer_norm(x, emb_ln), const(emb_lin.weight), transpose_b=True) \
                 + const(emb_lin.bias)
             e = e * tf.math.rsqrt(tf.reduce_sum(tf.square(e), -1, keepdims=True) + 1e-24)
@@ -142,7 +216,7 @@ def check_step_parity(model, blob: bytes, rows: np.ndarray, cols: np.ndarray,
     run = tf.lite.Interpreter(model_content=blob).get_signature_runner()
     w, scale = class_matrix(model), float(model.head.scale)
     mask = np.r_[model.head.class_mask.cpu().numpy(), True]
-    state = np.zeros((model.gru.num_layers, model.gru.hidden_size), np.float32)
+    state = np.zeros(state_shape(model), np.float32)
     got_p, got_b = [], []
     for t in range(n_frames):
         o = run(frame=frames[t], state=state)
@@ -195,7 +269,7 @@ def export_web(run_dir: Path, checkpoint: str = R.CKPT_BEST, decoder: dict | Non
         "checkpoint": checkpoint,
         "landmarks": rows.tolist(),
         "coords": ck.get("coords", "xyz"),
-        "state_shape": [model.gru.num_layers, model.gru.hidden_size],
+        "state_shape": list(state_shape(model)),
         "embed_dim": int(w.shape[1]),
         "cos_scale": float(model.head.scale),
         "glosses": [idx2sign[i] for i in range(len(idx2sign))],

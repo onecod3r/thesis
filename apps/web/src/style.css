@@ -179,3 +179,54 @@ button#start, button#record { background: var(--accent); color: var(--accent-fg)
 footer { color: var(--muted); font-size: 0.82em; line-height: 1.6; padding-bottom: 30px; }
 code { font-size: 0.9em; background: var(--bg-soft); padding: 1px 5px; border-radius: 5px; }
 a { color: var(--accent); }
+
+/* ---------------------------------------------------------------- app bar (all pages) */
+.brand {
+  font-weight: 800; font-size: 1.1rem; letter-spacing: -0.02em; color: var(--fg); text-decoration: none;
+  white-space: nowrap;
+}
+.tabs {
+  display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--bg-soft);
+  border: 1px solid var(--line); overflow-x: auto; max-width: 100%; scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tabs a {
+  font-size: 0.86rem; font-weight: 600; color: var(--muted); text-decoration: none; white-space: nowrap;
+  padding: 7px 14px; border-radius: 999px; min-height: 36px; display: inline-flex; align-items: center;
+}
+.tabs a:hover { color: var(--fg); }
+.tabs a[aria-current="page"] { background: var(--card); color: var(--accent); box-shadow: var(--shadow); }
+.header-row { align-items: center; }
+@media (max-width: 560px) {
+  .header-row { flex-direction: column; align-items: stretch; }
+  .tabs { justify-content: space-between; }
+  .tabs a { flex: 1; justify-content: center; padding: 7px 8px; }
+}
+
+/* ---------------------------------------------------------------- landmark test page */
+.lm-grid { display: grid; grid-template-columns: 1fr; gap: 14px; margin-bottom: 14px; }
+@media (min-width: 900px) { .lm-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1400px) { .lm-grid { grid-template-columns: repeat(3, 1fr); } }
+.lm-grid > section { margin-bottom: 0; }
+.lm-panel[hidden] { display: none; }
+.lm-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.lm-head h2 { margin: 0; }
+.lm-badge {
+  font-size: 0.75rem; font-weight: 700; padding: 3px 9px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+}
+.lm-canvas { display: block; width: 100%; height: auto; border-radius: var(--radius-sm); background: #000; }
+.lm-panel .stats { margin-top: 12px; }
+.lm-panel .stats dd.bad { color: var(--bad); }
+.lm-source { display: block; width: min(320px, 100%); border-radius: var(--radius-sm); background: #000; }
+.note { color: var(--muted); font-size: 0.85rem; margin: 10px 0 0; }
+
+/* the landmark page shows up to three camera panels side by side */
+body.wide header, body.wide main, body.wide footer { max-width: 1680px; }
+
+/* `.controls .row` centres its items; a column of checkboxes should start on the left */
+.controls .row.toggles { align-items: flex-start; }
+@media (max-width: 600px) {
+  /* the narrow-screen rule above stacks select labels; checkbox rows stay side by side */
+  .controls .row.toggles label { flex-direction: row; align-items: center; }
+}

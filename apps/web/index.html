@@ -11,8 +11,12 @@
 <body>
   <header>
     <div class="header-row">
-      <h1>SignBridge <span class="sub">sign → speech</span></h1>
-      <a class="nav-link" href="/speech">speech → sign (gloss) →</a>
+      <a class="brand" href="/">SignBridge</a>
+      <nav class="tabs" aria-label="Pages">
+        <a href="/" aria-current="page">Sign → Speech</a>
+        <a href="/speech">Speech → Sign</a>
+        <a href="/landmarks">Landmark test</a>
+      </nav>
     </div>
     <p id="status" class="status">Loading…</p>
   </header>
@@ -28,6 +32,9 @@
           </select>
         </label>
         <select id="replay-stream" aria-label="Replay stream"></select>
+        <label>Recognizer
+          <select id="variant" title="Which model(s) read the landmarks. An ensemble steps every member on the same frame and averages their probabilities."></select>
+        </label>
         <input id="file" type="file" accept="video/*" hidden />
         <button id="start" disabled>Start</button>
         <button id="stop" disabled>Stop</button>
@@ -41,6 +48,7 @@
         <label>Voice <select id="voice"></select></label>
         <label id="llm-wrap" hidden><input id="llm" type="checkbox" /> English by LLM (edge; rules offline otherwise)</label>
       </div>
+      <p id="variant-note" class="note"></p>
     </section>
 
     <section class="stage">
@@ -59,6 +67,7 @@
         <dl class="stats">
           <dt>Landmark fps</dt><dd id="fps">–</dd>
           <dt>Recognizer</dt><dd id="rec-ms">–</dd>
+          <dt>Model</dt><dd id="variant-name">–</dd>
           <dt>MediaPipe</dt><dd id="mp-ms">–</dd>
           <dt>Holistic delegate</dt><dd id="delegate">–</dd>
           <dt>Video</dt><dd id="video-res">–</dd>
@@ -87,7 +96,8 @@
   </main>
 
   <footer>
-    <p>Recognizer C1 (continuous GRU, 250 GISLR signs) · D3 + look-ahead lattice with a trigram prior ·
+    <p>Recognizer C1 by default (continuous GRU, 250 GISLR signs; other models and per-frame ensembles under
+      “Recognizer”) · D3 + look-ahead lattice with a trigram prior ·
       rule-based English (offline) · your browser's own voice. Everything runs on this device.</p>
     <p>Trained on composed GISLR clips, not real continuous signing: expect it to be wrong often.
       See <code>docs/reports/sign-to-speech-demo-analysis.md</code>.</p>

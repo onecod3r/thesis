@@ -13,7 +13,17 @@ import type { StepManifest } from "../../../shared-ts/src/contracts.ts";
 
 type Compiled = Awaited<ReturnType<typeof loadAndCompile>>;
 
-export class Recognizer {
+/** What a session steps: one frame in, probabilities over glosses + null out. */
+export interface StepModel {
+  readonly manifest: StepManifest;
+  readonly glosses: readonly string[];
+  step(frame: Float32Array): Promise<Float32Array>;
+  reset(): void;
+}
+
+let runtime: Promise<void> | null = null; // LiteRT's WASM is loaded once per page
+
+export class Recognizer implements StepModel {
   private state: Float32Array;
   private readonly logits: Float64Array;
   readonly manifest: StepManifest;
@@ -31,11 +41,13 @@ export class Recognizer {
     this.state = new Float32Array(manifest.state_shape[0] * manifest.state_shape[1]);
   }
 
-  static async load(assets: string, wasmDir: string): Promise<Recognizer> {
-    await loadLiteRt(wasmDir);
-    const manifest = (await (await fetch(`${assets}/model/manifest.json`)).json()) as StepManifest;
-    const model = await loadAndCompile(`${assets}/model/model.tflite`, { accelerator: "wasm" });
-    const W = new Float32Array(await (await fetch(`${assets}/model/classes.f32`)).arrayBuffer());
+  /** `dir` is the bundle folder under `assets`: `model` (the deployed C1) or `models/<run>`. */
+  static async load(assets: string, wasmDir: string, dir = "model"): Promise<Recognizer> {
+    runtime ??= loadLiteRt(wasmDir).then(() => undefined);
+    await runtime;
+    const manifest = (await (await fetch(`${assets}/${dir}/manifest.json`)).json()) as StepManifest;
+    const model = await loadAndCompile(`${assets}/${dir}/model.tflite`, { accelerator: "wasm" });
+    const W = new Float32Array(await (await fetch(`${assets}/${dir}/classes.f32`)).arrayBuffer());
     if (W.length % manifest.embed_dim !== 0) throw new Error("classes.f32 does not match the manifest's embed_dim");
     return new Recognizer(model, W, manifest);
   }
@@ -75,5 +87,48 @@ export class Recognizer {
 
   get glosses(): readonly string[] {
     return this.manifest.glosses;
+  }
+}
+
+/**
+ * Several step models averaged per frame (TODO §12.8, `docs/reports/window-ensembles.md`): each member
+ * keeps its own recurrent state and steps the same frame; their gloss + null probabilities are
+ * averaged. C1 + C2 this way scored GER 0.244 offline vs C1's 0.276. Members must share the label
+ * space (checked here).
+ */
+export class Ensemble implements StepModel {
+  private readonly members: StepModel[];
+
+  constructor(members: StepModel[]) {
+    if (!members.length) throw new Error("an ensemble needs at least one model");
+    const g = members[0].glosses.join("|");
+    for (const m of members) {
+      if (m.glosses.join("|") !== g || m.manifest.null_index !== members[0].manifest.null_index) {
+        throw new Error(`run ${m.manifest.run_id} has a different label space`);
+      }
+    }
+    this.members = members;
+  }
+
+  get manifest(): StepManifest {
+    return this.members[0].manifest;
+  }
+
+  get glosses(): readonly string[] {
+    return this.members[0].glosses;
+  }
+
+  reset(): void {
+    for (const m of this.members) m.reset();
+  }
+
+  async step(frame: Float32Array): Promise<Float32Array> {
+    if (this.members.length === 1) return this.members[0].step(frame);
+    const outs = [];
+    for (const m of this.members) outs.push(await m.step(frame));
+    const p = new Float32Array(outs[0].length);
+    for (const o of outs) for (let c = 0; c < p.length; c++) p[c] += o[c];
+    for (let c = 0; c < p.length; c++) p[c] /= outs.length;
+    return p;
   }
 }

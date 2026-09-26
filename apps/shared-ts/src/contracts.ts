@@ -48,6 +48,18 @@ export interface PipelineConfig {
   holistic_delegate?: "CPU" | "GPU";
   decoder: DecoderSettings;
   model: { run_id: number; sha256: Record<string, string> };
+  /** Recognizer options (TODO §12.8): one run, or several averaged per frame. Absent in older bundles. */
+  variants?: Record<string, VariantConfig>;
+  default_variant?: string;
+}
+
+export interface VariantConfig {
+  runs: string[];
+  run_ids: number[];
+  label: string;
+  /** D3 setting chosen for this variant on the selection signers. */
+  decoder: DecoderSettings & { source?: string };
+  sha256: Record<string, string>;
 }
 
 /** `prior.json`: `sb.rescore.prior.NgramLM.to_dict()`. */
@@ -68,6 +80,13 @@ export interface ReplayIndex {
   streams: ReplayStream[];
 }
 
+export interface ExpectedSign {
+  gloss: string;
+  frame: number;
+  conf: number;
+  decided_at: number;
+}
+
 export interface ReplayStream {
   seq_id: string;
   file: string;
@@ -76,6 +95,8 @@ export interface ReplayStream {
   sentence_id: string;
   signed: string[];
   english_signed: string;
-  expected: { gloss: string; frame: number; conf: number; decided_at: number }[];
+  expected: ExpectedSign[];
+  /** Python's accepted glosses per recognizer variant (TFLite members averaged, the variant's D3). */
+  expected_by_variant?: Record<string, ExpectedSign[]>;
   expected_english: string;
 }

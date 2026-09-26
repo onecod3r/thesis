@@ -16,6 +16,16 @@
     "max_len": null,
     "_source": "docs/reports/sign-to-speech-downstream.md §2.2: beats the θ=0.3 floor on missed, wrong and extra signs and noise on the evaluation signers (GER 0.347 -> 0.320 clean, 0.580 -> 0.547 noisy); about 27 frames of delay on uncertain signs."
   },
+  "variants": {
+    "C1": {"runs": ["C1"], "label": "C1 (GRU) — deployed", "decoder": {"name": "D3", "collapsed": true, "nu": 0.7, "min_len": 4}},
+    "C2": {"runs": ["C2"], "label": "C2 (LSTM)"},
+    "C1+C2": {"runs": ["C1", "C2"], "label": "C1 + C2 averaged per frame (best offline: GER 0.244)"},
+    "C4": {"runs": ["C4"], "label": "C4 (C1 v2: normalized input, augmented training)"},
+    "C5": {"runs": ["C5"], "label": "C5 (C1 v2 streams, raw input)"},
+    "C4+C5": {"runs": ["C4", "C5"], "label": "C4 + C5 averaged per frame"},
+    "C1+C4": {"runs": ["C1", "C4"], "label": "C1 + C4 averaged per frame"}
+  },
+  "_variants_note": "Recognizer options on the sign -> speech page (TODO §12.8). A variant is exported only when all its runs are trained; its D3 setting comes from gislr.3.streaming.window-ensemble.ipynb's selection (data/cache/gislr/window_ensemble/parts/<variant>.json) unless given here. The lattice rule below was tuned on C1 and is shared by every variant.",
   "collapse": true,
   "sentence_end_null_frames": 45,
   "target_fps": 30,

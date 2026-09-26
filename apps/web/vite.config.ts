@@ -10,8 +10,10 @@ export default defineConfig({
   build: {
     target: "es2022",
     assetsInlineLimit: 0,
-    // Two pages: sign -> speech (index.html) and speech -> gloss (speech.html, TODO §13).
-    rollupOptions: { input: { main: resolve(HERE, "index.html"), speech: resolve(HERE, "speech.html") } },
+    // Three pages: sign -> speech (index.html), speech -> gloss (speech.html, TODO §13) and the
+    // landmark extraction test (landmarks.html, TODO §12.8).
+    rollupOptions: { input: { main: resolve(HERE, "index.html"), speech: resolve(HERE, "speech.html"),
+                              landmarks: resolve(HERE, "landmarks.html") } },
   },
   worker: { format: "es" },
   optimizeDeps: { exclude: ["@litertjs/core", "onnxruntime-web"] },

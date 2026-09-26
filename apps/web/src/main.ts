@@ -10,13 +10,15 @@
  * Python's TFLite + OnlineDecoder produced on the same frames (tools/export.py).
  */
 
-import type { Lexicon, NgramJson, PipelineConfig, ReplayIndex, ReplayStream } from "../../shared-ts/src/contracts.ts";
+import type { DecoderSettings, ExpectedSign, Lexicon, NgramJson, PipelineConfig, ReplayIndex, ReplayStream,
+  VariantConfig } from "../../shared-ts/src/contracts.ts";
 import { holisticToFrame, rowsToFrame } from "../../shared-ts/src/landmarks.ts";
 import { bundleBase } from "./models.ts";
 import { Holistic } from "./pipeline/holistic.ts";
 import type { HolisticResult } from "./pipeline/holistic.ts";
 import { NgramPrior } from "./pipeline/prior.ts";
-import { Recognizer } from "./pipeline/recognizer.ts";
+import { Ensemble, Recognizer } from "./pipeline/recognizer.ts";
+import type { StepModel } from "./pipeline/recognizer.ts";
 import { Clock, glossErrors, Session } from "./pipeline/session.ts";
 import type { Sentence, Sign, StepResult } from "./pipeline/session.ts";
 import { onVoicesChanged, speak, voices } from "./pipeline/speech.ts";
@@ -36,6 +38,9 @@ const ui = {
   start: $<HTMLButtonElement>("start"),
   stop: $<HTMLButtonElement>("stop"),
   replayAll: $<HTMLButtonElement>("replay-all"),
+  variant: $<HTMLSelectElement>("variant"),
+  variantNote: $<HTMLParagraphElement>("variant-note"),
+  variantName: $<HTMLElement>("variant-name"),
   mirror: $<HTMLInputElement>("mirror"),
   resample: $<HTMLInputElement>("resample"),
   skipFrames: $<HTMLInputElement>("skip-frames"),
@@ -65,7 +70,12 @@ const ui = {
 
 interface App {
   cfg: PipelineConfig;
-  rec: Recognizer;
+  rec: StepModel;
+  /** The deployed C1, loaded first (from Kaggle with `?models=kaggle`). */
+  base: Recognizer;
+  variant: string;
+  decoder: DecoderSettings;
+  loaded: Map<string, Recognizer>;
   prior: NgramPrior;
   lexicon: Lexicon;
   replay: ReplayIndex;
@@ -225,8 +235,53 @@ function lerpFrame(a: Float32Array, b: Float32Array, t: number): Float32Array {
 // ---------------------------------------------------------------- sessions
 
 function newSession(): Session {
-  return new Session(app.cfg, app.rec.glosses, app.rec.manifest.null_index, app.prior.prior, app.lexicon,
-                     () => app.rec.reset());
+  return new Session({ ...app.cfg, decoder: app.decoder }, app.rec.glosses, app.rec.manifest.null_index, app.prior.prior,
+                     app.lexicon, () => app.rec.reset());
+}
+
+// ---------------------------------------------------------------- recognizer variants (TODO §12.8)
+
+function variants(): Record<string, VariantConfig> {
+  return app.cfg.variants ?? {};
+}
+
+/** Python's glosses for this stream under the selected variant (older bundles: C1's only). */
+function expectedFor(stream: ReplayStream): ExpectedSign[] {
+  return stream.expected_by_variant?.[app.variant] ?? stream.expected;
+}
+
+async function useVariant(name: string): Promise<void> {
+  const v = variants()[name];
+  if (!v) {
+    app.rec = app.base;
+    app.variant = app.cfg.default_variant ?? app.cfg.run;
+    app.decoder = app.cfg.decoder;
+  } else {
+    const members: Recognizer[] = [];
+    for (const run of v.runs) {
+      if (run === app.cfg.run) {
+        members.push(app.base);
+        continue;
+      }
+      if (!app.loaded.has(run)) {
+        setStatus(`Loading ${run} for ${name}…`);
+        app.loaded.set(run, await Recognizer.load(ASSETS, `${WASM}/litert/`, `models/${run}`));
+      }
+      members.push(app.loaded.get(run)!);
+    }
+    app.rec = members.length === 1 ? members[0] : new Ensemble(members);
+    app.variant = name;
+    app.decoder = v.decoder;
+  }
+  app.rec.reset();
+  const d = app.decoder;
+  ui.variantName.textContent = app.variant;
+  ui.variantNote.textContent = `Recognizer ${app.variant}${v && v.runs.length > 1 ? ` (${v.runs.join(" + ")}, probabilities averaged per frame)` : ""}` +
+    ` · D3 ν ${d.nu}, min length ${d.min_len}${v?.decoder.source ? ` (${v.decoder.source})` : ""}. ` +
+    "The look-ahead lattice and prior were tuned on C1 and are shared by every model.";
+  const url = new URL(location.href);
+  url.searchParams.set("variant", app.variant);
+  history.replaceState(null, "", url);
 }
 
 async function runReplay(stream: ReplayStream, opts: { speakIt: boolean; animate: boolean }): Promise<string[]> {
@@ -241,6 +296,7 @@ async function runReplay(stream: ReplayStream, opts: { speakIt: boolean; animate
     <div>Signed: <strong>${stream.signed.join(" ")}</strong></div><div>${stream.english_signed}</div>`;
   const got: Sign[] = [];
   let recMs = 0;
+  app.rec.reset();
   for (let t = 0; t < stream.frames && !stopRequested; t++) {
     const frame = rowsToFrame(xy, rows, t);
     const t0 = performance.now();
@@ -265,7 +321,7 @@ async function runReplay(stream: ReplayStream, opts: { speakIt: boolean; animate
 }
 
 function checkRow(stream: ReplayStream, got: string[]): boolean {
-  const want = stream.expected.map((e) => `${e.gloss}@${e.frame}`);
+  const want = expectedFor(stream).map((e) => `${e.gloss}@${e.frame}`);
   const same = JSON.stringify(want) === JSON.stringify(got);
   const tr = document.createElement("tr");
   const cells = [stream.seq_id, stream.signed.join(" "), want.map((x) => x.split("@")[0]).join(" "),
@@ -295,11 +351,11 @@ async function replayAll(): Promise<void> {
     errs += glossErrors(st.signed, got.map((x) => x.split("@")[0]));
     n += st.signed.length;
   }
-  const summary = `${same}/${done} streams identical to Python (TFLite + OnlineDecoder). ` +
+  const summary = `${app.variant}: ${same}/${done} streams identical to Python (TFLite + OnlineDecoder). ` +
     `Gloss error rate against what was signed: ${(errs / Math.max(n, 1)).toFixed(3)} over ${n} signs.`;
   ui.checkSummary.textContent = summary;
   setStatus(summary);
-  (window as unknown as { __replayCheck: unknown }).__replayCheck = { same, done, ger: errs / Math.max(n, 1) };
+  (window as unknown as { __replayCheck: unknown }).__replayCheck = { variant: app.variant, same, done, ger: errs / Math.max(n, 1) };
 }
 
 async function ensureHolistic(): Promise<Holistic> {
@@ -479,10 +535,11 @@ async function start(): Promise<void> {
       const st = app.replay.streams[Number(ui.replayStream.value)];
       setStatus(`Replaying ${st.seq_id}…`);
       const got = await runReplay(st, { speakIt: true, animate: true });
-      const want = st.expected.map((e) => `${e.gloss}@${e.frame}`);
+      const exp = expectedFor(st);
+      const want = exp.map((e) => `${e.gloss}@${e.frame}`);
       setStatus(JSON.stringify(got) === JSON.stringify(want)
-        ? `Done. The browser accepted exactly what Python did on this stream.`
-        : `Done. The browser's glosses differ from Python's on this stream (expected: ${st.expected.map((e) => e.gloss).join(" ")}).`);
+        ? `Done (${app.variant}). The browser accepted exactly what Python did on this stream.`
+        : `Done (${app.variant}). The browser's glosses differ from Python's on this stream (expected: ${exp.map((e) => e.gloss).join(" ")}).`);
     } else {
       await runLive(src as "camera" | "file");
       setStatus("Stopped.");
@@ -506,7 +563,31 @@ async function main(): Promise<void> {
   ]);
   setStatus(`Loading the recognizer (LiteRT.js)${MODELS === ASSETS ? "" : " from Kaggle"}…`);
   const rec = await Recognizer.load(MODELS, `${WASM}/litert/`);
-  app = { cfg, rec, prior: new NgramPrior(priorJson, rec.glosses), lexicon, replay, holistic: null };
+  app = { cfg, rec, base: rec, variant: cfg.default_variant ?? cfg.run, decoder: cfg.decoder, loaded: new Map(),
+          prior: new NgramPrior(priorJson, rec.glosses), lexicon, replay, holistic: null };
+  const vs = variants();
+  ui.variant.replaceChildren(...(Object.keys(vs).length
+    ? Object.entries(vs).map(([k, v]) => new Option(v.label, k))
+    : [new Option(`${cfg.run} (deployed)`, cfg.run)]));
+  const asked = new URLSearchParams(location.search).get("variant");
+  ui.variant.value = asked && vs[asked] ? asked : app.variant;
+  await useVariant(ui.variant.value);
+  ui.variant.onchange = async () => {
+    if (running) {
+      setStatus("Stop first, then switch the recognizer.", true);
+      ui.variant.value = app.variant;
+      return;
+    }
+    ui.start.disabled = ui.replayAll.disabled = true;
+    try {
+      await useVariant(ui.variant.value);
+      setStatus(`Recognizer: ${app.variant}. Pick a source and press Start.`);
+    } catch (e) {
+      setStatus(`Could not load ${ui.variant.value}: ${String(e)}`, true);
+    } finally {
+      ui.start.disabled = ui.replayAll.disabled = false;
+    }
+  };
   $("target-fps").textContent = String(cfg.target_fps);
   $("uncertain-below").textContent = String(cfg.display.uncertain_below);
   ui.replayStream.replaceChildren(...replay.streams.map((s, i) =>
@@ -541,7 +622,7 @@ async function main(): Promise<void> {
   syncSource();
   ui.start.disabled = false;
   ui.replayAll.disabled = false;
-  setStatus(`Ready. Model run ${cfg.model.run_id}, rule: ${cfg.rule.kind}${cfg.rule.kind === "lattice" ? ` (waits ${cfg.rule.lag} signs)` : ""}. ` +
+  setStatus(`Ready. Recognizer ${app.variant}, rule: ${cfg.rule.kind}${cfg.rule.kind === "lattice" ? ` (waits ${cfg.rule.lag} signs)` : ""}. ` +
     `Pick a source and press Start.`);
   const params = new URLSearchParams(location.search);
   if (params.has("check")) ui.replayAll.click();

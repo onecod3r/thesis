@@ -35,6 +35,22 @@ The replay streams and MediaPipe's `.task` still come from this site. Publishing
 `.venv/Scripts/python.exe apps/web/tools/publish_kaggle.py --apply`, then bump the version in
 `kaggle.models.json`.
 
+**Pages** (one header bar, 2026-09-26): **Sign → Speech** (`/`), **Speech → Sign** (`/speech`) and
+**Landmark test** (`/landmarks`, TODO §12.8). The landmark test runs the camera (or a video file)
+through three MediaPipe setups side by side: Holistic (what the app uses), Hands + Face + Pose as
+three separate task models, and Hands + Face. Each panel draws the exact frame its models read
+plus the overlay in one canvas, so the overlay cannot drift off the body; mirroring flips both.
+Per panel: frame rate, detection time per model, render time, camera-to-overlay latency, pose
+visibility, hand labels and handedness scores, how often each part was found, and whether each
+hand's label agrees with the pose wrist it is nearest (the C4 re-slot rule).
+
+**Recognizer variants** (Sign → Speech, "Recognizer"; `variants` in `pipeline.config.json`): C1,
+C2, and **C1 + C2 averaged per frame** (offline GER 0.244 vs C1's 0.276,
+`docs/reports/window-ensembles.md`); C4, C5, C4 + C5 and C1 + C4 appear once those runs are
+trained and `tools/export.py assets` is re-run. Each variant uses the D3 setting chosen for it on
+the selection signers; the lattice and prior are shared. `?variant=C1%2BC2` selects one from the URL,
+and `?check&variant=…` replays the held-out streams against Python for that variant.
+
 With no camera (a remote machine, for example), choose **Held-out replay**. It feeds GISLR
 landmarks of evaluation-signer streams straight to the recognizer, and **Check all**
 compares every stream with Python.
@@ -43,7 +59,8 @@ compares every stream with Python.
 
 | file | what | Python it ports | parity |
 |---|---|---|---|
-| `src/pipeline/recognizer.ts` | step model on LiteRT.js; `logits = 16·W·emb`, softmax | the demo notebook's `frame_probs` | browser replay: **24/24 streams identical** |
+| `src/pipeline/recognizer.ts` | step model on LiteRT.js; `logits = 16·W·emb`, softmax; `Ensemble` averages several per frame | the demo notebook's `frame_probs`; `sb.recognize.sequences.windows.average` | browser replay: **24/24 streams identical for C1, C2 and C1+C2** (2026-09-26) |
+| `src/pipeline/extractors.ts`, `src/landmarks-main.ts` | the landmark test page: Holistic / pose+face+hands / face+hands task models, overlay, stats | – | headless Chrome on a signing video: all three run, overlay on the body, hand labels agree with the pose 100% |
 | `src/pipeline/decoder.ts` | `OnlineDecoder`, `decide` (none/rescore/agree), `Lattice` | `sb.recognize.continuous.{online,fuse,select}` | `npm test`: 60 streams × 6 rules identical |
 | `src/pipeline/prior.ts` | Kneser-Ney n-gram from `prior.json` | `sb.rescore.prior.NgramLM` | `npm test`: 592 histories, max diff 3e-15 |
 | `src/pipeline/gloss2en.ts` | gloss → English rules (offline) | `sb.rescore.gloss2en.convert` | `npm test`: 5,724 sequences identical |

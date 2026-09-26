@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0c0d10" media="(prefers-color-scheme: dark)" />
+  <title>SignBridge — landmark test</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body class="wide">
+  <header>
+    <div class="header-row">
+      <a class="brand" href="/">SignBridge</a>
+      <nav class="tabs" aria-label="Pages">
+        <a href="/">Sign → Speech</a>
+        <a href="/speech">Speech → Sign</a>
+        <a href="/landmarks" aria-current="page">Landmark test</a>
+      </nav>
+    </div>
+    <p id="status" class="status">Pick the extractors to compare and start the camera.</p>
+  </header>
+
+  <main>
+    <section class="controls" aria-label="Input">
+      <div class="row">
+        <label>Source
+          <select id="source">
+            <option value="camera">Camera</option>
+            <option value="file">Video file</option>
+          </select>
+        </label>
+        <select id="camera" aria-label="Camera"></select>
+        <select id="resolution" aria-label="Resolution">
+          <option value="640x480">640×480</option>
+          <option value="1280x720" selected>1280×720</option>
+          <option value="1920x1080">1920×1080</option>
+        </select>
+        <input id="file" type="file" accept="video/*" hidden />
+        <button id="start">Start</button>
+        <button id="stop" disabled>Stop</button>
+      </div>
+      <div class="row">
+        <label>Delegate
+          <select id="delegate">
+            <option value="CPU">CPU</option>
+            <option value="GPU">GPU (falls back to CPU)</option>
+          </select>
+        </label>
+        <label>Pose model
+          <select id="pose-size">
+            <option value="lite">lite</option>
+            <option value="full" selected>full</option>
+            <option value="heavy">heavy</option>
+          </select>
+        </label>
+        <label>Face drawing
+          <select id="face-draw">
+            <option value="contours" selected>contours</option>
+            <option value="mesh">full mesh</option>
+            <option value="points">points</option>
+            <option value="none">none</option>
+          </select>
+        </label>
+      </div>
+      <div class="row toggles">
+        <label><input id="mirror" type="checkbox" checked /> Mirror the view (selfie view: video and landmarks flipped together)</label>
+        <label><input id="en-holistic" type="checkbox" checked /> Holistic (one model: what the app uses)</label>
+        <label><input id="en-separate" type="checkbox" checked /> Hands + Face + Pose (three separate models)</label>
+        <label><input id="en-hands_face" type="checkbox" checked /> Hands + Face (two models, no body)</label>
+      </div>
+      <p class="note">Enabled extractors run one after another on the same camera frame, so each one's frame rate
+        drops as more are enabled. Its own detection time is the fair comparison. Models load from Google's CDN on
+        first use (Holistic 14 MB, pose 6–30 MB, face 4 MB, hands 8 MB).</p>
+    </section>
+
+    <div class="lm-grid" id="panels"></div>
+
+    <section>
+      <h2>Raw camera feed</h2>
+      <video id="video" class="lm-source" playsinline muted></video>
+      <p class="note">What the models receive: never mirrored. Mirroring above changes only how the panels are drawn, so
+        the overlay always stays on the body.</p>
+    </section>
+  </main>
+
+  <footer>
+    <p><strong>Hand labels vs body:</strong> each hand's own label is compared with the pose wrist it is nearest to (the
+      rule C1 v2 uses to re-slot hands). "swapped" on most frames would mean the model labels hands the other way from
+      GISLR, the leading suspect for live sentences never ending (TODO §12.8).</p>
+  </footer>
+  <script type="module" src="/src/landmarks-main.ts"></script>
+</body>
+</html>

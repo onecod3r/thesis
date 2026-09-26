@@ -4271,8 +4271,11 @@ for possible solutions.
     driver smoke C4/C5 OK (929k / 928k params, 8,484 streams/epoch).
   - Notebooks: `gislr.1.models.continuous.ipynb` §6b trains C4 + C5 in parallel; continuous-eval config runs +
     C4, C5; live-robustness notebook now probes `RUNS = [C1, C4, C5]` (parts per run; dry-run on cached C1 OK).
-- [ ] **Next (user): run `gislr.1.models.continuous.ipynb` §6b** (C4 + C5 in parallel; then §7 curves, §8
-  canonical eval), then `gislr.3.streaming.continuous-eval.ipynb` and `gislr.3.streaming.live-robustness.ipynb`.
+- [ ] **Next (user): run `gislr.1.models.continuous.ipynb`** setup (cell 1), §6b (C4 + C5 in parallel), §7, §8 —
+  **not** the C1/C2/C3/Copen training cells (a finished run would start again as a new run). Then
+  `gislr.3.streaming.continuous-eval.ipynb`, `gislr.3.streaming.live-robustness.ipynb` and
+  `gislr.3.streaming.window-ensemble.ipynb` (adds the C4 / C4+C5 / C1+C4 arms and their D3 selections), then
+  `apps/web/tools/export.py assets` + build + deploy to get C4 variants in the app.
   Judge by `continuous-v2.md` §4: clean GER ≈ 0.293, hard-cut < 0.546, `live_like` ≪ 0.592, mirror/aspect ≈ clean.
 - [?] **User proposal (2026-09-26):** instead of per-frame streaming, feed ~3 s windows (or the mean sign
   length) to two models offset by ~500 ms, combine their predictions, and fuse with an independent next-gloss
@@ -4304,8 +4307,24 @@ for possible solutions.
     0.416-0.417, no gain. Run complete 18:41, no errors.
   - **Decision proposed:** ship a per-frame ensemble of two continuous models in the app (+ D3 + lattice + prior);
     drop windows and staggered restarts. Pair = C1+C2 now; re-run the notebook after C4/C5 train (adds C4+C5, C1+C4).
-  - [ ] **Next (Claude, needs the user's go):** app ensemble — export C2 (or the chosen pair's second model) with
-    the C1 bundle, step both, average per frame; parity fixture vs `W.average` + D3 (ν 0.5).
+  - [x] **App ensemble built (user's go 2026-09-26: "Add option in the sign to speech decoder for these variants"):**
+    step export now handles `lstm_continuous` (C2; parity 1.8e-6) and `gru_continuous_norm` (C4's stream norm in TF
+    ops; parity 2e-7 on random and real frames, output bit-identical with hands swapped); `tools/export.py` exports
+    every run of the trained variants (`variants` in `pipeline.config.json`) to `models/<run>/` with the D3 setting
+    the window-ensemble notebook selected, plus Python's replay glosses per variant; the page has a Recognizer
+    selector (`Ensemble` averages members per frame; `?variant=`). **Headless replay: 24/24 identical to Python for
+    C1, C2 and C1+C2** (GER on those 24: 0.219 / 0.219 / 0.192). C4/C5 variants appear after training + re-export.
+  - [x] **Header bar + landmark test page (user, 2026-09-26):** one tab bar on all three pages (Sign → Speech,
+    Speech → Sign, Landmark test); `/landmarks` compares Holistic, Hands+Face+Pose (three task models) and
+    Hands+Face on the same frames: overlay drawn with its own frame in one canvas (cannot drift; mirror flips both),
+    per-panel fps, per-model detection ms, render ms, camera→overlay latency, pose visibility, handedness scores,
+    rolling found-rates, and hand label vs nearest pose wrist. Headless check on a Commons ArSL signing video:
+    Holistic 65 ms/frame, three models 85, face+hands 55 (1080p, CPU, all three running); **hand labels agree with
+    the pose 100% for both Holistic slots (83 hands) and the HandLandmarker (73)** on that non-mirrored video, so the
+    label-swap suspect looks unlikely there; the live camera is still to be checked on the page. Also fixed:
+    checkbox rows were centred (main page too) and stacked on phones.
+  - [ ] **User:** deploy (`cd apps/edge && npm run deploy`), then open `/landmarks` with the real camera: note fps,
+    the hand-label agreement, and found-rates per extractor; try Sign → Speech with C1+C2.
 - [ ] **Then (Claude), if C4 wins:** Keras port of `StreamNormFrontend` in `apps/web/tools/export.py` with a parity
   fixture, re-export, swap the app's model; D5 = D3 ∪ D1 decoder sweep on C4.
 
