@@ -49,11 +49,19 @@
   "n_classes_below_50pct": 5,
   "median_class_accuracy": 0.7615789473684211,
   "provenance": {
-    "git_commit": "1def9bda064fc30bf21f5fa485534838cfb72cf9",
+    "git_commit": "de5cd8bf61203a883ee41da1b7b6bbffa3391285",
     "git_branch": "main",
     "git_dirty": true,
-    "code_dirty": false,
-    "dirty_code_paths": [],
+    "code_dirty": true,
+    "dirty_code_paths": [
+      "experiments/recognition/configs/gislr.continuous-eval.json",
+      "experiments/recognition/configs/gislr.continuous.json",
+      "packages/sb-recognize/src/sb/recognize/architectures.py",
+      "packages/sb-recognize/src/sb/recognize/continuous/phono.py",
+      "packages/sb-recognize/src/sb/recognize/continuous/train.py",
+      "packages/sb-recognize/src/sb/recognize/ensemble.py",
+      "packages/sb-recognize/src/sb/recognize/evaluate.py"
+    ],
     "config_path": null,
     "config_sha256": null,
     "feature_pipeline": "base_v1",
@@ -79,6 +87,6 @@
       "scikit-learn": "1.9.0",
       "mediapipe": "0.10.35"
     },
-    "captured_at": "2026-09-16T20:19:10"
+    "captured_at": "2026-09-26T15:54:18"
   }
 }

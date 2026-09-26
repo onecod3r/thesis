@@ -99,7 +99,7 @@ def load_video_firstplace(path, landmarks, coords, max_len, diff_mode):
 
 
 def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True,
-                 fetch: bool = True) -> dict:
+                 fetch: bool = True, probs_out: Path | None = None) -> dict:
     """Canonical per-class evaluation of one registry run; returns the summary dict.
 
     Side effects (all inside the run folder): assets/per_class_accuracy.{csv,png},
@@ -109,6 +109,9 @@ def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True,
     The checkpoint is downloaded from the artifact remote when it is not on this
     disk, which is the normal state — weights live on Kaggle. ``fetch=False``
     turns that off and reports where the file is instead.
+
+    ``probs_out``: also save the full ``(n_val, n_classes)`` probabilities there (float16; too large
+    for the committed assets, used by :mod:`sb.recognize.ensemble`).
     """
     run_dir = Path(run_dir)
     assert (run_dir / "meta.json").is_file(), f"not a registry run folder: {run_dir}"
@@ -176,6 +179,7 @@ def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True,
     # ~200 KB per run; full logits would be 9.4 MB and this asset is committed.
     topk_idx = np.zeros((len(val_split), TOPK), dtype=np.int16)
     topk_prob = np.zeros((len(val_split), TOPK), dtype=np.float32)
+    probs_all = np.zeros((len(val_split), len(sign2idx)), np.float16) if probs_out is not None else None
 
     t0 = time.time()
     with ThreadPoolExecutor(8) as ex, torch.no_grad():
@@ -194,9 +198,14 @@ def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True,
             preds_all[b0:b0 + len(chunk)] = pred[inv]
             topk_idx[b0:b0 + len(chunk)] = ti.cpu().numpy()[inv]
             topk_prob[b0:b0 + len(chunk)] = tp.cpu().numpy()[inv]
+            if probs_all is not None:
+                probs_all[b0:b0 + len(chunk)] = probs.cpu().numpy()[inv]
             if (b0 // BATCH) % 10 == 0:
                 log(f"  {b0 + len(chunk)}/{len(paths)}  ({time.time() - t0:.0f}s)")
 
+    if probs_out is not None and probs_all is not None:
+        Path(probs_out).parent.mkdir(parents=True, exist_ok=True)
+        np.save(probs_out, probs_all)
     correct = preds_all == labels_all
     overall = correct.mean()
     df = pd.DataFrame({"label": labels_all, "correct": correct})

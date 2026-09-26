@@ -914,6 +914,14 @@ ARCHS: dict[str, ArchSpec] = {
         "BiLSTM on the same 130 phonological features, OFFLINE-ONLY ceiling for gru_phono130 (TODO §3.10)",
         pipeline="phono130_v1",
     ),
+    "gru_continuous_phono130": ArchSpec(
+        ContinuousGRU,
+        "ContinuousGRU",
+        True,
+        "ContinuousGRU (per-frame gloss+null + boundary heads) on the 130 phonological features only; "
+        "streams composed in feature space (sb.recognize.continuous.phono; TODO §3.10 -> §12.3)",
+        pipeline="phono130_v1",
+    ),
     "gru_continuous_phono": ArchSpec(
         ContinuousPhonoGRU,
         "ContinuousPhonoGRU",

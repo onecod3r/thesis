@@ -104,10 +104,9 @@
       ],
       "coords": "xyz",
       "overrides": {
-        "es_patience": 10,
         "num_layers": 5
       },
-      "notes": "TODO §3.10 — causal CNN on the 130 phonological features only; 5 dilated blocks = 125-frame receptive field, as cnn1d. es_patience 10."
+      "notes": "TODO §3.10 — causal CNN on the 130 phonological features only; 5 dilated blocks = 125-frame receptive field, as cnn1d. Standard es_patience 15: the first run (1790413038, patience 10) stopped before its LR ever decayed."
     }
   }
 }

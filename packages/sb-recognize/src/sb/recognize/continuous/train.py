@@ -47,8 +47,10 @@ from sb.core.subsets import get_subset
 from sb.mlops import registry as R
 from sb.mlops import run as P
 from sb.recognize import data as D
-from sb.recognize.architectures import ContinuousRNN, build_model
+from sb.recognize.architectures import ARCHS, ContinuousRNN, build_model
 from sb.recognize.continuous import data as CD
+from sb.recognize.continuous import phono as CPH
+from sb.recognize.features import phono130_v1
 from sb.recognize.features import cache
 from sb.recognize.sources import get_source
 from sb.recognize.train import _atomic_write_json, _build_meta, _is_finished, atomic_torch_save
@@ -186,11 +188,11 @@ def evaluate_val(model, val_batches, hyp, null_index: int, device) -> dict:
 # driver
 # ---------------------------------------------------------------------------
 
-def _streams(seq_batch, bank, labels, null_index, lay, ccfg, rng):
+def _streams(seq_batch, bank, labels, null_index, lay, ccfg, rng, compose=CD.compose):
     out = []
     for seq in seq_batch:
-        s = CD.compose([bank.clip(c) for c in seq], [int(labels[c]) for c in seq],
-                       null_index, lay, ccfg, rng)
+        s = compose([bank.clip(c) for c in seq], [int(labels[c]) for c in seq],
+                    null_index, lay, ccfg, rng)
         w = np.where(s["y"] == null_index, ccfg["null_weight"], 1.0).astype(np.float32)
         for a, b in s["segments"]:
             w[a:b] = np.linspace(ccfg["ramp_start"], 1.0, b - a, dtype=np.float32)
@@ -233,10 +235,21 @@ def train_continuous(run_name: str, config_path: Path | str = CONFIG_PATH, *,
     tag = D.subset_tag(cfg["subset"], coords)
     train_split, _ = ds.canonical_split(data_dir, sign2idx)
 
-    bar0 = tqdm(total=len(train_split), desc="clip bank (train.csv)", leave=False)
-    bank = CD.ClipBank.build(train_split, "train", subset, coords, data_dir,
-                             progress=lambda d, t: bar0.update(d - bar0.n))
-    bar0.close()
+    # phonology arms read the phono130_v1 cache and compose streams in feature space
+    phono = ARCHS[arch].pipeline == phono130_v1.PIPELINE
+    compose = CPH.compose if phono else CD.compose
+    if phono:
+        full = get_subset("FULL_543")
+        dp, op = phono130_v1.build_cache(train_split, "train", full, "xyz", data_dir)
+        feature_dim = phono130_v1.feature_dim()
+        bank = CD.ClipBank(np.load(dp).reshape(-1, feature_dim), np.load(op))
+        pipeline, cache_key = phono130_v1.PIPELINE, phono130_v1.cache_key(full, "xyz", data_dir)
+    else:
+        bar0 = tqdm(total=len(train_split), desc="clip bank (train.csv)", leave=False)
+        bank = CD.ClipBank.build(train_split, "train", subset, coords, data_dir,
+                                 progress=lambda d, t: bar0.update(d - bar0.n))
+        bar0.close()
+        pipeline, cache_key = CD.PIPELINE, cache.cache_key(CD.ClipBank.inputs(subset, coords, data_dir))
     labels = train_split["label"].to_numpy()
     participants = train_split["participant_id"].to_numpy()
     lengths = np.diff(bank.offsets)
@@ -246,11 +259,11 @@ def train_continuous(run_name: str, config_path: Path | str = CONFIG_PATH, *,
         keep = ~train_split["sign"].isin(held).to_numpy()
         tr_idx, va_idx = tr_idx[keep[tr_idx]], va_idx[keep[va_idx]]
     held_idx = sorted(sign2idx[g] for g in held)
-    lay = CD.Layout.of(subset.array, coords)
+    lay = None if phono else CD.Layout.of(subset.array, coords)
 
     vrng = np.random.default_rng([seed, 1])
     val_seqs = CD.epoch_sequences(va_idx, participants, lengths, ccfg, vrng)
-    val_batches = [_streams(b, bank, labels, null_index, lay, ccfg, vrng)
+    val_batches = [_streams(b, bank, labels, null_index, lay, ccfg, vrng, compose)
                    for b in CD.batches(val_seqs, lengths, hyp["batch_size"], vrng)]
 
     torch.manual_seed(seed)
@@ -283,7 +296,7 @@ def train_continuous(run_name: str, config_path: Path | str = CONFIG_PATH, *,
         model.train()
         rng = np.random.default_rng([seed, 0])
         seqs = CD.epoch_sequences(tr_idx, participants, lengths, ccfg, rng)
-        losses = [step_batch(_streams(b, bank, labels, null_index, lay, ccfg, rng), True)
+        losses = [step_batch(_streams(b, bank, labels, null_index, lay, ccfg, rng, compose), True)
                   for b in CD.batches(seqs, lengths, hyp["batch_size"], rng)[:smoke]]
         val = evaluate_val(model, val_batches[:2], hyp, null_index, device)
         return {"train_losses": losses, "val": val, "n_train_clips": len(tr_idx),
@@ -291,8 +304,7 @@ def train_continuous(run_name: str, config_path: Path | str = CONFIG_PATH, *,
                 "n_val_sequences": len(val_seqs), "held_out": held, "n_params": n_params}
 
     prov = P.build(dataset=cfg["dataset"], data_dir=data_dir, config_path=config_path, config_obj=cfg,
-                   feature_pipeline=CD.PIPELINE,
-                   feature_cache_key=cache.cache_key(CD.ClipBank.inputs(subset, coords, data_dir)),
+                   feature_pipeline=pipeline, feature_cache_key=cache_key,
                    kaggle_ref=ds.kaggle_ref, manifest=ds.manifest, n_videos=len(train_split))
     P.warn_if_dirty(prov, label=f"{cfg['dataset']}/{arch}/{tag}/{run_name}")
 
@@ -330,7 +342,7 @@ def train_continuous(run_name: str, config_path: Path | str = CONFIG_PATH, *,
         plan = CD.batches(seqs, lengths, hyp["batch_size"], rng)
         tl = n = 0.0
         for k, b in enumerate(plan):
-            loss, parts = step_batch(_streams(b, bank, labels, null_index, lay, ccfg, rng), True)
+            loss, parts = step_batch(_streams(b, bank, labels, null_index, lay, ccfg, rng, compose), True)
             tl, n = tl + loss, n + 1
             if k % 20 == 0 or k == len(plan) - 1:
                 bar.set_postfix_str(f"ep{epoch + 1} train {k + 1}/{len(plan)} · loss {tl / n:.4f} · "
@@ -353,7 +365,7 @@ def train_continuous(run_name: str, config_path: Path | str = CONFIG_PATH, *,
             "optimizer_state": optimizer.state_dict(), "scheduler_state": scheduler.state_dict(),
             "best_val_acc": best_val, "history": history, "sign2idx": sign2idx,
             "hyp": {**hyp, "seed": seed, "max_seq_len": None, "num_workers": 0},
-            "feature_dim": feature_dim, "landmarks": subset.array.tolist(),
+            "feature_dim": feature_dim, "features": pipeline, "landmarks": subset.array.tolist(),
             "subset_name": cfg["subset"], "coords": coords, "arch": arch,
             "training_regime": cfg["regime"], "epochs_since_gain": since_gain,
             "finished": finished, "wall_time_min": wall_now,

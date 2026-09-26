@@ -161,10 +161,22 @@ at once (one process each on the GPU, ~18 min wall for all three; `es_patience` 
 - **They make different mistakes.** Per class, `gru_phono130` beats the raw `gru` on 110 glosses and
   loses on 111 (correlation 0.89). Per clip, only one of the two is right 8.4% / 8.7% of the time; at least
   one is right 83.6%.
-- **So averaging them helps a lot, with no training** (mean of the saved top-5 probabilities, a lower bound):
-  `gru_phono130` + raw `gru` **0.7914**; + `gru_phono_raw` as a third **0.8049**; the three phonology-only
-  models together 0.7747. All members are streaming GRUs, so the ensemble streams too (three small
-  recurrent states per frame).
+- **So averaging them helps a lot, with no training.** Exact, full probabilities averaged
+  (`sb.recognize.ensemble`, every combination of 1–4 of six streaming models; each single model reproduces
+  its canonical score exactly):
+
+  | members (all streaming) | params | top-1 | top-5 | macro |
+  |---|---|---|---|---|
+  | best single: `gru_phono_raw` ME_134 | 0.93M | 0.7632 | 0.907 | 0.761 |
+  | `gru_phono130` + raw `gru` ME_132 | 1.62M | **0.7912** | 0.921 | 0.790 |
+  | `gru_phono130` + `gru_phono_raw` | 1.69M | 0.7902 | 0.919 | 0.789 |
+  | raw `gru` + `gru_phono_raw` (no phonology-only member) | 1.79M | 0.7873 | 0.920 | 0.786 |
+  | `gru_phono130` + raw `gru` + `gru_phono_raw` | 2.55M | **0.8048** | 0.926 | 0.803 |
+  | + `lstm_phono130` (4 members) | 3.54M | 0.8075 | 0.929 | 0.806 |
+
+  The best pairs and triples always combine a phonology-only model with a raw-coordinate one; a fourth
+  member adds only +0.3. Each member keeps its own recurrent state, so the ensemble streams frame by frame.
+  Table: `data/cache/gislr/ensembles/streaming_ensembles.csv`.
 - **`cnn1d_phono130` is under-trained**: its learning rate never decayed (1.4e-3 throughout). Validation
   accuracy kept improving by less than the early stop's 0.001 threshold, so early stopping (patience 10,
   shortened for time) fired before the plateau scheduler halved the rate. It has the smallest
@@ -172,3 +184,10 @@ at once (one process each on the GPU, ~18 min wall for all three; `es_patience` 
 - Biggest per-class changes vs the raw `gru`: better DUCK +0.22, PAJAMAS +0.14, BAD / MAD +0.12;
   worse DROP / HAVE / JACKET −0.15, CEREAL / SLEEP / THANKYOU −0.13. No link with ASL-LEX sign type,
   location, flexion change or repetition (mean differences ≤ 0.016 per category).
+
+**Follow-ups applied (2026-09-26):** `cnn1d_phono130` re-configured with the standard patience 15; a
+**continuous phonology model `P1`** (`gru_continuous_phono130`: C1's sentence recipe on the 130 features,
+training streams composed in feature space by `sb.recognize.continuous.phono`, evaluated on GISLR-Sentences
+through the real extractor) is set up; both train in parallel from `gislr.1.models.phonology-training.ipynb`,
+which then rebuilds the exact ensemble table. The web app ensemble waits for P1: the app runs a continuous
+model (per-frame "no sign" output), which the isolated models above do not have.

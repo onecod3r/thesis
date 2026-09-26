@@ -60,6 +60,10 @@
       "arch": "gru_continuous",
       "n_holdout_glosses": 20,
       "notes": "C1's recipe with 20 seeded glosses held out of training entirely (masked in the head); the model TODO §12.4 teaches new signs to."
+    },
+    "P1": {
+      "arch": "gru_continuous_phono130",
+      "notes": "C1's recipe on the 130 phonological features only (feature pipeline phono130_v1; streams composed in feature space by sb.recognize.continuous.phono; evaluated on GISLR-Sentences through the real extractor). TODO §3.10 -> §12.3."
     }
   }
 }
