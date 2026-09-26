@@ -1609,6 +1609,16 @@ baseline to beat.
 - Failure analysis: are wrong clips a few signers, few glosses, or low-quality extractions? Do they
   line up with §3.8's "lexicon vs corpus" tension (`look`/`see`, `sleepy`/`tired`)?
 
+**Provenance (2026-09-26):** user supplied the OSF DataCite record for the ASL-LEX 2.0 Project
+(DOI `10.17605/OSF.IO/ZPHA4`, Sehyr/Caselli/Cohen-Goldberg/Emmorey, OSF 2020/2025). Added a row to
+README's "Datasets" table pointing at it; no new file added under `data/` (gitignored, downloaded
+on demand by `sb.recognize.aslex`) or elsewhere — the DataCite JSON itself wasn't checked in, kept
+as prose citation matching the rest of the table. **Open discrepancy, needs the user to confirm:**
+the DataCite record's `rightsList` says **CC-BY 4.0**, but `sb.recognize.aslex` and two reports
+(`sign-patterns.md`, `asl-phonology-features.md`) say **CC BY-NC 4.0** — unclear if that's a
+project-level vs. per-file license difference on OSF or a stale docstring; not corrected either way
+pending the user's check of the actual OSF page.
+
 **User request (2026-09-26, started):** "Let's do an experiment on the phonology of ASL signs. The target
 is to reduce parameters and increase accuracy. No model training yet. Research all phonological features used
 in ASL. Create a system that converts the (t,543,3) into only the phonological features. No subsets yet. Use
