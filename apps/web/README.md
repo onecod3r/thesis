@@ -37,8 +37,10 @@ The replay streams and MediaPipe's `.task` still come from this site. Publishing
 
 **Pages** (one header bar, 2026-09-26): **Sign → Speech** (`/`), **Speech → Sign** (`/speech`) and
 **Landmark test** (`/landmarks`, TODO §12.8). The landmark test runs the camera (or a video file)
-through three MediaPipe setups side by side: Holistic (what the app uses), Hands + Face + Pose as
-three separate task models, and Hands + Face. Each panel draws the exact frame its models read
+through **one** of three MediaPipe setups at a time, picked with a tab bar (`?mode=`): Holistic (what
+the app uses), Hands + Face + Pose as three separate task models, and Hands + Face. Running all three
+per frame biased the comparison (user, 2026-09-26), so only the chosen mode runs; a session table keeps
+every mode's averages (fps, detection, latency, found-rates, label agreement). The panel draws the exact frame its models read
 plus the overlay in one canvas, so the overlay cannot drift off the body; mirroring flips both.
 Per panel: frame rate, detection time per model, render time, camera-to-overlay latency, pose
 visibility, hand labels and handedness scores, how often each part was found, and whether each

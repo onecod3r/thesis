@@ -1,8 +1,10 @@
 /**
- * Landmark test page (TODO §12.8): the live camera through three MediaPipe extraction setups side by
- * side, each with its own overlay and stats. The user asked for it to compare Holistic (what the app
- * runs) with hands + face + pose run separately and with hands + face only, with an overlay that sits
- * exactly on the body, a mirror option, and per-extractor frame rate, latency, confidences and features.
+ * Landmark test page (TODO §12.8): the live camera through one of three MediaPipe extraction setups,
+ * chosen with a tab bar: Holistic (what the app runs), hands + face + pose run separately, or hands +
+ * face only, with an overlay that sits exactly on the body, a mirror option, and frame rate, latency,
+ * confidences and features. **One mode runs at a time** (user, 2026-09-26: running all three per frame
+ * biased the comparison, since they shared the frame budget and the CPU); a session table keeps each
+ * mode's averages so they can still be compared side by side.
  *
  * Alignment: every panel draws the **same video frame the models just read** into its own canvas,
  * sized to the video's own resolution, then the landmarks in that canvas's pixel space. Video and
@@ -37,6 +39,8 @@ const ui = {
   faceDraw: $<HTMLSelectElement>("face-draw"),
   mirror: $<HTMLInputElement>("mirror"),
   panels: $<HTMLDivElement>("panels"),
+  modes: $<HTMLDivElement>("modes"),
+  summary: $<HTMLTableSectionElement>("summary"),
   video: $<HTMLVideoElement>("video"),
 };
 
@@ -58,9 +62,22 @@ interface Stats {
   swapped: number;
 }
 
+/** Session totals of one mode, over every frame it ran: the comparison table. */
+interface Totals {
+  frames: number;
+  ms: number; // wall time between this mode's consecutive frames (gaps over 1 s, e.g. a switch, skipped)
+  lastT: number;
+  detect: number;
+  e2e: number;
+  face: number;
+  pose: number;
+  left: number;
+  right: number;
+}
+
 interface Panel {
   mode: Mode;
-  enabled: HTMLInputElement;
+  totals: Totals;
   root: HTMLElement;
   canvas: HTMLCanvasElement;
   draw: DrawingUtils;
@@ -110,16 +127,46 @@ function makePanel(mode: Mode): Panel {
     dd[k] = d;
   }
   root.append(head, canvas, dl);
+  root.hidden = true;
   ui.panels.append(root);
-  const enabled = $<HTMLInputElement>(`en-${mode}`);
-  enabled.onchange = () => {
-    root.hidden = !enabled.checked;
-  };
-  return { mode, enabled, root, canvas, draw: new DrawingUtils(canvas.getContext("2d")!), dd, badge,
-           extractor: null, key: "", stats: newStats(), last: null };
+  return { mode, root, canvas, draw: new DrawingUtils(canvas.getContext("2d")!), dd, badge, extractor: null, key: "",
+           stats: newStats(), last: null,
+           totals: { frames: 0, ms: 0, lastT: 0, detect: 0, e2e: 0, face: 0, pose: 0, left: 0, right: 0 } };
 }
 
-const panels = MODES.map(makePanel);
+const panels = Object.fromEntries(MODES.map((m) => [m, makePanel(m)])) as Record<Mode, Panel>;
+const asked = new URLSearchParams(location.search).get("mode") as Mode | null;
+let active: Mode = asked && MODES.includes(asked) ? asked : "holistic";
+let switching = false; // true while the newly chosen mode's models load: no frame is processed
+
+function showMode(): void {
+  for (const m of MODES) panels[m].root.hidden = m !== active;
+  for (const b of ui.modes.querySelectorAll<HTMLButtonElement>("button")) {
+    b.setAttribute("aria-selected", String(b.dataset.mode === active));
+  }
+  const url = new URL(location.href);
+  url.searchParams.set("mode", active);
+  history.replaceState(null, "", url);
+}
+
+async function setMode(m: Mode): Promise<void> {
+  if (m === active || switching) return;
+  active = m;
+  showMode();
+  const p = panels[m];
+  p.stats = newStats();
+  p.totals.lastT = 0;
+  if (!running) return;
+  switching = true;
+  try {
+    await ensureExtractor(p);
+    setStatus(`Running ${MODE_LABEL[m]} at ${ui.video.videoWidth}×${ui.video.videoHeight}.`);
+  } catch (e) {
+    setStatus(String(e), true);
+  } finally {
+    switching = false;
+  }
+}
 
 // ---------------------------------------------------------------- drawing
 
@@ -183,6 +230,16 @@ const pct = (a: boolean[]) => (a.length ? `${Math.round((100 * a.filter(Boolean)
 function record(p: Panel, det: Detection, renderMs: number, e2eMs: number): void {
   const s = p.stats;
   s.frames++;
+  const tt = p.totals, now = performance.now();
+  if (tt.lastT && now - tt.lastT < 1000) tt.ms += now - tt.lastT;
+  tt.lastT = now;
+  tt.frames++;
+  tt.detect += Object.values(det.timings).reduce((a, v) => a + v, 0);
+  tt.e2e += e2eMs;
+  tt.face += det.face ? 1 : 0;
+  tt.pose += det.pose ? 1 : 0;
+  tt.left += det.hands.some((x) => x.label === "Left") ? 1 : 0;
+  tt.right += det.hands.some((x) => x.label === "Right") ? 1 : 0;
   for (const [k, v] of Object.entries(det.timings)) push((s.detect[k] ??= []), v, 30);
   push(s.render, renderMs, 30);
   push(s.e2e, e2eMs, 30);
@@ -233,27 +290,45 @@ function showStats(p: Panel): void {
     `left ${pct(s.seen.left)} · right ${pct(s.seen.right)}`;
 }
 
+function renderSummary(): void {
+  const share = (n: number, d: number) => (d ? `${Math.round((100 * n) / d)}%` : "–");
+  const rows = MODES.filter((m) => panels[m].totals.frames).map((m) => {
+    const p = panels[m], tt = p.totals, n = p.stats.agree + p.stats.swapped;
+    const cells = [MODE_LABEL[m], String(tt.frames), tt.ms ? (tt.frames / (tt.ms / 1000)).toFixed(1) : "–",
+      `${(tt.detect / tt.frames).toFixed(1)} ms`, `${(tt.e2e / tt.frames).toFixed(0)} ms`, share(tt.face, tt.frames),
+      m === "hands_face" ? "–" : share(tt.pose, tt.frames), share(tt.left, tt.frames), share(tt.right, tt.frames),
+      m === "hands_face" ? "no body" : n ? `${share(p.stats.agree, n)} (${n} hands)` : "–"];
+    const tr = document.createElement("tr");
+    if (m === active) tr.className = "current";
+    for (const c of cells) {
+      const td = document.createElement("td");
+      td.textContent = c;
+      tr.append(td);
+    }
+    return tr;
+  });
+  ui.summary.replaceChildren(...rows);
+}
+
 // ---------------------------------------------------------------- run
 
 let running = false, stopRequested = false, stream: MediaStream | null = null;
 
-async function ensureExtractors(): Promise<void> {
+/** The mode's models, loaded once per (delegate, pose size); idle modes keep theirs but never run. */
+async function ensureExtractor(p: Panel): Promise<void> {
   const delegate = ui.delegate.value as Delegate, poseSize = ui.poseSize.value as PoseSize;
-  for (const p of panels) {
-    const key = `${p.mode}|${delegate}|${p.mode === "separate" ? poseSize : ""}`;
-    if (!p.enabled.checked) continue;
-    if (p.extractor && p.key === key) {
-      p.extractor.restart();
-      continue;
-    }
-    p.extractor?.close();
-    p.extractor = null;
-    p.badge.textContent = "loading…";
-    setStatus(`Loading ${MODE_LABEL[p.mode]}…`);
-    p.extractor = await Extractor.load(p.mode, WASM, delegate, poseSize, HOLISTIC_URLS);
-    p.key = key;
-    p.badge.textContent = p.extractor.delegate;
+  const key = `${p.mode}|${delegate}|${p.mode === "separate" ? poseSize : ""}`;
+  if (p.extractor && p.key === key) {
+    p.extractor.restart();
+    return;
   }
+  p.extractor?.close();
+  p.extractor = null;
+  p.badge.textContent = "loading…";
+  setStatus(`Loading ${MODE_LABEL[p.mode]}…`);
+  p.extractor = await Extractor.load(p.mode, WASM, delegate, poseSize, HOLISTIC_URLS);
+  p.key = key;
+  p.badge.textContent = p.extractor.delegate;
 }
 
 async function openSource(): Promise<void> {
@@ -283,11 +358,14 @@ async function start(): Promise<void> {
   ui.start.disabled = true;
   ui.stop.disabled = false;
   try {
-    await ensureExtractors();
+    await ensureExtractor(panels[active]);
     await openSource();
     const video = ui.video;
-    for (const p of panels) p.stats = newStats();
-    setStatus(`Running at ${video.videoWidth}×${video.videoHeight}. ${panels.filter((p) => p.enabled.checked).length} extractor(s) per frame.`);
+    for (const m of MODES) {
+      panels[m].stats = newStats();
+      panels[m].totals.lastT = 0;
+    }
+    setStatus(`Running ${MODE_LABEL[active]} at ${video.videoWidth}×${video.videoHeight}.`);
     let lastStats = performance.now();
     await new Promise<void>((resolve) => {
       const onFrame = (_now: number, meta: VideoFrameCallbackMetadata) => {
@@ -297,8 +375,8 @@ async function start(): Promise<void> {
         }
         const t = meta.mediaTime * 1000;
         const captured = meta.captureTime ?? meta.presentationTime;
-        for (const p of panels) {
-          if (!p.enabled.checked || !p.extractor) continue;
+        const p = panels[active];
+        if (!switching && p.extractor) {
           const det = p.extractor.detect(video, t);
           const r0 = performance.now();
           drawPanel(p, det, video);
@@ -307,7 +385,8 @@ async function start(): Promise<void> {
         }
         const now = performance.now();
         if (now - lastStats > 500) {
-          for (const p of panels) if (p.enabled.checked && p.extractor) showStats(p);
+          if (!switching && p.extractor) showStats(p);
+          renderSummary();
           lastStats = now;
         }
         video.requestVideoFrameCallback(onFrame);
@@ -335,6 +414,10 @@ async function listCameras(): Promise<void> {
   ui.camera.value = devices.some((d) => d.deviceId === current) ? current : "";
 }
 
+for (const b of ui.modes.querySelectorAll<HTMLButtonElement>("button")) {
+  b.onclick = () => void setMode(b.dataset.mode as Mode);
+}
+showMode();
 ui.start.onclick = () => void start();
 ui.stop.onclick = () => {
   stopRequested = true;

@@ -4326,6 +4326,11 @@ for possible solutions.
   - [x] **Deployed 2026-09-26 19:30 (user asked):** `npm run build` + `wrangler deploy --env=""` with the
     `CLOUDFLARE_API_TOKEN` from `.env` (plain `npm run deploy` fails non-interactively without it); version
     `bcc8607e`; `/`, `/speech`, `/landmarks`, `models/C2/`, `pipeline.json` (variants) all 200 live.
+  - [x] **One mode at a time (user, 2026-09-26: "running all three at a time is maybe giving biased results"):**
+    `/landmarks` now has a tab bar (Holistic / Hands + Face + Pose / Hands + Face, `?mode=`); only the chosen mode's
+    models run, switching works mid-run, and a session table keeps each mode's averages. Headless on the ArSL video
+    (1080p, CPU), each alone: Holistic 10.2 fps / 72 ms, three models 8.7 fps / 91 ms, face + hands 12.1 fps / 57 ms;
+    labels agree with the body 100% (194 / 116 hands). **Not deployed yet.**
   - [ ] **User:** open `/landmarks` with the real camera: note fps,
     the hand-label agreement, and found-rates per extractor; try Sign → Speech with C1+C2.
 - [ ] **Then (Claude), if C4 wins:** Keras port of `StreamNormFrontend` in `apps/web/tools/export.py` with a parity

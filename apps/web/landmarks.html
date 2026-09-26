@@ -63,18 +63,35 @@
           </select>
         </label>
       </div>
+      <div class="row">
+        <div class="seg" role="tablist" aria-label="Detection mode" id="modes">
+          <button role="tab" data-mode="holistic">Holistic</button>
+          <button role="tab" data-mode="separate">Hands + Face + Pose</button>
+          <button role="tab" data-mode="hands_face">Hands + Face</button>
+        </div>
+      </div>
       <div class="row toggles">
         <label><input id="mirror" type="checkbox" checked /> Mirror the view (selfie view: video and landmarks flipped together)</label>
-        <label><input id="en-holistic" type="checkbox" checked /> Holistic (one model: what the app uses)</label>
-        <label><input id="en-separate" type="checkbox" checked /> Hands + Face + Pose (three separate models)</label>
-        <label><input id="en-hands_face" type="checkbox" checked /> Hands + Face (two models, no body)</label>
       </div>
-      <p class="note">Enabled extractors run one after another on the same camera frame, so each one's frame rate
-        drops as more are enabled. Its own detection time is the fair comparison. Models load from Google's CDN on
-        first use (Holistic 14 MB, pose 6–30 MB, face 4 MB, hands 8 MB).</p>
+      <p class="note">One detection mode runs at a time, so its frame rate and timings are not shared with the others.
+        Switch tabs while running to compare; the table below keeps each mode's averages for this session. Models
+        load from Google's CDN on first use (Holistic 14 MB, pose 6–30 MB, face 4 MB, hands 8 MB).</p>
     </section>
 
-    <div class="lm-grid" id="panels"></div>
+    <div class="lm-single" id="panels"></div>
+
+    <section>
+      <h2>Comparison (this session)</h2>
+      <div class="table-wrap">
+        <table class="lm-summary">
+          <thead><tr><th>mode</th><th>frames</th><th>fps</th><th>detection</th><th>camera → overlay</th>
+            <th>face</th><th>pose</th><th>left hand</th><th>right hand</th><th>labels agree with body</th></tr></thead>
+          <tbody id="summary"></tbody>
+        </table>
+      </div>
+      <p class="note">Averages over every frame a mode ran in this session, same camera and settings. Found = share of
+        frames in which the part was detected. Reset by reloading the page.</p>
+    </section>
 
     <section>
       <h2>Raw camera feed</h2>
