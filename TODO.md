@@ -4287,7 +4287,14 @@ for possible solutions.
     per-frame probability average of two continuous models, and **offset copies** as staggered state resets
     (two copies of one recurrent model reset alternately, answering long-session drift).
   - Offered: an inference-only test of the user's exact scheme (window 1/2/3 s × offset, ensemble, + prior) vs
-    C1 D3 + prior on the evaluation signers. **Awaiting the user's answer.**
+    C1 D3 + prior on the evaluation signers. **User: "Ok work on this" (2026-09-26).**
+  - [~] **Built + running (Claude, inference only, 2026-09-26):** `sb.recognize.sequences.windows` (window readouts,
+    offset merge, window segments, per-frame averaging, staggered restarts; checked: window readout = `clip_probs`
+    to 3e-7, no-restart = `frame_outputs` exactly) and `gislr.3.streaming.window-ensemble.ipynb`: 19 arms (windows
+    1/2/3 s × one model / same model offset 500 ms / `gru`+`gru_phono_raw` offset 500 ms / dense pair; C1, C2, C1+C2;
+    C1 staggered restarts 10/20 s × mean/older), each with and without the held-out trigram prior; select on 5
+    signers, report 16 (clean, hard-cut, 6-sentence sessions). Smoke run OK; full run started ~18:30, executing in
+    place (`data/temp/window_ensemble_run.log`). C4/C5 arms run once those models are trained.
 - [ ] **Then (Claude), if C4 wins:** Keras port of `StreamNormFrontend` in `apps/web/tools/export.py` with a parity
   fixture, re-export, swap the app's model; D5 = D3 ∪ D1 decoder sweep on C4.
 
