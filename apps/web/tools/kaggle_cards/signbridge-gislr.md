@@ -19,11 +19,11 @@ run, not the best one.
 
 ## Best models (canonical split, 18,896 held-out videos)
 
-| run | variation | accuracy | streams? | params |
+| run | handle (`pyTorch/…`) | accuracy | streams? | params |
 |---|---|---|---|---|
-| 1790355555 | `gru-phono-raw` (ME_134) | **0.7632** | yes | 929k |
-| 1789559734 | `gru` (ME_132, xy) | 0.7517 | yes | 861k |
-| 1790347646 | `bilstm` (ME_126, xy) | 0.7502 | no | 2.75M |
+| 1790355555 | `gru-phono-raw/2` (ME_134) | **0.7632** | yes | 929k |
+| 1789559734 | `gru/20` (ME_132, xy) | 0.7517 | yes | 861k |
+| 1790347646 | `bilstm/8` (ME_126, xy) | 0.7502 | no | 2.75M |
 
 Counting a synonym as correct (e.g. `wake`/`awake`, `see`/`look`), the best model reaches 0.7774.
 
@@ -34,7 +34,7 @@ scores are not comparable with the table above; see each version's `meta.json`.
 
 ```python
 import kagglehub, torch
-path = kagglehub.model_download("bracu23101281/signbridge-gislr/pyTorch/gru-phono-raw/1")
+path = kagglehub.model_download("bracu23101281/signbridge-gislr/pyTorch/gru-phono-raw/2")
 ckpt = torch.load(f"{path}/best.pt", map_location="cpu", weights_only=False)
 # ckpt: arch, hyp, feature_dim, landmarks, coords, model_state
 # Build the model with sb.recognize.architectures.build_model(ckpt["arch"], ckpt["feature_dim"], 250, ckpt["hyp"])

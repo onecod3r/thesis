@@ -62,6 +62,8 @@ Top 5 by canonical val accuracy, **current-split GISLR runs only** (training-loo
 
 ### Checkpoints live on Kaggle
 
+**Public, MIT (2026-09-26).** [`bracu23101281/signbridge-gislr`](https://www.kaggle.com/models/bracu23101281/signbridge-gislr) holds every PyTorch checkpoint plus `tfLite/c1-web`, the sign → speech browser bundle; [`bracu23101281/signbridge-speech-to-gloss`](https://www.kaggle.com/models/bracu23101281/signbridge-speech-to-gloss) holds the T5 gloss refiner (`transformers/t5-hybrid`) and its browser export (`onnx/t5-web`). Anyone can download them without a login. The web app can use them directly: `npm run models` in `apps/web`, or `?models=kaggle` on either page. Model cards: `apps/web/tools/kaggle_cards/`; publishing: `apps/web/tools/publish_kaggle.py` (TODO §9.10).
+
 **A run folder normally contains no weights.** `best.pt` is uploaded to a Kaggle Model and then deleted locally — this is what keeps 700 MB+ of `.pt` off a single disk after the 2026-07-18 reset destroyed 8 runs' weights.
 
 **Nothing needs fetching by hand.** `sb-evaluate` and the TFLite export call `sb.mlops.artifacts.ensure_local`, which downloads the run's checkpoint through `kagglehub` and verifies its sha256 against the manifest before using it — so testing a run is one command whether or not the weights happen to be on disk. `--no-fetch` reports where the file is instead of downloading. Learning curves never need a checkpoint at all: they read the committed `assets/history.json`.
