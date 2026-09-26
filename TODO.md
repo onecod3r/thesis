@@ -30,7 +30,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 | 0a | **§12.8 live camera fails on sentences (user, 2026-09-25).** Probes: low fps (repeated frames) → missed signs, jitter → extra signs, landscape framing → both; app-side interp + EMA + reframe measured (`live-streaming-gap.md`). **Next: user answers fps/mirror/distance, and decides Fix 1 (app) / Fix 2 (record real sentences) / Fix 3 (retrain C1 v2)** | §12.8 | the deployed model is unusable live until this is fixed |
 | 0a2 | **§3.8 sign patterns**: the first variables gave no per-sign pattern; **with handshape/orientation/location/movement, every ASL-LEX parameter is recovered on unseen signs and templates reach 38.8% top-1 (was 4.9%)**; **B3 done: DTW over per-frame phonology 41.6% top-1, 15.2% from one example**, no training. **Follow-up built as §3.9 (see row 0a3)** | §3.8 | the user's current priority (2026-09-25: "start on the sign pattern first") |
 | 0a3 | **§3.9 phonology models, run 2026-09-25 + evaluated 2026-09-26: `gru_phono_raw` ME_134 = 0.7632 canonical, new best, streaming** (+1.2 over raw `gru`). **Next (user): finish §8e `bilstm_phono` (stopped at epoch 14; auto-resumes in place)**; then (Claude) the continuous port `gru_continuous_phono` + a Keras port of the front-end for web export. `docs/reports/phonology-models.md` | §3.9 | the first input change that beats the raw-landmark plateau on the current split |
-| 0a4 | **§3.10 phonology models, 2026-09-26:** `gru_phono130` 0.7487 ≈ raw `gru` on half the inputs; **exact streaming ensembles 0.7912 (2) / 0.8048 (3)**. **Next (user): run `gislr.1.models.phonology-training.ipynb`** (CNN retrain + continuous phonology model P1 in parallel), then `gislr.3.streaming.continuous-eval.ipynb` for P1's sentence score | §3.10 | P1 is the path to phonology (and ensembles) in the live app |
+| 0a4 | **§3.10 phonology models, 2026-09-26:** `gru_phono130` 0.7487 ≈ raw `gru` on half the inputs; **exact streaming ensembles 0.7912 (2) / 0.8048 (3)**. P1 trained (val seg 0.697); continuous-eval crashed on a missing allow-list entry, fixed. **Next (user): re-run `gislr.3.streaming.continuous-eval.ipynb`** for P1's sentence GER vs C1 (0.293) | §3.10 | P1 is the path to phonology (and ensembles) in the live app |
 | ~~0~~ | ~~Re-run `gislr.3.streaming.continuous-eval.ipynb`~~ — **done 2026-09-24**: C1 D3 c **GER 0.293** (eval signers) vs baseline 0.507, oracle 0.221 → `docs/reports/continuous-models.md`. Optional follow-up: D5 = D3 ∪ D1 decoder for hard-cut | §12.3 | — |
 | 0b | Plan §12.4 add-a-sign (enroll C-open's 20 held-out glosses from 1/5/10 examples) | §12.4 | C-open (`1790146838`) is trained and waiting; decides how custom signs (§12.7) work |
 | 0c | §12.5 **web app built 2026-09-24** (`apps/web`, `apps/edge`): sign → speech runs in the browser (Holistic → LiteRT.js step model → lag-2 lattice + trigram → rule English → browser voice). Parity tests pass and a headless Chrome replay of 24 held-out streams is identical to Python. **Next (user): first camera test**: `cd apps/web && npm run dev`; check mirroring, fps, a few known sentences | §12.5 | first time real webcam landmarks reach the model |
@@ -1682,8 +1682,13 @@ This answers the probe question below for now: **no training**, statistics and n
     in 3 batches, 824k params.
   - `gislr.1.models.phonology-training.ipynb` rewritten: jobs = the 3 isolated + P1, `RETRAIN =
     ["cnn1d_phono130"]`, parallel; §3 canonical eval; §4 exact ensembles.
-- [ ] **Next (user): run `gislr.1.models.phonology-training.ipynb`** (trains the CNN retrain + P1 in parallel,
-  ~25 min), then `gislr.3.streaming.continuous-eval.ipynb` for P1's sentence GER vs C1 (0.293).
+- [x] 2026-09-26: `gislr.1.models.phonology-training.ipynb` ran: `cnn1d_phono130` retrain run 1790416770
+  (102 epochs, val 0.7329); **P1** run 1790416771 (49 epochs, best val segment acc 0.6971 vs C1 0.7233). Not yet
+  analyzed (§3 eval / §4 ensembles outputs pending review).
+- [x] 2026-09-26: `gislr.3.streaming.continuous-eval.ipynb` failed in §2 (parity) with `RecurrentSession only
+  supports ... got 'gru_continuous_phono130'` -- the arch was missing from `streaming.RECURRENT_ARCHS`. Fixed;
+  P1 session-vs-batch parity checked on 5 streams (max |diff| 2.6e-06). Rest of the notebook is generic over runs.
+- [ ] **Next (user): re-run `gislr.3.streaming.continuous-eval.ipynb` from the top** for P1's sentence GER vs C1 (0.293).
 - [ ] **Then (Claude), if P1 ≥ C1:** port `sb.recognize.phonology.extract` to TypeScript with parity fixtures,
   export P1's step model, and run an ensemble in the web app. Not before: the app needs a continuous model.; then Claude evaluates. Compare with `gru_phono_raw` ME_134 0.7632 and `gru` ME_132
   0.7517. Later: an ablation without non-manual + hand arrangement (−50 features); per-signer feature
