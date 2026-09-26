@@ -4288,13 +4288,24 @@ for possible solutions.
     (two copies of one recurrent model reset alternately, answering long-session drift).
   - Offered: an inference-only test of the user's exact scheme (window 1/2/3 s × offset, ensemble, + prior) vs
     C1 D3 + prior on the evaluation signers. **User: "Ok work on this" (2026-09-26).**
-  - [~] **Built + running (Claude, inference only, 2026-09-26):** `sb.recognize.sequences.windows` (window readouts,
+  - [x] **Built + run (Claude, inference only, 2026-09-26) -> `docs/reports/window-ensembles.md`:** `sb.recognize.sequences.windows` (window readouts,
     offset merge, window segments, per-frame averaging, staggered restarts; checked: window readout = `clip_probs`
     to 3e-7, no-restart = `frame_outputs` exactly) and `gislr.3.streaming.window-ensemble.ipynb`: 19 arms (windows
     1/2/3 s × one model / same model offset 500 ms / `gru`+`gru_phono_raw` offset 500 ms / dense pair; C1, C2, C1+C2;
     C1 staggered restarts 10/20 s × mean/older), each with and without the held-out trigram prior; select on 5
     signers, report 16 (clean, hard-cut, 6-sentence sessions). Smoke run OK; full run started ~18:30, executing in
     place (`data/temp/window_ensemble_run.log`). C4/C5 arms run once those models are trained.
+  - **Partial results 18:37 (17/19 arms; eval signers, GER clean → + prior; parity C1 = 0.2934 ✓):** windows lose
+    badly: best is 1 s dense pair 0.489 → 0.486; the user's literal scheme 1 s 0.527 / 2 s 0.687 / 3 s 0.777 (two
+    models offset) — deletions 0.36 / 0.57 / 0.70; offsetting helps within windows (3 s: one 0.812 → same-offset 0.803
+    → pair 0.777 → dense 0.752) but never approaches C1. **Per-frame ensemble C1+C2 is the new best: 0.262 → 0.244
+    with prior** (C1 0.293 → 0.276), hard-cut 0.452 (C1 0.546), sentences exact 46.5% (C1 40.7%); long sessions
+    0.451 (C1 0.416). Staggered restarts (10 s): no gain (0.294 / 0.296; long 0.418 / 0.420). 20 s: 0.293-0.294, long
+    0.416-0.417, no gain. Run complete 18:41, no errors.
+  - **Decision proposed:** ship a per-frame ensemble of two continuous models in the app (+ D3 + lattice + prior);
+    drop windows and staggered restarts. Pair = C1+C2 now; re-run the notebook after C4/C5 train (adds C4+C5, C1+C4).
+  - [ ] **Next (Claude, needs the user's go):** app ensemble — export C2 (or the chosen pair's second model) with
+    the C1 bundle, step both, average per frame; parity fixture vs `W.average` + D3 (ν 0.5).
 - [ ] **Then (Claude), if C4 wins:** Keras port of `StreamNormFrontend` in `apps/web/tools/export.py` with a parity
   fixture, re-export, swap the app's model; D5 = D3 ∪ D1 decoder sweep on C4.
 
