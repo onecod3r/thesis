@@ -4323,7 +4323,10 @@ for possible solutions.
     the pose 100% for both Holistic slots (83 hands) and the HandLandmarker (73)** on that non-mirrored video, so the
     label-swap suspect looks unlikely there; the live camera is still to be checked on the page. Also fixed:
     checkbox rows were centred (main page too) and stacked on phones.
-  - [ ] **User:** deploy (`cd apps/edge && npm run deploy`), then open `/landmarks` with the real camera: note fps,
+  - [x] **Deployed 2026-09-26 19:30 (user asked):** `npm run build` + `wrangler deploy --env=""` with the
+    `CLOUDFLARE_API_TOKEN` from `.env` (plain `npm run deploy` fails non-interactively without it); version
+    `bcc8607e`; `/`, `/speech`, `/landmarks`, `models/C2/`, `pipeline.json` (variants) all 200 live.
+  - [ ] **User:** open `/landmarks` with the real camera: note fps,
     the hand-label agreement, and found-rates per extractor; try Sign → Speech with C1+C2.
 - [ ] **Then (Claude), if C4 wins:** Keras port of `StreamNormFrontend` in `apps/web/tools/export.py` with a parity
   fixture, re-export, swap the app's model; D5 = D3 ∪ D1 decoder sweep on C4.
