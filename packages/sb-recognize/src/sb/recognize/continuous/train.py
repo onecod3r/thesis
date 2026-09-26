@@ -48,6 +48,7 @@ from sb.mlops import registry as R
 from sb.mlops import run as P
 from sb.recognize import data as D
 from sb.recognize.architectures import ARCHS, ContinuousRNN, build_model
+from sb.recognize.continuous import augment as CA
 from sb.recognize.continuous import data as CD
 from sb.recognize.continuous import phono as CPH
 from sb.recognize.features import phono130_v1
@@ -83,6 +84,17 @@ def load_run(run_dir: Path, device) -> tuple[ContinuousRNN, dict]:
     model = cast(ContinuousRNN, build_model(ck["arch"], ck["feature_dim"], len(ck["sign2idx"]), ck["hyp"]))
     model.load_state_dict(ck["model_state"])
     return model.to(device).eval(), ck
+
+
+def run_composer(cfg: dict, run_name: str) -> dict:
+    """``composer`` + the run's ``composer_overrides`` (keys must exist in ``composer``), with the
+    v2 augmentation keys (``continuous.augment.DEFAULTS``, all off) filled in."""
+    over = cfg["runs"][run_name].get("composer_overrides", {})
+    base = {**CA.DEFAULTS, **cfg["composer"]}
+    unknown = sorted(set(over) - set(base))
+    if unknown:
+        raise KeyError(f"run {run_name!r} composer_overrides keys not in `composer`: {unknown}")
+    return {**base, **over}
 
 
 def run_hyp(cfg: dict, run_name: str) -> dict:
@@ -188,11 +200,18 @@ def evaluate_val(model, val_batches, hyp, null_index: int, device) -> dict:
 # driver
 # ---------------------------------------------------------------------------
 
-def _streams(seq_batch, bank, labels, null_index, lay, ccfg, rng, compose=CD.compose):
+def _streams(seq_batch, bank, labels, null_index, lay, ccfg, rng, compose=CD.compose, aug=None):
     out = []
+    donors = [bank.clip(c) for seq in seq_batch for c in seq] if aug is not None else []
     for seq in seq_batch:
-        s = compose([bank.clip(c) for c in seq], [int(labels[c]) for c in seq],
-                    null_index, lay, ccfg, rng)
+        clips = [bank.clip(c) for c in seq]
+        scfg = ccfg
+        if aug is not None:
+            clips = [aug.clip(c, rng) for c in clips]
+            scfg = aug.stream_cfg(ccfg, rng)
+        s = compose(clips, [int(labels[c]) for c in seq], null_index, lay, scfg, rng)
+        if aug is not None:
+            s = aug.stream(s, donors, null_index, rng)
         w = np.where(s["y"] == null_index, ccfg["null_weight"], 1.0).astype(np.float32)
         for a, b in s["segments"]:
             w[a:b] = np.linspace(ccfg["ramp_start"], 1.0, b - a, dtype=np.float32)
@@ -222,7 +241,7 @@ def train_continuous(run_name: str, config_path: Path | str = CONFIG_PATH, *,
     run = cfg["runs"][run_name]
     hyp = {**run_hyp(cfg, run_name), "landmark_subset": cfg["subset"]}  # for front-end models (gru_continuous_phono)
     arch, seed = run["arch"], cfg["seed"]
-    ccfg = {**cfg["composer"], "null_weight": hyp["null_weight"], "ramp_start": hyp["ramp_start"]}
+    ccfg = {**run_composer(cfg, run_name), "null_weight": hyp["null_weight"], "ramp_start": hyp["ramp_start"]}
 
     ds = get_source(cfg["dataset"])
     data_dir = ds.resolve_dir()
@@ -260,10 +279,13 @@ def train_continuous(run_name: str, config_path: Path | str = CONFIG_PATH, *,
         tr_idx, va_idx = tr_idx[keep[tr_idx]], va_idx[keep[va_idx]]
     held_idx = sorted(sign2idx[g] for g in held)
     lay = None if phono else CD.Layout.of(subset.array, coords)
+    # v2 augmentation (TODO §12.8 Fix 3); face mirror pairs from the mean face of the first clips
+    aug = (CA.Augmenter(ccfg, subset.array, coords, bank.data[: bank.offsets[min(2000, len(bank))]])
+           if CA.active(ccfg) and not phono else None)
 
     vrng = np.random.default_rng([seed, 1])
     val_seqs = CD.epoch_sequences(va_idx, participants, lengths, ccfg, vrng)
-    val_batches = [_streams(b, bank, labels, null_index, lay, ccfg, vrng, compose)
+    val_batches = [_streams(b, bank, labels, null_index, lay, ccfg, vrng, compose, aug)
                    for b in CD.batches(val_seqs, lengths, hyp["batch_size"], vrng)]
 
     torch.manual_seed(seed)
@@ -296,7 +318,7 @@ def train_continuous(run_name: str, config_path: Path | str = CONFIG_PATH, *,
         model.train()
         rng = np.random.default_rng([seed, 0])
         seqs = CD.epoch_sequences(tr_idx, participants, lengths, ccfg, rng)
-        losses = [step_batch(_streams(b, bank, labels, null_index, lay, ccfg, rng, compose), True)
+        losses = [step_batch(_streams(b, bank, labels, null_index, lay, ccfg, rng, compose, aug), True)
                   for b in CD.batches(seqs, lengths, hyp["batch_size"], rng)[:smoke]]
         val = evaluate_val(model, val_batches[:2], hyp, null_index, device)
         return {"train_losses": losses, "val": val, "n_train_clips": len(tr_idx),
@@ -342,7 +364,7 @@ def train_continuous(run_name: str, config_path: Path | str = CONFIG_PATH, *,
         plan = CD.batches(seqs, lengths, hyp["batch_size"], rng)
         tl = n = 0.0
         for k, b in enumerate(plan):
-            loss, parts = step_batch(_streams(b, bank, labels, null_index, lay, ccfg, rng, compose), True)
+            loss, parts = step_batch(_streams(b, bank, labels, null_index, lay, ccfg, rng, compose, aug), True)
             tl, n = tl + loss, n + 1
             if k % 20 == 0 or k == len(plan) - 1:
                 bar.set_postfix_str(f"ep{epoch + 1} train {k + 1}/{len(plan)} · loss {tl / n:.4f} · "
@@ -370,7 +392,7 @@ def train_continuous(run_name: str, config_path: Path | str = CONFIG_PATH, *,
             "training_regime": cfg["regime"], "epochs_since_gain": since_gain,
             "finished": finished, "wall_time_min": wall_now,
             "run_name": run_name, "null_index": null_index, "held_out_glosses": held,
-            "composer": cfg["composer"],
+            "composer": run_composer(cfg, run_name),
         }
         atomic_torch_save(state, last)
         if is_best:
@@ -383,7 +405,7 @@ def train_continuous(run_name: str, config_path: Path | str = CONFIG_PATH, *,
             "loss": ("CTC over glosses, blank = null" if hyp["loss"] == "ctc" else
                      "per-frame CE over glosses+null (label smoothing, ramped sign weights) "
                      "+ boundary BCE"),
-            "composer": cfg["composer"], "val_fraction": cfg["val_fraction"],
+            "composer": run_composer(cfg, run_name), "val_fraction": cfg["val_fraction"],
             "held_out_glosses": held,
         })
         R.write_meta(run_dir, meta)

@@ -803,6 +803,92 @@ class ContinuousPhonoGRU(ContinuousGRU):
         _with_frontend(self, fe)
 
 
+class StreamNormFrontend(nn.Module):
+    """Non-learned, **per-frame** normalization of raw image ``xy`` (0 = missing), TODO §12.8 Fix 3.
+
+    C1 reads raw image coordinates, so framing, distance, camera aspect and the hand labels are
+    part of its input; on a live camera each of them breaks it (``live-streaming-gap.md``). Per frame:
+
+    1. **Hands re-slotted by the pose wrists:** a hand goes to the slot of the pose wrist it is
+       nearest (both hands: the cheaper assignment). On GISLR a hand sits a median 0.09 shoulder
+       widths from its own pose wrist and 1.6 from the other, and the rule moves 0.1-0.2% of
+       one-hand frames (2026-09-26), so it changes nothing there. It fixes any camera stack that
+       labels hands the other way (the Tasks vs legacy Holistic suspect of §12.8).
+    2. **Centred on the mid-shoulder point, divided by the shoulder width**, so position in the
+       image and distance drop out (aspect is left to augmentation, ``continuous.augment``).
+    3. Missing points stay 0; a frame without both shoulders is all 0.
+
+    Output: every input row's normalized (x, y) + one presence flag per hand (``2 * rows + 2``).
+    Accepts any leading shape (a batch or one ``(F,)`` frame, as ``RecurrentSession`` feeds it).
+    """
+
+    i_lh: torch.Tensor
+    i_rh: torch.Tensor
+    i_sh: torch.Tensor
+    i_wr: torch.Tensor
+
+    def __init__(self, landmark_subset: str):
+        super().__init__()
+        from sb.core.subsets import get_subset
+
+        rows = [int(r) for r in get_subset(landmark_subset).indices]
+        pos = {r: i for i, r in enumerate(rows)}
+        need = (list(range(_LH0, _LH0 + 21)) + list(range(_RH0, _RH0 + 21))
+                + [_POSE0 + k for k in (11, 12, 15, 16)])
+        missing = [r for r in need if r not in pos]
+        if missing:
+            raise ValueError(f"subset {landmark_subset} lacks rows {missing} the stream norm needs")
+        self.n_rows = len(rows)
+        for k, v in {"lh": [pos[_LH0 + k] for k in range(21)], "rh": [pos[_RH0 + k] for k in range(21)],
+                     "sh": [pos[_POSE0 + 11], pos[_POSE0 + 12]],
+                     "wr": [pos[_POSE0 + 15], pos[_POSE0 + 16]]}.items():
+            self.register_buffer(f"i_{k}", torch.tensor(v), persistent=False)
+        self.out_dim = 2 * len(rows) + 2
+
+    def forward(self, x):
+        x = x.float()
+        lead = x.shape[:-1]
+        p = x.reshape(*lead, self.n_rows, 2)
+        valid = (p != 0).any(-1)
+        lh, rh = p[..., self.i_lh, :], p[..., self.i_rh, :]
+        lok, rok = valid[..., self.i_lh[0]], valid[..., self.i_rh[0]]
+        pl, pr = p[..., self.i_wr[0], :], p[..., self.i_wr[1], :]
+        wok = valid[..., self.i_wr[0]] & valid[..., self.i_wr[1]]
+        d = lambda a, b: (a - b).norm(dim=-1)  # noqa: E731
+        lw, rw = lh[..., 0, :], rh[..., 0, :]
+        swap = wok & ((lok & rok & (d(lw, pr) + d(rw, pl) < d(lw, pl) + d(rw, pr)))
+                      | (lok & ~rok & (d(lw, pr) < d(lw, pl)))
+                      | (rok & ~lok & (d(rw, pl) < d(rw, pr))))
+        s = swap[..., None, None]
+        p = p.clone()
+        p[..., self.i_lh, :] = torch.where(s, rh, lh)
+        p[..., self.i_rh, :] = torch.where(s, lh, rh)
+        valid = (p != 0).any(-1)
+        a, b = p[..., self.i_sh[0], :], p[..., self.i_sh[1], :]
+        sok = valid[..., self.i_sh[0]] & valid[..., self.i_sh[1]]
+        centre = (a + b) / 2
+        width = (a - b).norm(dim=-1).clamp_min(1e-3)
+        n = (p - centre[..., None, :]) / width[..., None, None]
+        n = n * (valid & sok[..., None])[..., None]
+        flags = torch.stack([valid[..., self.i_lh[0]], valid[..., self.i_rh[0]]], -1).float() * sok[..., None]
+        return torch.cat([n.reshape(*lead, -1), flags], -1)
+
+
+class ContinuousNormGRU(ContinuousGRU):
+    """:class:`ContinuousGRU` behind a :class:`StreamNormFrontend`: C1 v2 (TODO §12.8 Fix 3). Same raw
+    ``xy`` input as C1, so the web app feeds it unchanged; the normalization is part of the model."""
+
+    def __init__(self, input_size, hidden_size, num_layers, num_classes, dropout=0.3,
+                 embed_dim=256, cos_scale=16.0, landmark_subset="ME_132"):
+        fe = StreamNormFrontend(landmark_subset)
+        if input_size != fe.n_rows * 2:
+            raise ValueError(f"input_size {input_size} != 2 x {fe.n_rows} rows of {landmark_subset}: "
+                             "the stream norm needs coords='xy' of its subset")
+        super().__init__(fe.out_dim, hidden_size, num_layers, num_classes, dropout, embed_dim, cos_scale)
+        norm = self.input_norm
+        self.input_norm = nn.Sequential(fe, norm)
+
+
 @dataclass(frozen=True)
 class ArchSpec:
     cls: type[nn.Module]
@@ -928,6 +1014,13 @@ ARCHS: dict[str, ArchSpec] = {
         True,
         "ContinuousGRU behind the phonology front-end: the port of gru_phono to "
         "continuous streams (TODO §3.9 -> §12.3)",
+    ),
+    "gru_continuous_norm": ArchSpec(
+        ContinuousNormGRU,
+        "ContinuousNormGRU",
+        True,
+        "ContinuousGRU behind a per-frame stream normalization (hands re-slotted by pose wrist, "
+        "shoulder-centred, shoulder-width scaled): C1 v2 (TODO §12.8 Fix 3)",
     ),
 }
 

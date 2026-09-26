@@ -27,7 +27,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 
 | # | next action | where | why now |
 |---|---|---|---|
-| 0a | **§12.8 live camera fails on sentences (user, 2026-09-25).** Probes: low fps (repeated frames) → missed signs, jitter → extra signs, landscape framing → both; app-side interp + EMA + reframe measured (`live-streaming-gap.md`). **Next: user answers fps/mirror/distance, and decides Fix 1 (app) / Fix 2 (record real sentences) / Fix 3 (retrain C1 v2)** | §12.8 | the deployed model is unusable live until this is fixed |
+| 0a | **§12.8 live camera fails on sentences (user, 2026-09-25).** Probes: low fps (repeated frames) → missed signs, jitter → extra signs, landscape framing → both; app-side interp + EMA + reframe measured (`live-streaming-gap.md`). **2026-09-26: Fix 3 built — C1 v2 = C4 (stream normalization + augmented v2 streams) and C5 (ablation), `continuous-v2.md`. Next (user): run `gislr.1.models.continuous.ipynb` §6b, then continuous-eval + live-robustness.** Fix 2 (recorder) still open | §12.8 | the deployed model is unusable live until this is fixed |
 | 0a2 | **§3.8 sign patterns**: the first variables gave no per-sign pattern; **with handshape/orientation/location/movement, every ASL-LEX parameter is recovered on unseen signs and templates reach 38.8% top-1 (was 4.9%)**; **B3 done: DTW over per-frame phonology 41.6% top-1, 15.2% from one example**, no training. **Follow-up built as §3.9 (see row 0a3)** | §3.8 | the user's current priority (2026-09-25: "start on the sign pattern first") |
 | 0a3 | **§3.9 phonology models, run 2026-09-25 + evaluated 2026-09-26: `gru_phono_raw` ME_134 = 0.7632 canonical, new best, streaming** (+1.2 over raw `gru`). **Next (user): finish §8e `bilstm_phono` (stopped at epoch 14; auto-resumes in place)**; then (Claude) the continuous port `gru_continuous_phono` + a Keras port of the front-end for web export. `docs/reports/phonology-models.md` | §3.9 | the first input change that beats the raw-landmark plateau on the current split |
 | 0a4 | **§3.10 phonology models, 2026-09-26:** `gru_phono130` 0.7487 ≈ raw `gru` on half the inputs; **exact streaming ensembles 0.7912 (2) / 0.8048 (3)**. **P1 (continuous phonology) failed on sentences: GER 0.587 vs C1 0.293** (feature-space composer ≠ real streams); CNN retrain 0.7330; all checkpoints on Kaggle. **Next: user saves the continuous-eval notebook; decides whether to build P1 v2** (landmark-space composition + real extractor) | §3.10 | phonology in the live app needs a continuous model that survives real context |
@@ -4256,9 +4256,26 @@ for possible solutions.
   - Recommended order: user check (fps/mirror/framing) → app fixes + recorder → C1 v2 retrain gated on
     probes + real recordings.
 - [ ] Add a One Euro filter probe to `gislr.3.streaming.live-robustness.ipynb` (compare with EMA α 0.5).
-- [ ] **Fix 3 (retrain C1 v2, needs the user's go):** normalized input; composer augmentations (fps
-  drop/repeat, speed 0.7–1.5×, jitter, hand dropout, scale/shift/aspect); streams up to ~2k frames;
-  noise as null (§12.6 Phase 3). Score it on the probes and on Fix 2's recordings.
+- [x] **Fix 3 (C1 v2) — user's go 2026-09-26 ("try to improve the c1 model. Research on how to make it usable
+  for sentences"); researched + built, not trained.** `docs/reports/continuous-v2.md`.
+  - Research: stitched isolated signs make sentences 1.63× too long (BRAID, arXiv 2605.14705); a background
+    class + real continuous clips took online WER 38.4 → 22.1 (Zuo et al.); boundary losses let isolated-only
+    models segment; body normalization (GISLR 1st place).
+  - Built: `StreamNormFrontend` + arch `gru_continuous_norm` (hands re-slotted by pose wrist, shoulder-centred,
+    shoulder-width scaled; same raw ME_132 xy input, so the app feeds it unchanged); `sb.recognize.continuous.augment`
+    (clip trim + speed, 25% hard-cut, noise blocks as null, camera: scale/aspect/rotation/shift/mirror/jitter/
+    hand dropout/15-10 fps); `composer_overrides` per run (`run_composer`, keys must exist; v1 runs unchanged);
+    runs **C4** (norm + v2 streams) and **C5** (v2 streams, raw input: ablation), up to 16 signs / 1,500 frames.
+  - Checks: re-slot moves 0.1–0.2% of GISLR one-hand frames; norm invariant to zoom+shift (6e-7) and to swapped
+    hand labels (100%); session parity 1e-7; mirror perm an exact involution; 300 augmented streams keep labels;
+    driver smoke C4/C5 OK (929k / 928k params, 8,484 streams/epoch).
+  - Notebooks: `gislr.1.models.continuous.ipynb` §6b trains C4 + C5 in parallel; continuous-eval config runs +
+    C4, C5; live-robustness notebook now probes `RUNS = [C1, C4, C5]` (parts per run; dry-run on cached C1 OK).
+- [ ] **Next (user): run `gislr.1.models.continuous.ipynb` §6b** (C4 + C5 in parallel; then §7 curves, §8
+  canonical eval), then `gislr.3.streaming.continuous-eval.ipynb` and `gislr.3.streaming.live-robustness.ipynb`.
+  Judge by `continuous-v2.md` §4: clean GER ≈ 0.293, hard-cut < 0.546, `live_like` ≪ 0.592, mirror/aspect ≈ clean.
+- [ ] **Then (Claude), if C4 wins:** Keras port of `StreamNormFrontend` in `apps/web/tools/export.py` with a parity
+  fixture, re-export, swap the app's model; D5 = D3 ∪ D1 decoder sweep on C4.
 
 **Status check, sign → speech (2026-09-24, re-confirmed ~13:35).** Unchanged: the recognizer half is done offline (C1 D3 GER 0.293), and none of 12.4–12.7 is started. The next step is the §12.4 plan. **Gap check (2026-09-24).** Nothing deployable exists yet:
 `apps/` is READMEs only, `sb-rescore` is a skeleton, and

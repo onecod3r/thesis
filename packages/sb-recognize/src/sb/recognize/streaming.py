@@ -26,7 +26,7 @@ import torch
 
 RECURRENT_ARCHS = ("gru", "lstm", "gru_continuous", "lstm_continuous",
                    "gru_phono", "gru_phono_raw", "gru_continuous_phono", "gru_phono130", "lstm_phono130",
-                   "gru_continuous_phono130")  # *_phono: input_norm carries the front-end
+                   "gru_continuous_phono130", "gru_continuous_norm")  # *_phono: input_norm carries the front-end
 FRAME_LOCAL_ARCHS = ("cnn", "dnn")
 STREAMING_ARCHS = RECURRENT_ARCHS + FRAME_LOCAL_ARCHS
 

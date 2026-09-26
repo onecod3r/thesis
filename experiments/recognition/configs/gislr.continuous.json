@@ -61,6 +61,30 @@
       "n_holdout_glosses": 20,
       "notes": "C1's recipe with 20 seeded glosses held out of training entirely (masked in the head); the model TODO §12.4 teaches new signs to."
     },
+    "C4": {
+      "arch": "gru_continuous_norm",
+      "notes": "C1 v2 (TODO 12.8 Fix 3): C1's GRU behind a per-frame stream normalization (hands re-slotted by pose wrist, shoulder-centred, shoulder-width scaled), trained on v2 streams: clip trim + speed (co-articulation), 25% hard-cut streams, noise blocks as null, up to 16 signs / 1500 frames, and camera augmentation (scale, aspect, rotation, shift, mirror, jitter, hand dropout, low fps).",
+      "composer_overrides": {
+        "signs_per_seq": [1, 16], "max_frames": 1500,
+        "p_trim": 0.5, "trim_max": 0.2, "p_speed": 0.5, "speed": [0.8, 1.5],
+        "p_hardcut": 0.25, "p_noise": 0.3, "noise_len": [20, 90],
+        "augment": {"p_geom": 0.8, "scale": [0.7, 1.35], "aspect": [0.55, 1.25], "rotate_deg": 8, "shift": 0.12,
+                    "p_mirror": 0.5, "p_jitter": 0.5, "jitter": 0.008, "p_hand_drop": 0.4, "hand_drop": 0.2,
+                    "p_fps": 0.3, "fps_factor": [2, 3]}
+      }
+    },
+    "C5": {
+      "arch": "gru_continuous",
+      "notes": "Ablation of C4: the same v2 training streams and augmentation, C1's raw-coordinate input (no stream normalization). C4 vs C5 prices the normalization; C5 vs C1 prices the augmentation.",
+      "composer_overrides": {
+        "signs_per_seq": [1, 16], "max_frames": 1500,
+        "p_trim": 0.5, "trim_max": 0.2, "p_speed": 0.5, "speed": [0.8, 1.5],
+        "p_hardcut": 0.25, "p_noise": 0.3, "noise_len": [20, 90],
+        "augment": {"p_geom": 0.8, "scale": [0.7, 1.35], "aspect": [0.55, 1.25], "rotate_deg": 8, "shift": 0.12,
+                    "p_mirror": 0.5, "p_jitter": 0.5, "jitter": 0.008, "p_hand_drop": 0.4, "hand_drop": 0.2,
+                    "p_fps": 0.3, "fps_factor": [2, 3]}
+      }
+    },
     "P1": {
       "arch": "gru_continuous_phono130",
       "notes": "C1's recipe on the 130 phonological features only (feature pipeline phono130_v1; streams composed in feature space by sb.recognize.continuous.phono; evaluated on GISLR-Sentences through the real extractor). TODO §3.10 -> §12.3."
