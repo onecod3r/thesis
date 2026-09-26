@@ -4143,6 +4143,25 @@ for possible solutions.
   `theme-color` meta (light/dark) and the cross-page link turned into a pill nav button. Verified
   with `npm run build` only (pure CSS/markup, nothing the `npm test` parity suites or TS types
   cover changed). **Awaiting redeploy**, same as the two fixes above.
+- [~] **User (2026-09-26): "sentence level sign recognition is not working at all. we need to fix it."**
+  Diagnosis so far (Claude, offline, C1 + D3 on 120–400 evaluation-signer streams; scripts not committed):
+  - The phone screenshot of 2026-09-25 showed **p(null) = 0.001 while idle** (hands out of view, 501/543
+    landmarks = face + pose). With that, 45 null frames never accumulate, so sentences never end.
+  - **Not reproducible offline.** Idle frames built from GISLR (hands NaN, pose held): p(null) 0.86, a 5 s
+    pause ends the sentence in 100% of 200 streams. Framing alone doesn't do it either: a 1.6× close-up
+    still gives idle p(null) 0.81 (93% of pauses end the sentence).
+  - **Reframe calibration helps** (stream GER: close-up 0.405 → 0.337, farther 0.366 → 0.337; GISLR
+    framing 0.295 → 0.337, its known cost).
+  - **A "no hand for k frames → null" gate hurts** (GER 0.293 → 0.331–0.423): 32% of real GISLR signs have
+    ≥ 10 consecutive frames with no hand detected. Not to be shipped.
+  - **Open suspect, unverified:** the browser uses the Tasks `HolisticLandmarker`; GISLR used legacy
+    Holistic. If Tasks labels `leftHand`/`rightHand` the other way, every live frame has the hands in the
+    wrong slots (the `mirror` probe: GER 0.99). The app's "Mirror input" toggle also flips x and does not
+    swap the pose's left/right joints, so it is not a correct fix for that. No video on disk to test with
+    (WLASL is an index only).
+  - **Next:** build the recorder (Fix 2) so a real session's 543×3 frames can be replayed through Python;
+    check hand rows against pose wrists on it (the same geometry check that verified GISLR); then ship
+    reframe + EMA (Fix 1) with parity fixtures.
 - [ ] **Fix 2:** landmark recorder in `apps/web` (download frames + timestamps), then 30–50 real known
   sentences as the first real continuous test set. Measures what the probes can't: real transitions and
   rest, and Tasks-vs-legacy Holistic differences.
