@@ -14,6 +14,9 @@ regenerated there into `data/cache/gislr/phonology_features/results/`.
 **Answer in brief** (all 94,477 GISLR clips; templates and neighbours from `train.csv`, scored on the
 canonical 18,896-clip `test.csv`; chance 0.4%):
 
+- **The order of the features matters** (§4.8): shuffling a clip's frames costs up to 12.6 points, playing
+  it backwards 18–20, mostly through orientation, location and movement. Templates can barely use it,
+  so a sequence model (`gru_phono130`, set up for training) is the next step.
 - **Fewer parameters, more accuracy, confirmed without training.** 130 phonological numbers per frame
   (520 per clip) reach **41.4% nearest-template top-1 and 54.3% 1-nearest-neighbour**. The raw 543
   landmarks, with 12.5× more numbers, reach 3.1% and 13.0%. Raw hands + pose without the face (892 per
@@ -340,6 +343,70 @@ feature sets. Signer variation is the main open problem, matching the cross-sign
 
 Full tables: `results/per_signer.csv`, `results/per_gloss.csv`.
 
+### 4.8 Does the order of the features matter? (notebook §11, added 2026-09-26)
+
+Hypothesis (user): the sequence of the phonology carries information, not only which configurations
+occur. The §4.1 summary keeps only a coarse order (thirds), so the per-frame features (32 steps per clip)
+were compared at every temporal resolution, with controls that separate order from resolution:
+- **K segments**: the mean of each of K equal time segments; K = 1 has no order at all.
+- **shuffled**: each clip's frames shuffled first. Same content, same size, no order.
+- **reversed**: templates and neighbours from forward train clips, test clips played backwards.
+
+All phonology, scaled; train → test; chance 0.4%:
+
+| K segments | numbers | 1-NN ordered | 1-NN shuffled | 1-NN reversed test | template ordered | template shuffled |
+|---|---|---|---|---|---|---|
+| 1 (no order) | 130 | 53.4% | 53.4% | 53.4% | 37.4% | 37.4% |
+| 2 | 260 | **53.9%** | 52.2% | 35.7% | 39.5% | 37.3% |
+| 3 | 390 | 53.2% | 51.4% | 34.8% | 39.8% | 37.2% |
+| 4 | 520 | 52.6% | 50.3% | 33.0% | **39.9%** | 37.1% |
+| 8 | 1,040 | 50.8% | 46.8% | 31.3% | 39.7% | 36.7% |
+| 16 | 2,080 | 48.5% | 41.5% | 29.9% | 39.1% | 35.8% |
+| 32 | 4,143 | 46.7% | 34.1% | 29.1% | 38.2% | 33.4% |
+
+![order](assets/asl-phonology-features/order.png)
+
+**The hypothesis holds: order carries information.** At every K ≥ 2 the ordered clip beats the same clip
+shuffled, by up to 12.6 points (1-NN, K = 32). **Direction matters even more**: a reversed test clip loses
+18–20 points of 1-NN (10–12 of template accuracy) against forward references. The phonology of a sign is an ordered sequence, not a set.
+
+**But nearest-template matching barely uses it.** The best ordered result beats the orderless mean by
+only 0.5 (1-NN) to 2.5 (template) points, and finer resolution then gets *worse*: signers sign at
+different speeds, so fixed segments misalign, and more dimensions dilute the distance. Whole-sequence
+matching does not rescue it. On a fixed subsample (20 train references and 8 test clips per gloss):
+
+| method | ordered | shuffled | reversed test |
+|---|---|---|---|
+| DTW 1-NN (time-warped) | 23.0% | 19.5% | 15.2% |
+| rigid 1-NN (frame by frame) | 19.7% | 14.2% | 13.5% |
+| K = 1 segment 1-NN (no order) | 28.4% | 28.4% | — |
+| K = 8 segments 1-NN | 27.9% | 26.6% | — |
+
+DTW, too, loses when order is destroyed (23.0 → 19.5) or reversed (→ 15.2), yet it is below the plain
+orderless mean on the same subsample (28.4%): warping 130-dimensional sequences mostly aligns noise.
+**The order information exists, and a learned sequence model is what can use it**, which is why
+`gru_phono130` is set up next (§6).
+
+**Per parameter, order matters where phonology says it should** (1-NN, K = 1 vs K = 8 ordered):
+
+| parameter | no order (K = 1) | ordered (K = 8) | shuffled (K = 8) | gain from order |
+|---|---|---|---|---|
+| handshape | 35.9% | 35.1% | 27.9% | −0.8 |
+| orientation | 5.5% | 15.2% | 5.4% | **+9.7** |
+| location | 11.0% | 18.7% | 8.8% | **+7.8** |
+| non-manual | 4.4% | 8.8% | 4.2% | +4.4 |
+| movement | 1.7% | 5.6% | 1.7% | +3.9 |
+| contact | 0.6% | 1.8% | 0.7% | +1.2 |
+| hand arrangement | 0.5% | 0.5% | 0.4% | 0.0 |
+
+Handshape gains nothing from time resolution: in Brentari's terms it is an **inherent** feature, mostly
+constant through a sign. Orientation, location and movement gain the most: they are the **prosodic**
+features, the ones that change during a sign (a path from one location to another, a wrist turn). Two
+cautions: at K = 8, handshape's shuffled score (27.9%) is below its K = 1 score because eight means of
+random frame subsets are noisier than one mean, so "ordered minus shuffled" overstates the order value
+of a static parameter; the fair comparison for it is ordered K = 8 vs K = 1 (no gain). For the dynamic
+parameters, ordered K = 8 beats both.
+
 ## 5. Conclusions
 
 1. **Phonological features are a better input than raw landmarks at a fraction of the size.** 130 per
@@ -353,16 +420,20 @@ Full tables: `results/per_signer.csv`, `results/per_gloss.csv`.
    separates same-gloss from different-gloss pairs 4–9×.
 4. **Scale normalization does not matter on GISLR** (uniform framing), but costs nothing and protects live
    use.
-5. **What GISLR cannot show**: two-handedness (0.27% of frames with both hands), reliable path movement
+5. **Order matters, templates cannot use it** (§4.8): shuffling frames at equal size costs up to 12.6
+   points and reversing 18–20, mostly through orientation, location and movement (handshape is static),
+   but the best ordered template beats the orderless mean by only 0.5–2.5. A learned sequence model is
+   needed to use it.
+6. **What GISLR cannot show**: two-handedness (0.27% of frames with both hands), reliable path movement
    and repetition in 22-frame clips, true contact and torso location in 2-D, eye gaze.
 
 ## 6. Next steps (for the user to decide; none started)
 
-- **Train on it** (the user runs it): the `StreamingGRU` on the 130 per-frame features alone (all 543 in,
-  no subset), vs `gru_phono_raw` ME_134 (0.7632, 84 phonology features + raw xy). The question this
-  experiment cannot answer is how much of the remaining gap a learned model closes with fewer inputs. A
-  natural ablation: drop the non-manual and hand-arrangement groups (−50 features) and check whether
-  accuracy holds.
+- **Train on it — set up 2026-09-26, the user runs it**: `gru_phono130` (the `StreamingGRU` on the 130
+  per-frame features only, in sequence; 758k parameters) and `bilstm_phono130` (its offline ceiling), in
+  `gislr.1.models.training.ipynb` §8f/§8g, feature pipeline `phono130_v1` (cache built). Compare with
+  `gru_phono_raw` ME_134 (0.7632) and `gru` ME_132 (0.7517). A natural follow-up ablation: drop the
+  non-manual and hand-arrangement groups (−50 features) and check whether accuracy holds.
 - **Signer normalization**: the per-signer spread (17–59%) and the cross-signer drop are the largest
   effect measured. Candidate: standardize each feature per signer (a per-session calibration in the app).
 - **Better movement codes**, if movement is wanted: DTW on the per-frame sequence (kept in the chunks,

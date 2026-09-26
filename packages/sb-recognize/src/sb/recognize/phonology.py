@@ -591,3 +591,45 @@ def clip_record(path) -> dict:
     for h in ("h1", "h2"):
         rec[f"{h}_share"] = float(np.mean(feats[:, IDX[f"{h}_present"]])) if len(feats) else 0.0
     return rec
+
+
+# ---------------------------------------------------------------------------
+# model input (features pipeline ``phono130_v1``)
+# ---------------------------------------------------------------------------
+
+def _unit_scale() -> np.ndarray:
+    """Fixed per-feature multipliers that put every feature on an O(1) scale, so a model's
+    LayerNorm does not see degrees next to per-frame speeds: angles /90, per-frame angle and
+    aperture changes x0.1 / x10, per-frame speeds x20 (lengths are already in shoulder widths).
+    Fixed constants, not train statistics: nothing has to travel with a checkpoint."""
+    s = np.ones(F, np.float32)
+    for i, f in enumerate(CATALOG):
+        if f.name.endswith(("_d_flex", "_d_orient")):
+            s[i] = 0.1
+        elif f.name.endswith("_d_aperture"):
+            s[i] = 10.0
+        elif f.unit == "deg":
+            s[i] = 1 / 90
+        elif f.unit == "velocity":
+            s[i] = 20.0
+    return s
+
+
+UNIT_SCALE = _unit_scale()
+CLIP = 10.0  # model inputs are clipped to [-CLIP, CLIP]
+
+
+def model_features(clip: np.ndarray) -> np.ndarray:
+    """``(T, 543, 3)`` -> ``(T, 130)`` float32: the scaled variant in :data:`UNIT_SCALE` units,
+    NaN -> 0 (with the presence flags saying which zeros are "not detected").
+
+    Causal per frame except two session constants a live app would calibrate once (a few
+    seconds, or a setting): the dominant hand and the shoulder width."""
+    feats, info = extract(clip)
+    if len(feats) == 0:
+        return np.zeros((1, F), np.float32)
+    x = scale(feats, info["width"] if np.isfinite(info["width"]) else GLOBAL_WIDTH) * UNIT_SCALE
+    x = np.nan_to_num(x, nan=0.0, posinf=0.0, neginf=0.0)
+    # 0.03% of values exceed 10, nearly all pose-wrist speeds of an out-of-frame wrist whose pose
+    # estimate jumps (GISLR train cache, 2026-09-26); clipped so they cannot dominate a LayerNorm
+    return np.clip(x, -CLIP, CLIP).astype(np.float32)

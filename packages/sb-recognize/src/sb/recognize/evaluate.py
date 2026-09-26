@@ -58,6 +58,7 @@ from sb.mlops import run as P
 from sb.mlops.artifacts import ensure_local
 from sb.recognize.architectures import build_model
 from sb.recognize.data import MAX_SEQ_LEN, ROWS_PER_FRAME
+from sb.recognize.features import phono130_v1
 from sb.recognize.features.gislr_stratified import load_npz
 from sb.recognize.sources import get_source
 
@@ -157,6 +158,11 @@ def evaluate_run(run_dir, checkpoint: str = R.CKPT_BEST, verbose: bool = True,
 
         def load_one(p):
             return load_video_firstplace(p, landmarks, coords, max_len, diff_mode)
+    elif ckpt.get("features") == "phono130_v1":
+        log("features: phono130_v1 (130 phonological features per frame from all 543 landmarks)")
+
+        def load_one(p):
+            return phono130_v1.load_video(p)
     else:
         def load_one(p):
             return load_video(p, landmarks, coords)

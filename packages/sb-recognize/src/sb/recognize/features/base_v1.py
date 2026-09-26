@@ -34,6 +34,10 @@ NAN_POLICY = "zero"
 MAX_SEQ_LEN = 128  # uniform-subsample cap, identical across every run
 
 
+def feature_dim(subset, coords: str) -> int:
+    return len(subset) * len(coords)
+
+
 def cache_inputs(subset, coords: str, data_dir: Path | str, dataset: str = "gislr") -> dict:
     """This pipeline's identity bound to one (subset, coords, dataset)."""
     return cache.cache_inputs(

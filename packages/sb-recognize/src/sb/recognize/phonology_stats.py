@@ -330,3 +330,51 @@ def signature_accuracy(codes: pd.DataFrame, y: np.ndarray, sig: pd.DataFrame, co
         tie.append(best.sum(1))
     h, k = np.concatenate(hit), np.concatenate(tie)
     return {"top1_expected": float((h / k).mean()), "in_best_set": float(h.mean()), "mean_tie": float(k.mean())}
+
+
+# ---------------------------------------------------------------------------
+# does the order of the features matter? (sequences: (N, L, F) resampled per-frame features)
+# ---------------------------------------------------------------------------
+
+def segment_means(seq: np.ndarray, k: int) -> np.ndarray:
+    """``(N, L, F)`` -> ``(N, k*F)``: the mean of each of ``k`` equal time segments (NaN-aware).
+    ``k = 1`` is a bag of frames: no order at all."""
+    import warnings
+
+    edges = np.linspace(0, seq.shape[1], k + 1).round().astype(int)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        return np.concatenate([np.nanmean(seq[:, a:b], axis=1) for a, b in zip(edges[:-1], edges[1:])], axis=1)
+
+
+def shuffle_time(seq: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+    """Each clip's frames in a random order: the same content, no order."""
+    idx = np.argsort(rng.random(seq.shape[:2]), axis=1)
+    return np.take_along_axis(seq, idx[:, :, None], axis=1)
+
+
+def standardize_frames(seq: np.ndarray, train: np.ndarray) -> np.ndarray:
+    """Z-score every feature with the train clips' frames; NaN -> 0 (the train mean)."""
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        f = seq[train].reshape(-1, seq.shape[2])
+        mu, sd = np.nanmean(f, axis=0), np.nanstd(f, axis=0)
+    sd = np.where(np.isfinite(sd) & (sd > 1e-6), sd, 1.0)
+    mu = np.where(np.isfinite(mu), mu, 0.0)
+    return np.nan_to_num((seq - mu) / sd, nan=0.0).astype(np.float32)
+
+
+def dtw_knn(ref: np.ndarray, yref: np.ndarray, qry: np.ndarray, yqry: np.ndarray, band: int | None = None,
+            chunk: int = 50) -> float:
+    """1-nearest-neighbour top-1 under DTW between whole sequences (``band=0``: rigid, frame by
+    frame), queries -> references, on the GPU."""
+    from sb.recognize.patterns import dtw_distances
+
+    R = torch.as_tensor(ref, device=DEV)
+    hit = []
+    for s in range(0, len(qry), chunk):
+        D = dtw_distances(torch.as_tensor(qry[s:s + chunk], device=DEV), R, band=band)
+        hit.append(yref[D.argmin(1).cpu().numpy()] == yqry[s:s + chunk])
+    return float(np.concatenate(hit).mean())

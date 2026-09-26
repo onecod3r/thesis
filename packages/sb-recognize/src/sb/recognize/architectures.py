@@ -809,6 +809,7 @@ class ArchSpec:
     model_name: str
     streaming: bool
     description: str
+    pipeline: str = "base_v1"  # the feature pipeline (sb.recognize.features.<pipeline>) feeding it
 
 
 ARCHS: dict[str, ArchSpec] = {
@@ -883,6 +884,21 @@ ARCHS: dict[str, ArchSpec] = {
         "PhonoBiLSTM",
         False,
         "BiLSTM behind the phonology front-end, OFFLINE-ONLY accuracy reference (TODO §3.9)",
+    ),
+    "gru_phono130": ArchSpec(
+        StreamingGRU,
+        "StreamingGRU",
+        True,
+        "StreamingGRU on phonological features ONLY: the 130 per-frame features of "
+        "sb.recognize.phonology from all 543 landmarks, in sequence (TODO §3.10)",
+        pipeline="phono130_v1",
+    ),
+    "bilstm_phono130": ArchSpec(
+        BiLSTM,
+        "BiLSTM",
+        False,
+        "BiLSTM on the same 130 phonological features, OFFLINE-ONLY ceiling for gru_phono130 (TODO §3.10)",
+        pipeline="phono130_v1",
     ),
     "gru_continuous_phono": ArchSpec(
         ContinuousPhonoGRU,

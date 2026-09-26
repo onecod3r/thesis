@@ -69,6 +69,20 @@
         "frontend": "phono+raw"
       },
       "notes": "TODO §3.9 item 3 — offline-only BiLSTM on the phonology front-end. Default = the expected winner (phono+raw on ME_134); if §11 of the notebook picks another arm, change subsets/overrides here before running."
+    },
+    "gru_phono130": {
+      "subsets": [
+        "FULL_543"
+      ],
+      "coords": "xyz",
+      "notes": "TODO §3.10 — phonological features ONLY: the 130 per-frame features of sb.recognize.phonology (handshape 50, orientation 12, location 29, contact 2, movement 15, hand arrangement 10, non-manual 10, presence 2) computed from all 543 landmarks, in sequence. Feature pipeline phono130_v1 (the ArchSpec says so), so FULL_543/xyz only addresses the cache. Same StreamingGRU and regime as gru. Compare with gru_phono_raw ME_134 (0.7632) and gru ME_132 (0.7517)."
+    },
+    "bilstm_phono130": {
+      "subsets": [
+        "FULL_543"
+      ],
+      "coords": "xyz",
+      "notes": "TODO §3.10 — OFFLINE-ONLY BiLSTM on the same 130 phonological features: the ceiling for gru_phono130 (how much the causal constraint costs on this input)."
     }
   }
 }

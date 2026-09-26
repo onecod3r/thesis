@@ -35,7 +35,9 @@ from tqdm.auto import tqdm
 
 from sb.core.subsets import get_subset
 from sb.recognize import data as D
-from sb.recognize.features import base_v1 as FEAT
+from sb.recognize.features import base_v1, phono130_v1
+
+PIPELINES = {m.PIPELINE: m for m in (base_v1, phono130_v1)}
 from sb.mlops import run as P
 from sb.mlops import registry as R
 from sb.recognize.architectures import ARCHS, build_model
@@ -264,7 +266,8 @@ def train_run(
     # row is which; stored in the checkpoint's hyp, so every rebuild gets it too
     hyp = {**hyp, "landmark_subset": subset.name}
     tag = D.subset_tag(subset_name, coords)
-    feature_dim = len(subset) * len(coords)
+    FEAT = PIPELINES[ARCHS[arch].pipeline]  # the architecture says which features feed it
+    feature_dim = FEAT.feature_dim(subset, coords)
 
     train_split, val_split = ds.canonical_split(data_dir, sign2idx)
     tr_data, tr_off = FEAT.build_cache(
@@ -425,6 +428,7 @@ def train_run(
                 "num_workers": 0,
             },
             "feature_dim": feature_dim,
+            "features": FEAT.PIPELINE,
             "landmarks": subset.array.tolist(),
             "subset_name": subset_name,
             "coords": coords,
