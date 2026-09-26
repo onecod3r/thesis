@@ -30,7 +30,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 | 0a | **§12.8 live camera fails on sentences (user, 2026-09-25).** Probes: low fps (repeated frames) → missed signs, jitter → extra signs, landscape framing → both; app-side interp + EMA + reframe measured (`live-streaming-gap.md`). **Next: user answers fps/mirror/distance, and decides Fix 1 (app) / Fix 2 (record real sentences) / Fix 3 (retrain C1 v2)** | §12.8 | the deployed model is unusable live until this is fixed |
 | 0a2 | **§3.8 sign patterns**: the first variables gave no per-sign pattern; **with handshape/orientation/location/movement, every ASL-LEX parameter is recovered on unseen signs and templates reach 38.8% top-1 (was 4.9%)**; **B3 done: DTW over per-frame phonology 41.6% top-1, 15.2% from one example**, no training. **Follow-up built as §3.9 (see row 0a3)** | §3.8 | the user's current priority (2026-09-25: "start on the sign pattern first") |
 | 0a3 | **§3.9 phonology models, run 2026-09-25 + evaluated 2026-09-26: `gru_phono_raw` ME_134 = 0.7632 canonical, new best, streaming** (+1.2 over raw `gru`). **Next (user): finish §8e `bilstm_phono` (stopped at epoch 14; auto-resumes in place)**; then (Claude) the continuous port `gru_continuous_phono` + a Keras port of the front-end for web export. `docs/reports/phonology-models.md` | §3.9 | the first input change that beats the raw-landmark plateau on the current split |
-| 0a4 | **§3.10 phonology, 2026-09-26:** 130 features/frame from all 543 landmarks → 41.4% template / 54.3% 1-NN with no training (raw: 3.1% / 13.0%); **order matters** (shuffle −12.6, reverse −18–20) but templates can't use it. **Next (user): train `gru_phono130` — `gislr.1.models.training.ipynb` §8f, then §8g `bilstm_phono130`** (caches built) | §3.10 | a phonology-only sequence model: fewer inputs, the user's accuracy goal |
+| 0a4 | **§3.10 phonology, 2026-09-26:** 130 features/frame → 41.4% template / 54.3% 1-NN, no training; order matters (shuffle −12.6, reverse −18–20); hand-to-place trajectories in order double what places alone give (15.8% vs 7.6%). **Next (user): run `gislr.1.models.phonology-training.ipynb`** — `gru`/`lstm`/`cnn1d` on the 130 features, in parallel on the GPU, streaming only | §3.10 | phonology-only streaming models |
 | ~~0~~ | ~~Re-run `gislr.3.streaming.continuous-eval.ipynb`~~ — **done 2026-09-24**: C1 D3 c **GER 0.293** (eval signers) vs baseline 0.507, oracle 0.221 → `docs/reports/continuous-models.md`. Optional follow-up: D5 = D3 ∪ D1 decoder for hard-cut | §12.3 | — |
 | 0b | Plan §12.4 add-a-sign (enroll C-open's 20 held-out glosses from 1/5/10 examples) | §12.4 | C-open (`1790146838`) is trained and waiting; decides how custom signs (§12.7) work |
 | 0c | §12.5 **web app built 2026-09-24** (`apps/web`, `apps/edge`): sign → speech runs in the browser (Holistic → LiteRT.js step model → lag-2 lattice + trigram → rule English → browser voice). Parity tests pass and a headless Chrome replay of 24 held-out streams is identical to Python. **Next (user): first camera test**: `cd apps/web && npm run dev`; check mirroring, fps, a few known sentences | §12.5 | first time real webcam landmarks reach the model |
@@ -1644,8 +1644,24 @@ This answers the probe question below for now: **no training**, statistics and n
     config entries (`FULL_543/xyz` only addresses the cache); notebook §8f/§8g;
   - wiring checks: forward/backward on real batches (loss ≈ ln 250), `RecurrentSession` = batch to 1.3e-6,
     the `sb-evaluate` loading path byte-identical to the cache.
-- [ ] **Next (user): run `gislr.1.models.training.ipynb` §8f (`gru_phono130`), then §8g
-  (`bilstm_phono130`)**; then Claude evaluates. Compare with `gru_phono_raw` ME_134 0.7632 and `gru` ME_132
+- [x] **Streaming-only, fast (user, 2026-09-26: "update the training file for only the phonological… I
+  don't have much time, use as much resource as possible, GPU, faster; only models that can be trained
+  further for streaming").** New notebook `experiments/recognition/gislr.1.models.phonology-training.ipynb`:
+  `gru_phono130`, `lstm_phono130`, `cnn1d_phono130` (new archs, all streaming, pipeline `phono130_v1`),
+  **trained in parallel** (one process each on the GPU; RTX 4080 SUPER 16 GB, 64 GB RAM, 28 CPUs), then
+  canonical-scored in the same notebook. `es_patience` 10 for these arms; `bilstm_phono130` parked
+  (`enabled: false`, offline-only). Setup cell verified (pointer keys resolve); no training run by Claude.
+  - Observed 14:38: a `gru_phono` PH_55 run `1790411081` (the old §8b arm) stopped at epoch 59, unfinished,
+    GPU idle; left as is.
+- [x] **Trajectory test (user: "some sign may be that the hand is brought close to mouth then taken away
+  far")**, phonology notebook §12. The 8 hand-to-place distance curves (8 time steps) as the only
+  features: **1-NN 15.8% in order vs 7.6% for the places' averages**, 6.2% shuffled, 5.1% reversed. When
+  forward and reversed approach/withdraw codes differ in matching the gloss's pattern, forward wins 90%.
+  Consistent examples: SAD / SLEEP / BECAUSE withdraw from the forehead, YESTERDAY from the chin, FLOWER
+  approaches the chin. The 5-way discrete codes alone are weak (NMI ≈ 0.03): the information is in the
+  continuous curves, i.e. for a sequence model.
+- [ ] **Next (user): run `gislr.1.models.phonology-training.ipynb` top to bottom** (§2 trains all three at
+  once, §3 scores them); then Claude evaluates. Compare with `gru_phono_raw` ME_134 0.7632 and `gru` ME_132
   0.7517. Later: an ablation without non-manual + hand arrangement (−50 features); per-signer feature
   standardization; a TS port of the extractor for the web app if it wins.
 

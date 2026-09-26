@@ -893,6 +893,20 @@ ARCHS: dict[str, ArchSpec] = {
         "sb.recognize.phonology from all 543 landmarks, in sequence (TODO §3.10)",
         pipeline="phono130_v1",
     ),
+    "lstm_phono130": ArchSpec(
+        StreamingLSTM,
+        "StreamingLSTM",
+        True,
+        "StreamingLSTM on the 130 phonological features only (TODO §3.10)",
+        pipeline="phono130_v1",
+    ),
+    "cnn1d_phono130": ArchSpec(
+        CausalConv1D,
+        "CausalConv1D",
+        True,
+        "dilated causal Conv1d stack on the 130 phonological features only (TODO §3.10)",
+        pipeline="phono130_v1",
+    ),
     "bilstm_phono130": ArchSpec(
         BiLSTM,
         "BiLSTM",
