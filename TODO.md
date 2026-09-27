@@ -4786,15 +4786,45 @@ module shows up in `git diff` from this work.
   covered by at least one), 17,614/18,896 `test.csv` clips kept, **6,335 sequences built, 0 failed, 100/100
   round-trip checks exact**. Only the `sentence` split (not v1's `control` split — dropped as out of scope
   for now, can add with `compose.plan_control` later). No Kaggle upload yet.
+- [x] **Error analysis + retune + pose ablation (Claude, 2026-09-27, user's go-ahead).**
+  `docs/reports/recognition2-phonology-rules.md`. Two bugs found and fixed:
+  - **`major_location`'s "Hand"/"Head" checks used a median distance, not a min** (a brief touch was
+    washed out) — `Hand` was predicted 5/1,308 times against 108 true cases. Fixed to `np.nanmin`,
+    matching `contact`'s existing check.
+  - **The pose ablation's first `Arm` check compared a hand to its own (ipsilateral) elbow/wrist** — a
+    hand's own wrist landmark nearly coincides with its own pose wrist by anatomy, so it fired on almost
+    every clip (`Arm` predicted 729/1,414 times against ~24 true). Fixed to the *contralateral* elbow
+    (ASL-LEX's `Arm` means touching the *other*, passive arm), wrist dropped from the check. Also found
+    and fixed: the pose variant was silently using shoulder-width (several × larger than inter-eye
+    distance) as every threshold's scale unit, not just the pose-specific ones — every threshold is now
+    scaled by true inter-eye distance in both variants, so the comparison below isn't confounded.
+  - **Retuned `stage1-rules.json`** (`spread_t` 12→20, `amp_t` 0.08→0.04 + new `apt_amp_t` 0.15,
+    `flat_base_t` 40→25): `spread` +0.067 and `major_location` +0.019 (mostly the min-fix) clearly helped;
+    `flexion` −0.028 and `minor_location` −0.017 got *worse* on the full 233-gloss sample despite the
+    `flat_base_t` change fixing the 2 anecdotal cases it was based on — retuning against the same set
+    being evaluated isn't a held-out test, flagged as a methodology caveat. `repeated_movement` barely
+    moved (+0.001) despite the amplitude retune — likely a real ceiling from GISLR's short clips (~20
+    frames median), not a threshold problem.
+  - **Pose ablation, user's ask ("does pose add a significant benefit... or is discarding pose
+    feasible")**: same clips, thresholds, hands/face as primary signal in both. **Every hand-internal
+    parameter shows exactly 0 delta** (handshape, selected_fingers, flexion*, spread*, thumb_*,
+    ulnar_rotation, non_dominant_handshape, marked_handshape, sign_type, contact, minor_location) —
+    confirms pose isn't quietly doing more than intended. `major_location`'s new `Body`/`Arm` categories
+    fire correctly but too rarely to move the number (Δ −0.001; true Body/Arm are only 126/24 of 1,308).
+    **`movement` drops 0.492 → 0.377 (Δ −0.116) with pose** — its wrist-fallback (used when the hand
+    drops out of >50% of the nucleus, which happens **37% of the time** on a spot check, more than
+    expected) is a worse signal than even a gappy hand-centroid trajectory for this parameter, likely
+    because ASL-LEX's Movement is about the *hand's* path, not the wrist's. **Answer: discarding pose is
+    feasible — no parameter this pass covers benefits from it, and one is measurably hurt by the one
+    pose-based mechanism tried substantively.**
 - [ ] **Open, carried over from §12.9**: whether the ASL-LEX restriction should gate a future stage-2
-  model's vocabulary or stay a separate auxiliary dataset; whether/how to add pose back for the parameters
-  flagged degraded without it, now that the agreement table shows which ones actually suffered
-  (`second_minor_location`, `non_dominant_handshape` clearly; `major_location`'s Body/Arm categories are
-  untested since no clip in this sample needed them — worth checking on a larger sample). Stage 2
-  (features → gloss) is still not started.
-- [ ] **Next action**: user reviews the agreement table and `records.json`, decides whether any threshold
-  in `stage1-rules.json` needs recalibrating before this is treated as a finished finding, and whether to
-  proceed to error analysis on the near-chance parameters or move on to stage 2 design.
+  model's vocabulary or stay a separate auxiliary dataset. Stage 2 (features → gloss) is still not started.
+- [ ] **Not tried**: pose for `SecondMinorLocation`'s torso/arm sub-sites; a smarter movement fallback than
+  "swap to wrist entirely" (blending, or a higher absence threshold) — not pursued since the fallback
+  already looks like the wrong lever for `movement` specifically, per the finding above.
+- [ ] **Next action**: user reviews `docs/reports/recognition2-phonology-rules.md` and the records/agreement
+  files, decides whether to keep the no-pose design as primary (per the finding above) and whether to
+  proceed to stage 2 design or further error analysis.
 
 ---
 
