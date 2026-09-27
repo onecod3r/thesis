@@ -27,7 +27,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 
 | # | next action | where | why now |
 |---|---|---|---|
-| 0a | **§12.8 live camera fails on sentences (user, 2026-09-25).** Probes: low fps (repeated frames) → missed signs, jitter → extra signs, landscape framing → both; app-side interp + EMA + reframe measured (`live-streaming-gap.md`). Fix 3 (C1 v2 = C4/C5) built 2026-09-26, **trained 2026-09-27**: C4 canonical accuracy **0.7339** (above C1's 0.7188), C5 0.6795 — but v2's own judging criteria (clean/hard-cut GER, live-robustness) aren't measured yet. **Next (user): run `gislr.3.streaming.continuous-eval.ipynb` + `gislr.3.streaming.live-robustness.ipynb` on C4/C5.** Fix 2 (recorder) still open | §12.8 | the deployed model is unusable live until this is fixed |
+| 0a | **§12.8 live camera fails on sentences — DONE, C4 exported + deployed (2026-09-27).** Fix 3 (C1 v2 = C4/C5) built 2026-09-26, trained + judged + shipped 2026-09-27: **C4 wins clean GER (0.278 vs C1 0.293) and every live-robustness axis that matters** (`live_like` 0.592→**0.408**) — `continuous-v2.md` §7. **Live now**: https://signbridge.onecoder1.workers.dev serves C4 (3.48 MB TFLite, parity 1.4e-6). Two known misses, not blockers: hard-cut GER worse than C1 (0.634 vs 0.546), mirror still ~broken. **Next (user): first real camera check of the deployed C4** — no live browser test done this session. Fix 2 (recorder) still open | §12.8 | live-camera robustness fixed and shipped; needs a real-camera sanity check |
 | 0a2 | **§3.8 sign patterns**: the first variables gave no per-sign pattern; **with handshape/orientation/location/movement, every ASL-LEX parameter is recovered on unseen signs and templates reach 38.8% top-1 (was 4.9%)**; **B3 done: DTW over per-frame phonology 41.6% top-1, 15.2% from one example**, no training. **Follow-up built as §3.9 (see row 0a3)** | §3.8 | the user's current priority (2026-09-25: "start on the sign pattern first") |
 | 0a3 | **§3.9 phonology models, run 2026-09-25 + evaluated 2026-09-26: `gru_phono_raw` ME_134 = 0.7632 canonical, new best, streaming** (+1.2 over raw `gru`). **Next (user): finish §8e `bilstm_phono` (stopped at epoch 14; auto-resumes in place)**; then (Claude) the continuous port `gru_continuous_phono` + a Keras port of the front-end for web export. `docs/reports/phonology-models.md` | §3.9 | the first input change that beats the raw-landmark plateau on the current split |
 | 0a4 | **§3.10 phonology models, 2026-09-26:** `gru_phono130` 0.7487 ≈ raw `gru` on half the inputs; **exact streaming ensembles 0.7912 (2) / 0.8048 (3)**. **P1 (continuous phonology) failed on sentences: GER 0.587 vs C1 0.293** (feature-space composer ≠ real streams); CNN retrain 0.7330; all checkpoints on Kaggle. **Next: user saves the continuous-eval notebook; decides whether to build P1 v2** (landmark-space composition + real extractor) | §3.10 | phonology in the live app needs a continuous model that survives real context |
@@ -4323,14 +4323,32 @@ for possible solutions.
   - **Canonical isolated accuracy** (§8, `sb-evaluate`, same benchmark every registry run gets):
     **C4 0.7339 macro 0.7315 — above C1's 0.7188/0.7163** (C5 0.6795/0.6770, below C1). So on the one
     "judged the same way as everything else on the leaderboard" number, C4 already wins.
-  - **Not yet run**: the actual judging criteria from `continuous-v2.md` §4 (clean GER ≈ 0.293, hard-cut <
-    0.546, live-robustness probes) need `gislr.3.streaming.continuous-eval.ipynb` and
-    `gislr.3.streaming.live-robustness.ipynb` on C4/C5 — training finishing is necessary but not sufficient
-    to know if v2 fixed the live-camera problem.
-- [ ] **Next (user): run `gislr.3.streaming.continuous-eval.ipynb`, `gislr.3.streaming.live-robustness.ipynb`
-  and `gislr.3.streaming.window-ensemble.ipynb`** (adds the C4 / C4+C5 / C1+C4 arms and their D3 selections),
-  then `apps/web/tools/export.py assets` + build + deploy to get C4 variants in the app if it wins.
-  Judge by `continuous-v2.md` §4: clean GER ≈ 0.293, hard-cut < 0.546, `live_like` ≪ 0.592, mirror/aspect ≈ clean.
+- [x] **User ran `gislr.3.streaming.continuous-eval.ipynb` + `gislr.3.streaming.live-robustness.ipynb`
+  (2026-09-27) — C4 judged against `continuous-v2.md` §4, verdict in §7:**
+  - **Clean GER: exceeded** — C4 0.278 vs C1 0.293 (D3 collapse=True, evaluation signers,
+    `data/cache/gislr/continuous_eval/results/final_table.csv`). C2 0.298, C5 0.347, P1 0.587, C3 0.898.
+  - **Hard-cut GER: failed** — C4 0.634, worse than C1's 0.546 (C2 best at 0.513). Not investigated
+    further; logged as a known weakness of the shipped model.
+  - **Live-robustness: met decisively** (`data/cache/gislr/live_robustness/`) — `aspect_0.56` 0.651→0.305,
+    `scale_0.7` 0.375→0.285 (both land at C4's own clean number), `fps_15` 0.504→0.381, `jitter_0.01`
+    0.516→0.372, **`live_like` (combined worst case) 0.592→0.408**. `mirror` still ~broken for both
+    (0.990→0.962) — not claimed fixed.
+  - **Verdict: C4 replaces C1 as the deployed sign-recognition model** — wins clean GER and every
+    live-camera axis the live-camera failure (§1 of the report) was actually about; loses only hard-cut
+    (a synthetic zero-pause case, not what was being fixed) and mirror (unresolved by v2, pre-existing).
+- [x] **DONE (Claude, 2026-09-27): C4 exported and deployed.** The Keras/TFLite step-export for
+  `gru_continuous_norm` already existed (`sb.recognize.export.step`, `STEP_ARCHS` includes it — built in an
+  earlier session) — no new export code was needed, just calling it. `export_web(run_dir, decoder={"name":
+  "D3","collapsed":True,"nu":0.5,"min_len":4})` on run `1790435218`: **3.48 MB TFLite, parity max_prob_diff
+  1.43e-6, max_boundary_logit_diff 2.15e-6**. `pipeline.config.json`: `"run"` → `"C4"`, C4's variant given
+  its chosen decoder explicitly (no window-ensemble part file for it yet). `npm run build` (11/11 tests
+  pass) + `wrangler deploy` → **https://signbridge.onecoder1.workers.dev now serves C4**. `C5`/`C4+C5`/
+  `C1+C4` variants skipped by the asset pipeline (no D3 selection yet — needs
+  `gislr.3.streaming.window-ensemble.ipynb` re-run, unchanged from before). All 6 pending checkpoints
+  (C1/C2/C3/Copen/C4/C5) pushed to Kaggle via `sb-sync push --apply` (`bracu23101281/signbridge-gislr`,
+  new variations `gru-continuous-norm` for C4). **Not done this session**: a live browser/camera smoke
+  test of the deployed C4 — recommend the user do the first real camera check, same as every prior model
+  swap. D5 = D3 ∪ D1 decoder sweep on C4 stays open, not a blocker.
 - [?] **User proposal (2026-09-26):** instead of per-frame streaming, feed ~3 s windows (or the mean sign
   length) to two models offset by ~500 ms, combine their predictions, and fuse with an independent next-gloss
   model. Claude's assessment (from existing numbers, nothing new run):

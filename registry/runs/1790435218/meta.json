@@ -1,0 +1,181 @@
+{
+  "schema_version": 4,
+  "run_id": 1790435218,
+  "created": "2026-09-26T21:06:58",
+  "dataset": "gislr",
+  "architecture": "gru_continuous_norm",
+  "model_name": "ContinuousNormGRU",
+  "streaming": true,
+  "subset": "ME_132",
+  "coords": "xy",
+  "n_landmarks": 132,
+  "feature_dim": 264,
+  "n_classes": 250,
+  "n_params": 929045,
+  "split": {
+    "strategy": "stratified 80/20 (fixed, GISLR_Stratified-provided)",
+    "random_state": 42,
+    "n_val": 18896
+  },
+  "training": {
+    "regime": "continuous-v1",
+    "source": "gislr.1.models.continuous.ipynb",
+    "epoch_cap": 150,
+    "epochs_trained": 126,
+    "best_epoch": 114,
+    "early_stopped": true,
+    "finished": true,
+    "wall_time_min": 182.4
+  },
+  "hyperparameters": {
+    "loss": "per-frame CE over glosses+null (label smoothing, ramped sign weights) + boundary BCE",
+    "batch_size": 64,
+    "lr": 0.001,
+    "hidden_size": 256,
+    "num_layers": 2,
+    "dropout": 0.3,
+    "embed_dim": 256,
+    "cos_scale": 16.0,
+    "weight_decay": 0.0001,
+    "epochs": 150,
+    "grad_clip": 5.0,
+    "lr_factor": 0.5,
+    "lr_patience": 4,
+    "es_patience": 12,
+    "es_min_delta": 0.001,
+    "label_smoothing": 0.1,
+    "null_weight": 0.5,
+    "ramp_start": 0.3,
+    "boundary_weight": 0.5,
+    "landmark_subset": "ME_132",
+    "seed": 42,
+    "max_seq_len": null,
+    "num_workers": 0,
+    "precision": "AMP",
+    "composer": {
+      "p_trim": 0.5,
+      "trim_max": 0.2,
+      "p_speed": 0.5,
+      "speed": [
+        0.8,
+        1.5
+      ],
+      "p_hardcut": 0.25,
+      "p_noise": 0.3,
+      "noise_len": [
+        20,
+        90
+      ],
+      "augment": {
+        "p_geom": 0.8,
+        "scale": [
+          0.7,
+          1.35
+        ],
+        "aspect": [
+          0.55,
+          1.25
+        ],
+        "rotate_deg": 8,
+        "shift": 0.12,
+        "p_mirror": 0.5,
+        "p_jitter": 0.5,
+        "jitter": 0.008,
+        "p_hand_drop": 0.4,
+        "hand_drop": 0.2,
+        "p_fps": 0.3,
+        "fps_factor": [
+          2,
+          3
+        ]
+      },
+      "signs_per_seq": [
+        1,
+        16
+      ],
+      "gap_frames": [
+        0,
+        15
+      ],
+      "rest_frames": [
+        5,
+        30
+      ],
+      "p_lowered_rest": 0.7,
+      "rest_ramp_frames": 8,
+      "rest_default_drop": 0.3,
+      "hand_visible_max": 0.9,
+      "rest_jitter": 0.002,
+      "max_frames": 1500,
+      "boundary_before": 2,
+      "boundary_after": 1
+    },
+    "val_fraction": 0.05,
+    "held_out_glosses": []
+  },
+  "provenance": {
+    "git_commit": "23cfbb89fa5829b06a5fec7e2dd6e3f8f29348a6",
+    "git_branch": "main",
+    "git_dirty": true,
+    "code_dirty": false,
+    "dirty_code_paths": [],
+    "config_path": "experiments/recognition/configs/gislr.continuous.json",
+    "config_sha256": "sha256:571a7d8059658c0465d324001371066f2ebbdfc30472cabf28a483e5b1d33671",
+    "feature_pipeline": "clipbank_v1",
+    "feature_cache_key": "2d47c5837944dca0",
+    "source": {
+      "name": "gislr",
+      "kaggle_ref": "bracu23101281/gislr-stratified",
+      "version": null,
+      "n_videos": 75581,
+      "manifest": "train.csv",
+      "manifest_sha256": "sha256:1a1d3a1fa62e83e57ed4df30925c3aeee631910f960841f8bb877e3bbf7801b4",
+      "resolved_dir": "C:\\Users\\user2\\.cache\\kagglehub\\datasets\\bracu23101281\\gislr-stratified\\versions\\1"
+    },
+    "env": {
+      "python": "3.12.3",
+      "platform": "win32-AMD64",
+      "gpu": "NVIDIA GeForce RTX 4080 SUPER",
+      "cuda": "13.0",
+      "torch": "2.13.0+cu130",
+      "numpy": "2.5.1",
+      "pandas": "3.0.3",
+      "pyarrow": "24.0.0",
+      "scikit-learn": "1.9.0",
+      "mediapipe": "0.10.35"
+    },
+    "captured_at": "2026-09-26T21:06:58"
+  },
+  "metrics": {
+    "train_val_acc": 0.6929,
+    "eval_status": "canonical",
+    "overall_accuracy": 0.7339119390347163,
+    "macro_accuracy": 0.7315206319123984,
+    "median_class_accuracy": 0.7532051282051282,
+    "n_classes_below_50pct": 10
+  },
+  "checkpoints": {
+    "best": "best.pt",
+    "last": "last.pt"
+  },
+  "assets": {
+    "landmarks": "assets/landmarks.npy",
+    "history": "assets/history.json",
+    "per_class_csv": "assets/per_class_accuracy.csv",
+    "per_class_png": "assets/per_class_accuracy.png",
+    "eval_summary": "assets/eval_summary.json",
+    "val_predictions": "assets/val_predictions.npz",
+    "web_step_tflite": "export/web/model.tflite",
+    "web_manifest": "export/web/manifest.json"
+  },
+  "submission": {
+    "tested": true,
+    "platform": "local",
+    "submitted_at": "2026-09-27T01:06:10",
+    "public_score": 0.7339119390347163,
+    "private_score": null,
+    "reference": "gislr canonical eval",
+    "notes": "scored on gislr's held-out test split (18896 videos) via sb.recognize.evaluate \u2014 no external leaderboard"
+  },
+  "notes": "C4: C1 v2 (TODO 12.8 Fix 3): C1's GRU behind a per-frame stream normalization (hands re-slotted by pose wrist, shoulder-centred, shoulder-width scaled), trained on v2 streams: clip trim + speed (co-articulation), 25% hard-cut streams, noise blocks as null, up to 16 signs / 1500 frames, and camera augmentation (scale, aspect, rotation, shift, mirror, jitter, hand dropout, low fps). Continuous streams composed from train.csv (71801 clips; 3780 held out for selection, seed 42); held-out glosses: none. Selection metric = segment accuracy on validation streams, not the canonical isolated split."
+}

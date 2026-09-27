@@ -1,6 +1,6 @@
 {
   "_comment": "Sign -> speech in the browser (TODO §12.5/§12.6). The deployed settings, in one place. tools/export.py copies this into public/assets/pipeline.json with the model's hashes; the app reads only that file. Python is authoritative for every number here.",
-  "run": "C1",
+  "run": "C4",
   "corpus_version": "v1",
   "prior": {
     "order": 3,
@@ -17,10 +17,10 @@
     "_source": "docs/reports/sign-to-speech-downstream.md §2.2: beats the θ=0.3 floor on missed, wrong and extra signs and noise on the evaluation signers (GER 0.347 -> 0.320 clean, 0.580 -> 0.547 noisy); about 27 frames of delay on uncertain signs."
   },
   "variants": {
-    "C1": {"runs": ["C1"], "label": "C1 (GRU) — deployed", "decoder": {"name": "D3", "collapsed": true, "nu": 0.7, "min_len": 4}},
+    "C1": {"runs": ["C1"], "label": "C1 (GRU)", "decoder": {"name": "D3", "collapsed": true, "nu": 0.7, "min_len": 4}},
     "C2": {"runs": ["C2"], "label": "C2 (LSTM)"},
     "C1+C2": {"runs": ["C1", "C2"], "label": "C1 + C2 averaged per frame (best offline: GER 0.244)"},
-    "C4": {"runs": ["C4"], "label": "C4 (C1 v2: normalized input, augmented training)"},
+    "C4": {"runs": ["C4"], "label": "C4 (C1 v2: normalized input, augmented training) — deployed", "decoder": {"name": "D3", "collapsed": true, "nu": 0.5, "min_len": 4}, "_source": "continuous-eval final.json chosen[C4/D3/collapse=True]: GER 0.278 vs C1 0.293; wins live-robustness decisively (continuous-v2.md §7); loses hard-cut (0.634 vs C1 0.546, known)."},
     "C5": {"runs": ["C5"], "label": "C5 (C1 v2 streams, raw input)"},
     "C4+C5": {"runs": ["C4", "C5"], "label": "C4 + C5 averaged per frame"},
     "C1+C4": {"runs": ["C1", "C4"], "label": "C1 + C4 averaged per frame"}

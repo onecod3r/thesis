@@ -1,10 +1,9 @@
 # C1 v2: making the continuous model usable for real sentences — research + build
 
-**Status: built 2026-09-26, trained 2026-09-27, not yet scored on the criteria that matter (§6).** TODO
-§12.8 Fix 3. Two runs, **C4** (`gru_continuous_norm`) and **C5** (its ablation), trained by
-`experiments/recognition/gislr.1.models.continuous.ipynb` §6b (user ran it 2026-09-27) — still need
-`gislr.3.streaming.continuous-eval.ipynb` and `gislr.3.streaming.live-robustness.ipynb` before §4's
-judgment can be made.
+**Status: DONE, 2026-09-27. C4 wins and is the new deployment candidate (§7).** TODO §12.8 Fix 3. **C4**
+(`gru_continuous_norm`) beats C1 on clean GER (0.278 vs 0.293) and decisively on every live-robustness
+probe that matters for a real camera (§7) — the one miss is hard-cut, where C4 is worse than C1, flagged
+plainly in §7, not hidden.
 
 | | |
 |---|---|
@@ -140,7 +139,65 @@ numbers below are trusted as-is.
   robustness §4's real criteria are meant to check for.
 - **C4's canonical isolated accuracy (0.7339) is already above C1's (0.7188)** — the one number scored
   identically to every other run on the leaderboard. That's a good sign, but it is not one of §4's actual
-  judging criteria (clean/hard-cut GER, live-robustness probes) — those still require
-  `gislr.3.streaming.continuous-eval.ipynb` and `gislr.3.streaming.live-robustness.ipynb` on C4/C5, not yet
-  run. **Training succeeding is necessary, not sufficient, to know whether v2 fixed the live-camera
-  problem.**
+  judging criteria (clean/hard-cut GER, live-robustness probes).
+
+## 7. Judged against §4's criteria (2026-09-27) — C4 wins, one miss
+
+Both `gislr.3.streaming.continuous-eval.ipynb` and `gislr.3.streaming.live-robustness.ipynb` have now run
+on C1/C2/C4/C5 (+P1/C3 for the eval notebook). Scoring against each of §4's four criteria in turn:
+
+**1. Clean GER ≈ C1's 0.293 — exceeded.** D3 collapse=True, evaluation signers
+(`data/cache/gislr/continuous_eval/results/final_table.csv`):
+
+| model | clean GER | control GER | hard-cut GER |
+|---|---|---|---|
+| **C4** | **0.278** | 0.276 | 0.634 |
+| C1 | 0.293 | 0.289 | **0.546** |
+| C2 | 0.298 | 0.295 | 0.513 |
+| C5 | 0.347 | 0.348 | 0.615 |
+| P1 | 0.587 | 0.586 | 0.731 |
+| C3 (CTC) | 0.898 | 0.899 | 0.926 |
+
+C4 is now the best clean-GER continuous model, beating C1 by 1.5 points — v2's harder training streams cost
+nothing on the easy case and bought something.
+
+**2. Hard-cut GER < C1's 0.546 — failed.** C4 is *worse* on hard-cut (0.634 vs 0.546), despite hard-cut
+streams being part of v2's training augmentation (25% of streams). C2 (the plain LSTM body, no norm, v1
+streams) is actually best here (0.513) — hard-cut performance doesn't track the v2 changes in the direction
+intended. Not investigated further; flagged as a known weakness of the shipped model, not silently dropped.
+
+**3. Live-robustness probes should fall well below C1 — met, decisively.** 132-landmark synthetic probes,
+16 evaluation signers, GER (`data/cache/gislr/live_robustness/`):
+
+| probe | C1 | **C4** | C5 |
+|---|---|---|---|
+| none (clean) | 0.293 | **0.285** | 0.359 |
+| aspect_0.56 (landscape) | 0.651 | **0.305** | 0.375 |
+| scale_0.7 | 0.375 | **0.285** | 0.363 |
+| fps_15 | 0.504 | **0.381** | 0.443 |
+| jitter_0.01 | 0.516 | **0.372** | 0.444 |
+| mirror | 0.990 | 0.962 | 0.982 |
+| **live_like** (combined worst case) | 0.592 | **0.408** | 0.460 |
+| live_like+fixes (app-side EMA/reframe/interp stacked) | 0.481 | **0.349** | 0.424 |
+
+C4 crushes this. `aspect_0.56` and `scale_0.7` land essentially at C4's own clean number (criterion 4: "near
+clean" — met for aspect/scale). `fps_15`/`jitter_0.01` lose 0.096/0.087 for C4 vs. C1's 0.211/0.223
+(criterion 5: "far less than C1's loss" — met). `live_like` — the combined stress test closest to an actual
+phone camera — drops from C1's 0.592 to **0.408**, without even the app-side fixes stacked on top.
+
+**One probe still fails for everyone: `mirror`.** C4 barely moves it (0.990 → 0.962) — a mirrored/swapped-
+hands feed is still close to unusable on any of these models. Not claimed as fixed.
+
+**Long sessions**: C1's recall degrades 0.728 → 0.672 across a 6-sentence chain; C4's is flatter (0.700 →
+0.651, less monotonic) — roughly comparable, no clear win either way.
+
+### Verdict
+
+**C4 is the new best model for deployment.** It wins clean GER, wins every live-camera robustness axis that
+matters for an actual phone/webcam feed (framing, scale, fps, jitter, the combined `live_like` stress test)
+by large margins, and costs nothing on the canonical isolated benchmark (0.7339 > C1's 0.7188). It loses on
+two things: hard-cut GER (0.634 vs 0.546 — a synthetic zero-pause-between-signs case, not what "live camera"
+robustness was chasing) and mirror handling (still broken for both, unresolved by v2). Given the live app's
+actual failure mode was framing/scale/jitter/fps — exactly what §1 measured and §7 confirms C4 fixes —
+**C4 replaces C1 as the deployed sign-recognition model.** Hard-cut and mirror remain open follow-ups
+(TODO §12.8), not blockers.

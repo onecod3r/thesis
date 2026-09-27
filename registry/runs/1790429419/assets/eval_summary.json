@@ -1,0 +1,84 @@
+{
+  "overall_accuracy": 0.7187764606265876,
+  "macro_accuracy": 0.7162709786852179,
+  "n_val": 18896,
+  "worst5": [
+    [
+      "there",
+      0.2602739726027397
+    ],
+    [
+      "give",
+      0.2608695652173913
+    ],
+    [
+      "after",
+      0.30434782608695654
+    ],
+    [
+      "go",
+      0.358974358974359
+    ],
+    [
+      "ride",
+      0.43478260869565216
+    ]
+  ],
+  "best5": [
+    [
+      "owl",
+      0.9113924050632911
+    ],
+    [
+      "horse",
+      0.9358974358974359
+    ],
+    [
+      "gum",
+      0.9358974358974359
+    ],
+    [
+      "uncle",
+      0.9382716049382716
+    ],
+    [
+      "shhh",
+      0.9390243902439024
+    ]
+  ],
+  "n_classes_below_50pct": 15,
+  "median_class_accuracy": 0.7341772151898734,
+  "provenance": {
+    "git_commit": "eac879e7a574da1e050d21b403613a7f6bbd5853",
+    "git_branch": "main",
+    "git_dirty": true,
+    "code_dirty": false,
+    "dirty_code_paths": [],
+    "config_path": null,
+    "config_sha256": null,
+    "feature_pipeline": "base_v1",
+    "feature_cache_key": null,
+    "source": {
+      "name": "gislr",
+      "kaggle_ref": "bracu23101281/gislr-stratified",
+      "version": null,
+      "n_videos": 18896,
+      "manifest": "train.csv",
+      "manifest_sha256": "sha256:1a1d3a1fa62e83e57ed4df30925c3aeee631910f960841f8bb877e3bbf7801b4",
+      "resolved_dir": "C:\\Users\\user2\\.cache\\kagglehub\\datasets\\bracu23101281\\gislr-stratified\\versions\\1"
+    },
+    "env": {
+      "python": "3.12.3",
+      "platform": "win32-AMD64",
+      "gpu": "NVIDIA GeForce RTX 4080 SUPER",
+      "cuda": "13.0",
+      "torch": "2.13.0+cu130",
+      "numpy": "2.5.1",
+      "pandas": "3.0.3",
+      "pyarrow": "24.0.0",
+      "scikit-learn": "1.9.0",
+      "mediapipe": "0.10.35"
+    },
+    "captured_at": "2026-09-27T01:05:17"
+  }
+}

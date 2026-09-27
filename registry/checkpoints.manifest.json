@@ -4,7 +4,7 @@
     "backend": "kaggle",
     "location": "kaggle://models/bracu23101281/signbridge-gislr/pyTorch"
   },
-  "updated": "2026-09-26T17:07:12",
+  "updated": "2026-09-27T14:05:56",
   "objects": {
     "1784385530/best.pt": {
       "run_id": 1784385530,
@@ -770,6 +770,60 @@
       "backend": "kaggle",
       "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru-continuous-phono130/1/best.pt",
       "uploaded_at": "2026-09-26T17:07:12"
+    },
+    "1790429419/best.pt": {
+      "run_id": 1790429419,
+      "file": "best.pt",
+      "bytes": 11163473,
+      "sha256": "675ecbd506748fa34f474db321fcf5da726803856b664a0a6001e82fc1e83e48",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru-continuous/5/best.pt",
+      "uploaded_at": "2026-09-27T14:04:36"
+    },
+    "1790430959/best.pt": {
+      "run_id": 1790430959,
+      "file": "best.pt",
+      "bytes": 14345553,
+      "sha256": "06131c9495fa5cffe3158b9ebdb3c5e50973295a723313de9286eebc9fcc9cc5",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/lstm-continuous/3/best.pt",
+      "uploaded_at": "2026-09-27T14:04:53"
+    },
+    "1790432253/best.pt": {
+      "run_id": 1790432253,
+      "file": "best.pt",
+      "bytes": 11153461,
+      "sha256": "fe824f7f9031dbabc4986f99fa22201c1aee2a7aac715ef93f0cbf9e6b48949d",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru-continuous/6/best.pt",
+      "uploaded_at": "2026-09-27T14:05:08"
+    },
+    "1790433679/best.pt": {
+      "run_id": 1790433679,
+      "file": "best.pt",
+      "bytes": 11164561,
+      "sha256": "dc6949a81b0ad5d46ba88dde7e1138d39dc2d5587efacf57a23e08526fc5bd02",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru-continuous/7/best.pt",
+      "uploaded_at": "2026-09-27T14:05:23"
+    },
+    "1790435218/best.pt": {
+      "run_id": 1790435218,
+      "file": "best.pt",
+      "bytes": 11184337,
+      "sha256": "61e838d37c1f4c20019b7867d3dc57dde502034668eacdd280a0adbcb85065a0",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru-continuous-norm/1/best.pt",
+      "uploaded_at": "2026-09-27T14:05:40"
+    },
+    "1790435219/best.pt": {
+      "run_id": 1790435219,
+      "file": "best.pt",
+      "bytes": 11164497,
+      "sha256": "c76c28c4cb63e11bd07afb750b9ff46e95bcbdf5d0de2f5671a97ffc2d7fa1a7",
+      "backend": "kaggle",
+      "remote_key": "bracu23101281/signbridge-gislr/pyTorch/gru-continuous/8/best.pt",
+      "uploaded_at": "2026-09-27T14:05:56"
     }
   }
 }
