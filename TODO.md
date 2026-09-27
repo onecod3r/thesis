@@ -4378,6 +4378,48 @@ Related: §8 (sentence-level data for an LLM — 12.1's corpus is the first
 sentence-level artifact in the repo, though synthetic), §11 (reset
 mechanism), §10.2 (livestream mode).
 
+### 12.9 Phonology-first pipeline proposal: critique + open questions (2026-09-27, discussion only)
+
+**User's proposal:** MediaPipe landmarks → centered/jitter-tolerant coords → stage 1 (frame-by-frame
+phonological-feature detector) → buffered ~1-2s → stage 2 (feature-sequence → gloss, with memory of past
+context) → LLM (gloss → sentence with tense/negation/question, also with memory) → TTS. Training data: a
+new GISLR sentence dataset restricted to glosses also in ASL-LEX.
+
+- [x] **Critiqued (Claude, 2026-09-27):** full write-up in `docs/reports/phonology-pipeline-proposal.md`.
+  Headline findings:
+  - **Centering on the nose in frame 1 rejected by the user** — doesn't track sustained motion, and the
+    nose is a bad anchor point (head movement without translation, frequent occlusion at face-located
+    signs). Existing per-frame mid-shoulder anchor (`phonology.py`) + a One Euro filter (not yet built) is
+    the right fix for jitter, not the anchor's reference point.
+  - **Stage 1 as a *learned* per-frame detector has no training signal** (no per-frame phonology labels
+    exist) and can't emit dynamic parameters (movement, repetition, flexion/spread change) as true
+    per-frame values — those are whole-sign properties in the existing `codes()` implementation.
+  - **Revised stage 1 (rule/definition-based, variable window per rule) resolves the training-signal
+    problem** and is a reasonable online implementation of Liddell & Johnson's hold-movement-hold structure.
+    Surfaces new work: non-manual grammatical markers (brow raise = question, etc.) have no ASL-LEX ground
+    truth at all (lexical-only, manual-only) and no annotated source yet exists to validate them.
+  - **"Feed a buffered array every 1-2s to stage 2" was already tested and lost decisively**:
+    `window-ensembles.md` ran this exact scheme (1-3s windows, two models offset ~500ms + prior) against
+    the deployed per-frame decoder — GER 0.523 (1s) to 0.777 (3s) vs. 0.276 for per-frame. A **per-frame**
+    ensemble (two continuous models, same timestep, averaged) is the actual best result there (0.244) —
+    the "combine models" instinct is right, the "batch every 1-2s" part is wrong.
+  - **A continuous phonology model (`P1`) was already built and failed on real sentences** (GER 0.587 vs
+    C1's 0.293, `phonology-models.md` §9) — not because phonology features are weak (isolated accuracy
+    0.726, above C1's 0.719) but a train/test mismatch (synthetic feature-space composer vs. the real
+    extractor at eval). Fix recorded but not built: compose training streams in landmark space.
+  - **Gloss-history context/prior already exists** (`sb.recognize.continuous.fuse`, trigram prior) — the
+    "how much memory" question is a sweep of an existing parameter, not a new mechanism, for the recognizer
+    side. LLM sentence-memory is separate and mostly unbuilt.
+  - **Restricting the sentence dataset to ASL-LEX-covered glosses cuts 17 GISLR signs** (`say`, `look`,
+    `every`, `snack`, `puzzle`, ... — TODO §3.8/§3.10) if it gates vocabulary rather than only an auxiliary
+    phonology loss — not yet decided which. `GISLR-Sentences` v1 already exists, unfiltered.
+- [ ] **Open questions for the user** (report §8): event timestamping convention, whether the ASL-LEX
+  restriction gates vocabulary or just an auxiliary loss, stage 2's input contract (dense per-frame vector
+  with event slots vs. event-driven), whether LLM memory can reuse the recognizer's existing history tuple,
+  and whether to fix P1's landmark-space composition before building a new continuous phonology model.
+- [ ] **Not started**: nothing in this proposal has been built. Next step is the user's answers to the
+  open questions above, then a build plan.
+
 ---
 
 ## 13. Speech → Sign: the merged Maimuna/Raiyan pipeline (2026-09-24, new) — current goal: speech → gloss
