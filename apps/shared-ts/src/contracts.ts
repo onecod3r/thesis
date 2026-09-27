@@ -20,6 +20,20 @@ export interface StepManifest {
   sha256: Record<string, string>;
 }
 
+/** `models/<run>/manifest.json` for an isolated (whole-sign) classifier, written by
+ * `sb.recognize.export.step.export_web_isolated`. No cosine head/null class/boundary: the step
+ * model outputs class probabilities directly, so there is no `classes.f32`/`embed_dim`/`cos_scale`. */
+export interface IsolatedManifest {
+  format: "signbridge-web-isolated/1";
+  run_id: number;
+  architecture: string;
+  landmarks: number[];
+  coords: "xy" | "xyz";
+  state_shape: [number, number];
+  glosses: string[];
+  sha256: Record<string, string>;
+}
+
 export interface DecoderSettings {
   name: string;
   collapsed: boolean;

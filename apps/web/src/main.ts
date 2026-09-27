@@ -17,6 +17,7 @@ import { bundleBase } from "./models.ts";
 import { Holistic } from "./pipeline/holistic.ts";
 import type { HolisticResult } from "./pipeline/holistic.ts";
 import { NgramPrior } from "./pipeline/prior.ts";
+import { IsolatedRecognizer, IsolatedSession } from "./pipeline/isolated.ts";
 import { Ensemble, Recognizer } from "./pipeline/recognizer.ts";
 import type { StepModel } from "./pipeline/recognizer.ts";
 import { Clock, glossErrors, Session } from "./pipeline/session.ts";
@@ -63,6 +64,9 @@ const ui = {
   bodyInView: $<HTMLElement>("body-in-view"),
   pNull: $<HTMLElement>("p-null"),
   sentences: $<HTMLOListElement>("sentences"),
+  isolatedMode: $<HTMLInputElement>("isolated-mode"),
+  isolatedSection: $<HTMLElement>("isolated-section"),
+  isolatedSigns: $<HTMLOListElement>("isolated-signs"),
   check: $<HTMLElement>("check"),
   checkSummary: $<HTMLParagraphElement>("check-summary"),
   checkRows: $<HTMLTableSectionElement>("check-rows"),
@@ -85,6 +89,24 @@ interface App {
 let app: App;
 let running = false;
 let stopRequested = false;
+let isolatedSession: IsolatedSession | null = null;
+let isolatedLoading: Promise<IsolatedSession> | null = null;
+
+/** Lazy: the isolated-sign model only loads once the checkbox is actually used. */
+async function getIsolatedSession(): Promise<IsolatedSession> {
+  if (isolatedSession) return isolatedSession;
+  isolatedLoading ??= IsolatedRecognizer.load(ASSETS, `${WASM}/litert/`, "models/gru_phono_raw").then(
+    (rec) => (isolatedSession = new IsolatedSession(rec)),
+  );
+  return isolatedLoading;
+}
+
+function showIsolatedGuess(gloss: string, conf: number, reason: "hand_left" | "stable"): void {
+  const li = document.createElement("li");
+  const why = reason === "hand_left" ? "hand left frame" : "held steady";
+  li.textContent = `${gloss} (${(conf * 100).toFixed(0)}%, ${why})`;
+  ui.isolatedSigns.prepend(li);
+}
 
 function setStatus(text: string, error = false): void {
   ui.status.textContent = text;
@@ -371,6 +393,7 @@ async function ensureHolistic(): Promise<Holistic> {
 async function runLive(kind: "camera" | "file"): Promise<void> {
   const holistic = await ensureHolistic();
   holistic.restart();
+  isolatedSession?.reset();
   const video = ui.video;
   ui.replayCard.hidden = true;
   let stream: MediaStream | null = null;
@@ -435,6 +458,11 @@ async function runLive(kind: "camera" | "file"): Promise<void> {
         ui.bodyInView.textContent = nobody ? "no" : "yes";
         if (nobody && !wasEmpty) app.rec.reset();
         wasEmpty = nobody;
+        if (ui.isolatedMode.checked && isolatedSession) {
+          const handPresent = !!(res.leftHandLandmarks?.[0]?.length || res.rightHandLandmarks?.[0]?.length);
+          const guess = await isolatedSession.feed(frame, handPresent);
+          if (guess) showIsolatedGuess(guess.gloss, guess.conf, guess.reason);
+        }
         ui.waiting.textContent = nobody ? "No one in view." : ui.waiting.textContent;
         const k = ui.resample.checked ? clock.ticks(mediaTime) : 1;
         for (let i = 0; i < k; i++) {
@@ -599,6 +627,10 @@ async function main(): Promise<void> {
   }).catch(() => undefined);
   ui.source.onchange = syncSource;
   ui.file.onchange = () => setStatus(ui.file.files?.[0] ? `Video: ${ui.file.files[0].name}. Press Start.` : "No file chosen.");
+  ui.isolatedMode.onchange = () => {
+    ui.isolatedSection.hidden = !ui.isolatedMode.checked;
+    if (ui.isolatedMode.checked) void getIsolatedSession().catch((e) => setStatus(`Individual sign model: ${String(e)}`, true));
+  };
   ui.start.onclick = () => void start();
   ui.stop.onclick = () => {
     stopRequested = true;

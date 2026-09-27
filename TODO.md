@@ -4846,6 +4846,54 @@ module shows up in `git diff` from this work.
 
 ---
 
+## 15. Individual sign recognition mode — DONE, deployed 2026-09-27
+
+**User ask**: deploy the model that scores best for individual (isolated) sign recognition, not the
+continuous C4 already live, and add a custom stop condition — a sign is complete when the hand leaves the
+frame — then also commit early if the top-1 guess has already stabilized ("if a word is candidate for best
+next guess and the same sign is repeated then the sign should be selected right away").
+
+- [x] **Model**: `gru_phono_raw` / ME_134, run `1790355555`, canonical accuracy **0.7632** — the leaderboard
+  #1 for isolated recognition (vs `gru`/ME_132's 0.7517, the best plain-raw-landmark model, already live as
+  part of C4). User explicitly chose this over the cheaper option (plain `gru`, which already had a Keras
+  export path) knowing it needed new export engineering, same in kind as C4's `StreamNormFrontend` Keras port.
+- [x] **New export path (Claude, 2026-09-27)**: `PhonologyFrontend` had no Keras/TFLite port at all (only
+  `gru`/`lstm`/`bilstm`/`cnn1d` are in `sb.recognize.export.keras`'s `BUILDERS`). Added `_phono_tf` to
+  `sb.recognize.export.step` — a faithful TF-ops port of `PhonologyFrontend.forward` (`mode="phono+raw"`):
+  handshape/orientation/location per hand, both elbow angles, raw normalized xy — verified against PyTorch's
+  own `forward_all` on 200 synthetic NaN-injected frames, **max prob diff 1.19e-6**. One real gotcha:
+  `tf.linalg.cross` has no TFLite builtin kernel (`'tf.Cross' op is neither a custom op nor a flex op`) —
+  replaced with the explicit 3-vector cross-product formula, which converts to builtin MUL/SUB.
+  `ISOLATED_STEP_ARCHS`/`_build_isolated_step_module`/`export_web_isolated` are a parallel, simpler path to
+  the continuous family's: `StreamingGRU`'s head is a plain `Sequential(LayerNorm, Dropout, Linear)` softmax
+  classifier (no cosine head, no null class, no boundary signal), so the classifier weights bake straight
+  into the graph — no external `classes.f32`/class-matrix step needed. Exported: **3.83 MB TFLite**.
+- [x] **Stop condition, browser side** (`apps/web/src/pipeline/isolated.ts`, new): two commit triggers, either
+  resets the recurrent state for the next sign —
+  1. **Hand-out-of-frame** (the user's primary ask): once a hand has been seen, 4 consecutive frames with
+     neither hand detected (from the raw Holistic result, not re-derived from landmark values) ends the sign.
+  2. **Stable repeat** (the user's follow-up ask): if the top-1 class hasn't changed for 8 frames and its
+     probability clears 0.6, commit immediately rather than waiting for the hand to leave — a confidently
+     held sign doesn't need to wait out the whole gesture.
+  A 12-frame refractory window after any commit stops trigger 2 from firing twice on one still-held pose.
+  These four numbers (4/8/0.6/12) are first-guess constants, not tuned against any held-out data — flagged
+  as a follow-up, not a validated choice.
+- [x] **Wired into the existing sign→speech page** (`index.html`, `main.ts`), additively — a new "Individual
+  sign mode" checkbox that runs a second, independent `IsolatedSession` alongside the existing continuous
+  C4 pipeline, appending committed guesses to a new "Individual signs" list. Zero cost when unchecked; the
+  model is lazy-loaded on first use. `npm test` (11/11) and `npm run build` pass; deployed via
+  `wrangler deploy` — **https://signbridge.onecoder1.workers.dev**.
+- [ ] **Not done**: the 4/8/0.6/12 constants are untested against real footage or any held-out streams (no
+  ground truth exists for "when should a sign commit" the way GISLR has ground truth for classification) —
+  first real-camera check is the user's, same as every other model swap. No offline evaluation of this
+  mode's end-to-end accuracy (isolated per-clip accuracy is `gru_phono_raw`'s own 0.7632, but the stop-
+  condition logic itself is unverified against live footage). `apps/web/tools/export.py`'s `assets()`
+  pipeline doesn't yet know about this model (it was placed in `public/assets/models/gru_phono_raw/`
+  directly, not through the Python asset pipeline) — fine since nothing else overwrites that path, but a
+  future `assets()` run won't regenerate it either if the export changes.
+
+---
+
 ## Backlog / Someday
 
 - [ ] **Layered end-to-end model (user, 2026-09-24, future work):** group the recognizer and

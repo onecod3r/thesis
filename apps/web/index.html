@@ -47,6 +47,8 @@
         <label><input id="auto-speak" type="checkbox" checked /> Speak confident sentences automatically</label>
         <label>Voice <select id="voice"></select></label>
         <label id="llm-wrap" hidden><input id="llm" type="checkbox" /> English by LLM (edge; rules offline otherwise)</label>
+        <label title="A separate, higher-accuracy isolated classifier (gru_phono_raw). Commits a word when the hand leaves the frame, or right away once its guess has held steady.">
+          <input id="isolated-mode" type="checkbox" /> Individual sign mode (commit on hand-out-of-frame or a stable repeat)</label>
       </div>
       <p id="variant-note" class="note"></p>
     </section>
@@ -83,6 +85,11 @@
     <section>
       <h2>Sentences</h2>
       <ol id="sentences" class="sentences" reversed></ol>
+    </section>
+
+    <section id="isolated-section" hidden>
+      <h2>Individual signs</h2>
+      <ol id="isolated-signs" class="sentences" reversed></ol>
     </section>
 
     <section id="check" class="check" hidden>
