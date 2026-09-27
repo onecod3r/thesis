@@ -1,0 +1,20 @@
+{
+  "_comment": "recognition_2, TODO §14 -- gislr.0.dataset.aslex-sentences.ipynb. ASL-LEX-restricted variant of GISLR-Sentences (experiments/recognition/configs/gislr.sentences.json): same corpus wording and composer, filtered to the 233/250 glosses that map into ASL-LEX. Every tunable of the build lives here, never in a cell.",
+  "dataset_version": "v1",
+  "corpus_version": "v1",
+  "seed": 42,
+  "source_split": "test",
+  "synth": {
+    "gap_frames": [2, 10],
+    "rest_frames": [10, 30],
+    "rest_jitter": 0.002
+  },
+  "planner": {
+    "reuse_penalty": 2.0,
+    "repeat_penalty": 0.05,
+    "length_bonus": 0.3,
+    "pressure_weight": 0.3
+  },
+  "n_roundtrip_checks": 100,
+  "kaggle_handle": null
+}

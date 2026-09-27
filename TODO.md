@@ -4713,6 +4713,69 @@ deployment covers both directions; `apps/` gains a speech → sign surface.
 
 ---
 
+## 14. Recognition v2: ASL-LEX-complete rule-based phonology (no pose) — new, built + run 2026-09-27
+
+Follows the critique in §12.9/`docs/reports/phonology-pipeline-proposal.md`. **User's ask (2026-09-27):**
+build two things as a deliberately isolated workstream ("recognition_2") that never edits any existing
+`sb.recognize` module, architecture, or config — only imports them read-only — so this can be judged on
+its own without risking the existing recognition pipeline: (1) a **rule-based**, **pose-free** engine
+covering **all 18** ASL-LEX 2.0 phonological parameters ("use all features of ASL-LEX, no subset"),
+validated against ASL-LEX's own per-gloss ground truth, restricted to the 233/250 GISLR glosses that map
+into ASL-LEX; (2) a GISLR sentence dataset restricted to the same 233 glosses.
+
+**Isolation**: new subpackage `packages/sb-recognize/src/sb/recognize/recognition2/` (inside the existing
+`sb-recognize` package, not a new workspace member), new experiments domain `experiments/recognition2/`.
+Confirmed after building: no file under `experiments/recognition/` or any other existing `sb.recognize.*`
+module shows up in `git diff` from this work.
+
+- [x] **Built + run (Claude, 2026-09-27) — rule engine:** `sb.recognize.recognition2.rules` (no-pose
+  extraction: face-centroid anchor instead of mid-shoulder, inter-eye distance instead of shoulder width
+  for scale; per-parameter rules targeting ASL-LEX's own category strings directly, checked against
+  `signdata.csv`'s actual value sets; a data-driven Handshape lookup built from the *entire* ASL-LEX
+  lexicon, keyed by (SelectedFingers, Flexion, Spread, ThumbPosition, ThumbContact) since that's exactly
+  how signdataKEY.csv defines Handshape) + `sb.recognize.recognition2.validate` (per-gloss ASL-LEX ground
+  truth lookup + a 3-column agreement table: coverage / agreement / chance, kept separate so a low number
+  is legible as "pose-unreachable" vs. "wrong"). Config `experiments/recognition2/configs/stage1-rules.json`
+  (every threshold, never in a cell). Notebook `experiments/recognition2/gislr.1.pipeline.stage1-rules.ipynb`
+  — I ran it myself end to end (deterministic, no training), 6 clips/gloss, all 233 mapped glosses, 1,164–1,326
+  clips scored per parameter depending on ground-truth availability.
+- [x] **Result — full 18-parameter agreement table** (`data/cache/gislr_aslex_rules/agreement.csv`),
+  agreement / chance:
+  - **Well above chance**: `ulnar_rotation` 0.855/0.5, `spread_change` 0.764/0.5, `thumb_contact`
+    0.702/0.5, `flexion_change` 0.662/0.5, `sign_type` 0.660/0.2, `thumb_position` 0.626/0.5,
+    `selected_fingers` 0.469/0.111 (4x chance), `movement` 0.493/0.167 (3x chance), `major_location`
+    0.456/0.2, `minor_location` 0.266/0.034 (~8x chance, but only 27% coverage), `handshape` 0.133/0.026
+    (5x chance, but only 39% coverage, and bounded by the sub-feature rules it's looked up from).
+  - **Near or below chance**: `marked_handshape` 0.590/0.5, `contact` 0.577/0.5, `repeated_movement`
+    0.531/0.5, `spread` 0.487/0.5, `flexion` 0.302/0.167 (only ~1.8x chance despite 6 categories).
+  - **Structurally unreachable without pose, as predicted**: `second_minor_location` 0% coverage (never
+    attempted), `non_dominant_handshape` 0.4% coverage (2 clips total — most scored signs are one-handed).
+  - Matches the pattern the plan predicted: coarse/binary parameters read far better than fine-grained
+    ones (Handshape 39-way, MinorLocation 29-way, SecondMinorLocation 21-way, NonDominantHandshape 31-way).
+  - **Not yet done**: no error analysis on *why* `repeated_movement`/`spread`/`flexion` sit near chance —
+    could be a genuine detection failure or a miscalibrated threshold in `stage1-rules.json`; `records.json`
+    (every scored clip's truth/prediction) is saved for this.
+- [x] **Built + run (Claude, 2026-09-27) — ASL-LEX-restricted sentence dataset:**
+  `sb.recognize.recognition2.dataset` (filters the existing, unmodified `sequences.corpus`/`sequences.compose`
+  — built in landmark space from the start, so it does not carry `P1`'s feature-space composer mismatch,
+  `phonology-models.md` §9). Config `experiments/recognition2/configs/gislr.aslex-sentences.json`. Notebook
+  `experiments/recognition2/gislr.0.dataset.aslex-sentences.ipynb` — ran the **full** build myself (fast
+  enough, no training): 233/250 glosses mapped, 1,491/1,757 corpus sentences survive (all 233 glosses still
+  covered by at least one), 17,614/18,896 `test.csv` clips kept, **6,335 sequences built, 0 failed, 100/100
+  round-trip checks exact**. Only the `sentence` split (not v1's `control` split — dropped as out of scope
+  for now, can add with `compose.plan_control` later). No Kaggle upload yet.
+- [ ] **Open, carried over from §12.9**: whether the ASL-LEX restriction should gate a future stage-2
+  model's vocabulary or stay a separate auxiliary dataset; whether/how to add pose back for the parameters
+  flagged degraded without it, now that the agreement table shows which ones actually suffered
+  (`second_minor_location`, `non_dominant_handshape` clearly; `major_location`'s Body/Arm categories are
+  untested since no clip in this sample needed them — worth checking on a larger sample). Stage 2
+  (features → gloss) is still not started.
+- [ ] **Next action**: user reviews the agreement table and `records.json`, decides whether any threshold
+  in `stage1-rules.json` needs recalibrating before this is treated as a finished finding, and whether to
+  proceed to error analysis on the near-chance parameters or move on to stage 2 design.
+
+---
+
 ## Backlog / Someday
 
 - [ ] **Layered end-to-end model (user, 2026-09-24, future work):** group the recognizer and

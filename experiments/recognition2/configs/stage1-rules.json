@@ -1,0 +1,21 @@
+{
+  "_comment": "recognition_2, TODO §14 -- gislr.1.pipeline.stage1-rules.ipynb. Every tunable of the rule engine lives here, never in a cell. Units: lengths/velocities are multiples of inter-eye distance (no pose, so no shoulder width); angles in degrees.",
+  "ext_t": 0.90,
+  "thumb_open_t": 0.60,
+  "aperture_t": 0.30,
+  "spread_t": 12.0,
+  "head_t": 0.35,
+  "hand_t": 0.9,
+  "contact_t": 0.09,
+  "still_t": 0.40,
+  "amp_t": 0.08,
+  "flex_change_t": 40.0,
+  "apert_change_t": 0.50,
+  "ori_change_t": 60.0,
+  "spread_change_t": 12.0,
+  "fully_open_t": 20.0,
+  "flat_base_t": 40.0,
+  "curved_t": 90.0,
+  "closed_t": 150.0,
+  "nucleus_trim": 0.2
+}
