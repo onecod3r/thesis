@@ -40,6 +40,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 | 0g | §12.5 **sign → speech camera overlay improved 2026-09-25** (user: "should show the video along with mediapipe overlay live"). Audit found the video + overlay were already both showing (verified live with headless Chrome + a fake camera device) — the overlay was just barely visible (2px pale dots, no pose skeleton). Rewrote `drawFrame` with a bright pose skeleton over the model's own ME-126 upper-body landmarks and clearer hand markers; `npm test` (11/11) and the 24/24 browser replay check still pass | §12.5 | the live camera view now reads as an obviously "live" overlay, not just technically-present dots |
 | 0h | §12.8 **deployed app redeployed + every-other-frame detection, 2026-09-25** (user: "the deployed app is not working... video feed should be shown... send every other frame to the model"). The 0g overlay fix was in `src/` but `signbridge.onecoder1.workers.dev` predated the redeploy — rebuilt + `wrangler deploy` (only 2/89 assets changed). Added a "detect every other frame" toggle: halves `holistic.detect` cost, filling the gap by **interpolating** toward the next real frame (1 tick latency) instead of repeating one — same fix as §12.8's open "interpolate in `Clock`" item. `npm run build` + `npm test` (11/11) pass | §12.8 | live app was stale, not broken; now redeployed with a real perf win that (per the probes above) shouldn't cost GER the way frame-dropping does |
 | 0i | **Redeploy the web app (user): `cd apps/edge && npm run deploy`.** The live speech page has never loaded T5 (it fetched `/t5/manifest.json`, 404; fixed 2026-09-26, verified locally). Models are now public on Kaggle (MIT) and `?models=kaggle` loads them straight from there | §9.10, §13 | the deployed speech → gloss runs rules only until then |
+| 0j | **§12.10 web app UI/UX design delivered 2026-09-27** (Claude Design artifact, not code): 3 mockups (Home, Sign→Speech desktop, Sign→Speech mobile) rooted in the real `apps/web` feature set. **Next (user): review the artifact and decide whether/what to implement in `apps/web`** — no app code touched this session | §12.10 | design review is a cheap gate before any UI implementation work |
 | ~~1~~ | ~~Restart the Jupyter kernels, then run one short training~~ — **effectively done**: the four §12.3 continuous runs trained end to end through the restructured stack on 2026-09-23 | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
 | 2 | ~~Run the first checkpoint backup~~ — **done 2026-09-04**: 42 on Kaggle, local copies pruned after hash verification. Model confirmed **private** 2026-09-24 | §9.3 | was the last single-copy risk |
 | 3 | **Notebook §5b: the three-arm AWP/LateDropout ablation** (~30 min) | §4.2 | the 1st-place port has collapsed at epoch 15 twice and neither switch has been run alone, so the recipe is still unmeasured |
@@ -4459,6 +4460,36 @@ new GISLR sentence dataset restricted to glosses also in ASL-LEX.
   and whether to fix P1's landmark-space composition before building a new continuous phonology model.
 - [ ] **Not started**: nothing in this proposal has been built. Next step is the user's answers to the
   open questions above, then a build plan.
+
+### 12.10 Web app visual design — mockups delivered 2026-09-27
+
+**User ask:** "design a good web app for the project" — a UI/UX design pass, not code. Session ran in a
+cloud container (no code editing requested), so the deliverable is a Claude Design (canvas) Artifact, not
+a repo change: <https://claude.ai/artifact/DuuUMVMPf7MUCHyxMiy6Zt> (private; not shared).
+
+- [x] **Rooted in the real app** (`apps/web/README.md`), not invented from scratch: mocked the actual
+  documented features — recognizer variants (C1/C2/C1+C2), the lag-2 lattice uncertainty UI ("?" glosses,
+  "Speak anyway"), mirror/landmark-overlay toggles, input source (camera/video file/held-out replay),
+  individual sign mode, live session stats (fps, latency, hand-label agreement) — and real numbers from
+  `README.md` (0.7632 canonical, gru_phono_raw/ME_134) and `apps/web/README.md` (C1+C2 GER 0.244 vs 0.276,
+  24/24 parity streams).
+- [x] **Committed to an original aesthetic** (no design system attached to this account, so built one per
+  `craft.md`'s "no brand governs" guidance): warm paper/ink neutrals, a single teal accent for
+  confident/active state and amber for uncertain/attention state (blue↔orange, not red↔green, per the
+  accessibility contrast rule), Source Serif 4 display over IBM Plex Sans UI text. Deliberately not the
+  Anthropic Clay/Ivory palette — this is signbridge's own product identity, not a Claude surface.
+  Decision made unilaterally (auto-mode, no aesthetic references given); flagged here as reversible if the
+  user wants a different direction.
+  3 artboards: **Home** (hero, stats, 4-step pipeline explainer), **Sign → Speech desktop** (camera panel +
+  live captions + a working interactive sidebar: recognizer-variant picker, individual-sign toggle, input-source
+  picker all have real click state), **Sign → Speech mobile** (camera-first, bottom caption sheet, no fake
+  status bar per the mobile-prototype rule).
+- [ ] **Not covered**: Speech → Sign and Landmark-test pages weren't mocked (kept the pass focused on the
+  flagship live-demo screen); nav tabs for them are present but non-interactive placeholders. Extend the
+  same system to those pages if the user wants full coverage.
+- [ ] **Open question for the user**: whether to implement any of this in `apps/web` (vanilla TS/Vite,
+  current stack) — this session did not touch app code, and nobody was asked to run the app or take
+  screenshots, so the mockup is unverified against the real running UI.
 
 ---
 
