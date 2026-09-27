@@ -1,9 +1,10 @@
 # C1 v2: making the continuous model usable for real sentences — research + build
 
-**Status: built 2026-09-26, not trained yet.** TODO §12.8 Fix 3. Two runs are ready: **C4**
-(`gru_continuous_norm`) and **C5** (its ablation). They are trained by
-`experiments/recognition/gislr.1.models.continuous.ipynb` §6b and scored by
-`gislr.3.streaming.continuous-eval.ipynb` and `gislr.3.streaming.live-robustness.ipynb`.
+**Status: built 2026-09-26, trained 2026-09-27, not yet scored on the criteria that matter (§6).** TODO
+§12.8 Fix 3. Two runs, **C4** (`gru_continuous_norm`) and **C5** (its ablation), trained by
+`experiments/recognition/gislr.1.models.continuous.ipynb` §6b (user ran it 2026-09-27) — still need
+`gislr.3.streaming.continuous-eval.ipynb` and `gislr.3.streaming.live-robustness.ipynb` before §4's
+judgment can be made.
 
 | | |
 |---|---|
@@ -116,3 +117,30 @@ parity fixture). The app's D3 decoder, prior and lattice stay as they are.
   training has sharpened the boundary head.
 - **A learned co-articulation model** (BRAID-style inpainting of the joins) would replace linear gaps with
   realistic ones. It is a research project of its own, not a first step.
+
+## 6. Training results (2026-09-27)
+
+Both runs auto-resumed to completion via early stop (plateau 12/12). Each process then exited with Windows
+code `3221226505` (0xC0000409) *after* printing its own `DONE` line — almost certainly a benign CUDA/
+DataLoader teardown crash on Windows, not a training failure: checkpoints, `assets/history.json` and the
+canonical `sb-evaluate` pass that ran immediately afterward are all intact and internally consistent, so the
+numbers below are trusted as-is.
+
+| run | epochs | best seg acc | best epoch | frame acc@best | boundary F1@best | canonical accuracy | canonical macro |
+|---|---|---|---|---|---|---|---|
+| C1 (v1, reference) | 95 | 0.7233 | 83 | 0.6820 | 0.4271 | 0.7188 | 0.7163 |
+| **C4** (norm + v2 streams) | 126 | 0.6929 | 114 | 0.6246 | 0.3568 | **0.7339** | **0.7315** |
+| **C5** (v2 streams, raw input) | 105 | 0.6489 | 93 | 0.5829 | 0.3550 | 0.6795 | 0.6770 |
+
+- **C4 beats C5 on every metric** — the stream normalization itself is buying something beyond just the
+  harder v2 training streams.
+- **Both v2 runs score below C1 on segment/frame/boundary accuracy, measured on their own (harder)
+  validation streams** — expected and, per §4, not disqualifying on its own: v2 trains on deliberately
+  harder streams (hard-cut, noise-as-null, camera augmentation), so a cost here is the price of the
+  robustness §4's real criteria are meant to check for.
+- **C4's canonical isolated accuracy (0.7339) is already above C1's (0.7188)** — the one number scored
+  identically to every other run on the leaderboard. That's a good sign, but it is not one of §4's actual
+  judging criteria (clean/hard-cut GER, live-robustness probes) — those still require
+  `gislr.3.streaming.continuous-eval.ipynb` and `gislr.3.streaming.live-robustness.ipynb` on C4/C5, not yet
+  run. **Training succeeding is necessary, not sufficient, to know whether v2 fixed the live-camera
+  problem.**

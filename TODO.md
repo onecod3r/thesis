@@ -18,7 +18,7 @@ kept but marked paused, not deleted. GISLR is the only active dataset.
 
 ---
 
-## Current focus (2026-09-26)
+## Current focus (2026-09-27)
 
 The workstream sections below are the source of truth; this is just the short
 list of what is actually next, in order. Re-derived at each audit — if it looks
@@ -27,7 +27,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 
 | # | next action | where | why now |
 |---|---|---|---|
-| 0a | **§12.8 live camera fails on sentences (user, 2026-09-25).** Probes: low fps (repeated frames) → missed signs, jitter → extra signs, landscape framing → both; app-side interp + EMA + reframe measured (`live-streaming-gap.md`). **2026-09-26: Fix 3 built — C1 v2 = C4 (stream normalization + augmented v2 streams) and C5 (ablation), `continuous-v2.md`. Next (user): run `gislr.1.models.continuous.ipynb` §6b, then continuous-eval + live-robustness.** Fix 2 (recorder) still open | §12.8 | the deployed model is unusable live until this is fixed |
+| 0a | **§12.8 live camera fails on sentences (user, 2026-09-25).** Probes: low fps (repeated frames) → missed signs, jitter → extra signs, landscape framing → both; app-side interp + EMA + reframe measured (`live-streaming-gap.md`). Fix 3 (C1 v2 = C4/C5) built 2026-09-26, **trained 2026-09-27**: C4 canonical accuracy **0.7339** (above C1's 0.7188), C5 0.6795 — but v2's own judging criteria (clean/hard-cut GER, live-robustness) aren't measured yet. **Next (user): run `gislr.3.streaming.continuous-eval.ipynb` + `gislr.3.streaming.live-robustness.ipynb` on C4/C5.** Fix 2 (recorder) still open | §12.8 | the deployed model is unusable live until this is fixed |
 | 0a2 | **§3.8 sign patterns**: the first variables gave no per-sign pattern; **with handshape/orientation/location/movement, every ASL-LEX parameter is recovered on unseen signs and templates reach 38.8% top-1 (was 4.9%)**; **B3 done: DTW over per-frame phonology 41.6% top-1, 15.2% from one example**, no training. **Follow-up built as §3.9 (see row 0a3)** | §3.8 | the user's current priority (2026-09-25: "start on the sign pattern first") |
 | 0a3 | **§3.9 phonology models, run 2026-09-25 + evaluated 2026-09-26: `gru_phono_raw` ME_134 = 0.7632 canonical, new best, streaming** (+1.2 over raw `gru`). **Next (user): finish §8e `bilstm_phono` (stopped at epoch 14; auto-resumes in place)**; then (Claude) the continuous port `gru_continuous_phono` + a Keras port of the front-end for web export. `docs/reports/phonology-models.md` | §3.9 | the first input change that beats the raw-landmark plateau on the current split |
 | 0a4 | **§3.10 phonology models, 2026-09-26:** `gru_phono130` 0.7487 ≈ raw `gru` on half the inputs; **exact streaming ensembles 0.7912 (2) / 0.8048 (3)**. **P1 (continuous phonology) failed on sentences: GER 0.587 vs C1 0.293** (feature-space composer ≠ real streams); CNN retrain 0.7330; all checkpoints on Kaggle. **Next: user saves the continuous-eval notebook; decides whether to build P1 v2** (landmark-space composition + real extractor) | §3.10 | phonology in the live app needs a continuous model that survives real context |
@@ -4303,11 +4303,33 @@ for possible solutions.
     driver smoke C4/C5 OK (929k / 928k params, 8,484 streams/epoch).
   - Notebooks: `gislr.1.models.continuous.ipynb` §6b trains C4 + C5 in parallel; continuous-eval config runs +
     C4, C5; live-robustness notebook now probes `RUNS = [C1, C4, C5]` (parts per run; dry-run on cached C1 OK).
-- [ ] **Next (user): run `gislr.1.models.continuous.ipynb`** setup (cell 1), §6b (C4 + C5 in parallel), §7, §8 —
-  **not** the C1/C2/C3/Copen training cells (a finished run would start again as a new run). Then
-  `gislr.3.streaming.continuous-eval.ipynb`, `gislr.3.streaming.live-robustness.ipynb` and
-  `gislr.3.streaming.window-ensemble.ipynb` (adds the C4 / C4+C5 / C1+C4 arms and their D3 selections), then
-  `apps/web/tools/export.py assets` + build + deploy to get C4 variants in the app.
+- [x] **User ran `gislr.1.models.continuous.ipynb` §6b (2026-09-27): C4/C5 trained.** Both auto-resumable
+  runs finished cleanly via early stop (plateau 12/12) — `C4: DONE best val segment accuracy 0.6929
+  run_dir=...1790435218`, `C5: DONE best val segment accuracy 0.6489 run_dir=...1790435219` — then each
+  process exited with Windows code `3221226505` (0xC0000409) *after* printing `DONE`, almost certainly a
+  benign CUDA/DataLoader teardown crash on Windows, not a training failure: checkpoints, `history.json` and
+  the canonical `sb-evaluate` pass afterward are all intact and consistent.
+  - **Training-curve numbers** (`gislr.1.models.continuous.ipynb` §7, read from `assets/history.json`):
+
+    | run | epochs | best seg acc | best epoch | frame acc@best | boundary F1@best |
+    |---|---|---|---|---|---|
+    | C1 (v1, reference) | 95 | 0.7233 | 83 | 0.6820 | 0.4271 |
+    | **C4** (norm + v2 streams) | 126 | **0.6929** | 114 | 0.6246 | 0.3568 |
+    | **C5** (v2 streams, raw input) | 105 | 0.6489 | 93 | 0.5829 | 0.3550 |
+
+    C4 > C5 on every metric (normalization helps beyond just the harder streams), but **both score below
+    C1 on segment/frame/boundary accuracy** — expected: v2 trains on deliberately harder streams (hard-cut,
+    noise-as-null, camera augmentation), so this number alone isn't the judgment call (see §4 of the report).
+  - **Canonical isolated accuracy** (§8, `sb-evaluate`, same benchmark every registry run gets):
+    **C4 0.7339 macro 0.7315 — above C1's 0.7188/0.7163** (C5 0.6795/0.6770, below C1). So on the one
+    "judged the same way as everything else on the leaderboard" number, C4 already wins.
+  - **Not yet run**: the actual judging criteria from `continuous-v2.md` §4 (clean GER ≈ 0.293, hard-cut <
+    0.546, live-robustness probes) need `gislr.3.streaming.continuous-eval.ipynb` and
+    `gislr.3.streaming.live-robustness.ipynb` on C4/C5 — training finishing is necessary but not sufficient
+    to know if v2 fixed the live-camera problem.
+- [ ] **Next (user): run `gislr.3.streaming.continuous-eval.ipynb`, `gislr.3.streaming.live-robustness.ipynb`
+  and `gislr.3.streaming.window-ensemble.ipynb`** (adds the C4 / C4+C5 / C1+C4 arms and their D3 selections),
+  then `apps/web/tools/export.py assets` + build + deploy to get C4 variants in the app if it wins.
   Judge by `continuous-v2.md` §4: clean GER ≈ 0.293, hard-cut < 0.546, `live_like` ≪ 0.592, mirror/aspect ≈ clean.
 - [?] **User proposal (2026-09-26):** instead of per-frame streaming, feed ~3 s windows (or the mean sign
   length) to two models offset by ~500 ms, combine their predictions, and fuse with an independent next-gloss
