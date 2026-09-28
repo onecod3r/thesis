@@ -124,6 +124,42 @@ one C4 segment) by comparing/combining D1 (boundary-head crossings) with D3 (nul
 segment proposals rather than D3 alone; a wider n-gram order; adding a third ensemble
 member.
 
+## Part 3: ASL-LEX sign frequency as a prior — tried, doesn't help (2026-09-28)
+
+The user's question: ASL-LEX 2.0's `SignData.csv` carries a `SignFrequency(M)` column —
+a subjective real-world usage-frequency rating for each ASL sign (1–7 scale, from the
+published rating survey), covering 233 of the 250 GISLR glosses (233 real, 17 filled
+with the corpus mean rather than left at zero, via `aslex.gloss_entries`). Tested
+whether blending it into the deployed trigram as an extra term —
+`p_blended = (1-α)·p_ngram + α·p_freq`, `p_freq` a static (context-independent)
+distribution over glosses proportional to `SignFrequency(M)` — beats the n-gram alone,
+at the pipeline's best-known setting (hybrid ensemble + top-5 Viterbi, λ=0.7).
+
+800-sequence selection-signer subsample, sweeping α:
+
+| α | GER | sentence acc |
+|---|---|---|
+| **0.0 (no blending)** | **0.268** | **0.460** |
+| 0.02 | 0.269 | 0.460 |
+| 0.05 | 0.270 | 0.459 |
+| 0.1 | 0.271 | 0.459 |
+| 0.2 | 0.271 | 0.459 |
+| 0.3 | 0.274 | 0.458 |
+| 0.5 | 0.274 | 0.456 |
+
+**Monotonically worse with every non-zero α — no interior optimum to chase.** Read:
+the corpus-trained n-gram, small as its source corpus is (1,757 sentences over a closed
+250-gloss vocabulary), already fits *this* corpus's sentence-position and co-occurrence
+structure far more sharply than a generic frequency rating can; ASL-LEX's frequency
+reflects real-world ASL usage in general, not how these templated sentences in
+particular are built, so blending it in only dilutes a better-targeted signal. A closed
+250-word vocabulary with this much training data isn't data-starved enough for a
+frequency-based backoff to earn its keep — that lever would matter more for an open
+vocabulary or a much sparser corpus, neither of which describes this setup. Not
+pursued further (a narrower application, e.g. only at the n-gram's deepest empty-context
+fallback rather than blended everywhere, is very unlikely to reverse a signal this
+consistently negative across the whole swept range).
+
 ## Recommendation
 
 **Worth building.** The best arm found (GER 0.177, sentence accuracy 0.619) beats the

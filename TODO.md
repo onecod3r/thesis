@@ -5166,6 +5166,17 @@ the user's explicit "proceed with bilstm (best performing one)" (2026-09-28).
   crossings) with D3 (null-run) segment proposals to attack the 0.052 deletion rate
   specifically (likely two close signs landing inside one C4 segment); a wider n-gram
   order; a third ensemble member.
+- [x] **Tried, same day (user: "phonology gives a frequency score, will taking that
+  into consideration improve score?") — no, it doesn't.** ASL-LEX's `SignFrequency(M)`
+  (real-world sign-usage rating, 233/250 glosses covered) blended into the deployed
+  trigram (`p = (1-α)·p_ngram + α·p_freq`) at the best-known setting: **monotonically
+  worse for every α > 0 tested** (0.268 → 0.274 GER, α 0→0.5, 800-sequence selection
+  subsample) — no interior optimum. Read: the corpus-trained n-gram already fits this
+  small closed-vocabulary corpus's own sentence structure more sharply than a generic
+  real-world frequency rating can; blending it in only dilutes a better-targeted
+  signal. Full write-up: `docs/reports/bilstm-wholeclip-eval.md` Part 3. Not pursued
+  further (the negative trend is too consistent for a narrower application to plausibly
+  reverse).
 - [ ] **UI: not started, now unblocked** — the design is decided (segmentation = C4 D3,
   classifier = `bilstm` + `gru_phono_raw` ensemble, decision = top-5 Viterbi over the
   deployed trigram, λ=0.7). Record button, processing spinner, decoded sentence, and
