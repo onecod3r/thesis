@@ -4874,9 +4874,33 @@ module shows up in `git diff` from this work.
   - Code: `packages/sb-recognize/src/sb/recognize/recognition2/rules.py` (`own_nucleus`, `_away`,
     `away_t` threshold, `second_minor_location` block). `validate.py`/`stage1-rules.json` unchanged — both
     already had the ground-truth column and chance-category entries for these two parameters.
-- [ ] **Next action**: user reviews `docs/reports/recognition2-phonology-rules.md` (§1-4 original + §5
-  extension) and the records/agreement files, decides whether to keep the no-pose design as primary and
-  whether to proceed to stage 2 design or further error analysis.
+- [x] **Trained classifiers vs. hand-picked thresholds (2026-09-28), `docs/reports/recognition2-phonology-rules.md` §6.**
+  User ask: train one classifier per parameter on the same continuous pre-threshold measurements
+  the rule engine uses, to see whether the near-chance parameters are a measurement problem or a
+  threshold problem. New `rules.continuous_features()` (23 scalars/clip, additive, doesn't touch
+  `codes()`) + `experiments/recognition2/gislr.2.pipeline.stage2-classifiers.ipynb`
+  (`HistGradientBoostingClassifier` per parameter, held out by **gloss** — ~47/233 signs never seen
+  in training, not just held-out clips — so the test is generalization to new vocabulary, not
+  memorization). Claude built + ran the deterministic setup/feature-extraction/split cells (46,600
+  clips, no training); the user ran the actual training cell.
+  - **6 parameters show a genuine win** (beat both the rule engine and a trivial majority-class
+    baseline on unseen glosses): `spread` (0.523→0.599, the headline — was near-chance for the
+    rule engine), `handshape`, `selected_fingers`, `thumb_position`, `marked_handshape`,
+    `non_dominant_handshape`.
+  - **5 parameters beat the rule engine but lose to the majority baseline** (`flexion` +0.193,
+    `repeated_movement`, `movement`, `contact`, `flexion_change`) — real signal, but only
+    ~90-100 training glosses per parameter makes the held-out comparison noisy.
+  - **The rule engine's strongest parameters still win** (`ulnar_rotation` 0.847 vs 0.678,
+    `sign_type` 0.667 vs 0.503) — little room to gain, few positive held-out examples.
+  - **`second_minor_location`'s loss (−0.143) is a feature-engineering gap, not a ceiling**:
+    `continuous_features()` never exposes the one signal `_away()` actually uses (closest-approach
+    to last-tracked-frame displacement over the *whole* clip) — the classifier structurally can't
+    see what the rule sees for this parameter. `sign_type`'s loss likely shares this cause (no
+    direct handshape-identity feature, only a velocity-correlation proxy).
+- [ ] **Next action**: user reviews `docs/reports/recognition2-phonology-rules.md` (§1-6) and decides
+  whether to add the missing continuous features (full-span displacement, handshape-identity) and
+  retrain, keep the rule engine as primary for the parameters it still wins, or move to stage 2
+  design.
 
 ---
 

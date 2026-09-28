@@ -137,3 +137,61 @@ threshold-tuning problem.
 
 **Updated artifacts**: same file names as §4, now holding the full-test-split run (previous 6-clip-sample
 files were overwritten — the sample-size finding above is the record of what changed).
+
+## 6. Can a trained classifier beat the hand-picked thresholds? (2026-09-28)
+
+User ask: train one small classifier per ASL-LEX parameter on the same *continuous* pre-threshold
+measurements the rule engine computes internally (not its binarized code), to see whether the
+near-chance parameters are a measurement problem or a threshold problem.
+
+**Setup**: `rules.continuous_features()` (new, 23 scalars/clip — finger extension/flexion/spread
+angles, thumb distances, rotation, movement path stats, location distances, two-handedness
+symmetry) extracted for 46,600 clips across all 233 mapped glosses (up to 200/gloss, train+test
+combined). One `HistGradientBoostingClassifier` per parameter (`class_weight="balanced"`, native
+NaN handling), evaluated on a **held-out 20% of glosses** — signs never seen in training at all, not
+just held-out clips of a seen sign, so the test is whether the continuous features generalize to
+new vocabulary rather than memorizing which sign is which.
+Notebook: `experiments/recognition2/gislr.2.pipeline.stage2-classifiers.ipynb` — Claude built and
+ran the deterministic setup/feature-load/gloss-split cells (§1–2, no training), the user ran the
+training cell (§3) themselves per this repo's convention.
+
+**Result: mixed, and informative.** Comparing classifier accuracy against both the rule engine's
+agreement and a trivial majority-class baseline on the *same* held-out glosses:
+
+| parameter | classifier | rule engine | majority baseline | verdict |
+|---|---|---|---|---|
+| `spread` | 0.599 | 0.523 | 0.429 | **real win** — was near-chance for the rule engine |
+| `handshape` | 0.198 | 0.110 | 0.040 | real win |
+| `selected_fingers` | 0.585 | 0.476 | 0.462 | real win |
+| `thumb_position` | 0.709 | 0.609 | 0.654 | real win |
+| `marked_handshape` | 0.608 | 0.551 | 0.560 | real win |
+| `non_dominant_handshape` | 0.149 | 0.028 | 0.125 | real win (still low absolute, 16 classes) |
+| `flexion` | 0.445 | 0.252 | 0.565 | beats rules, loses to majority baseline |
+| `repeated_movement`, `movement`, `contact`, `flexion_change` | — | beats rules | loses to majority | same pattern — real signal, small held-out set |
+| `ulnar_rotation` | 0.678 | **0.847** | 0.846 | loses — the rule engine's strongest parameter, little room to gain |
+| `sign_type` | 0.503 | 0.667 | 0.708 | loses badly |
+| `minor_location`, `second_minor_location`, `spread_change`, `thumb_contact`, `major_location` | — | loses to rules | mostly loses to majority too | |
+
+**6 parameters show a genuine, generalizing win** — beating both the rule engine *and* the trivial
+baseline on glosses the classifier never trained on. `spread` is the headline: it was one of the
+weakest rule-engine parameters (0.523, barely above chance) and the classifier fixed it
+(0.599, balanced accuracy 0.617 — not just riding the majority class).
+
+**`second_minor_location`'s loss (−0.143) is a feature-engineering gap, not a ceiling**:
+`continuous_features()` only exposes the medial/nucleus-window scalars the rule engine's other
+parameters use — it never computed the one signal `_away()` actually uses (displacement between
+the hand's closest approach and the clip's *last* tracked frame, over the whole span). The
+classifier structurally cannot see what the rule sees for this parameter; adding that as an
+explicit feature is the obvious next step, not evidence the parameter is unlearnable.
+
+**`sign_type`'s loss (−0.164) likely has the same root cause**: the rule engine decides symmetry
+partly from whether the two hands' *looked-up handshapes* match exactly — the classifier's
+`sign_type_sym` feature is only a velocity-correlation proxy, with no direct handshape-identity
+signal and heavy NaN for one-handed signs (which are most of the dataset).
+
+**Honest caveat repeated from §5**: held-out-gloss evaluation here uses only ~47 test glosses out
+of 233 — small enough that a handful of hard/easy glosses can swing a parameter's number
+noticeably; read a close margin as "roughly tied," not literally decided.
+
+**Artifacts**: `data/cache/gislr_aslex_rules/continuous_features.jsonl` (input),
+`classifier_results.csv` (this table), `classifier_gloss_split.json` (which glosses were held out).

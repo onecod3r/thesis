@@ -555,3 +555,107 @@ def _codes(feats: dict, t: Thresholds, lookup: dict[tuple, str], is_marked: dict
     lookup_unmarked = {hs for hs, marked in is_marked.items() if not marked}
     out["sign_type"] = _sign_type(h1, h2, lookup_unmarked, hs1, hs2)
     return out
+
+
+# ---------------------------------------------------------------------------
+# continuous (pre-threshold) features, for training a classifier per parameter instead of
+# hand-picking a threshold (added 2026-09-28, TODO §14, user ask: "train a model ... from these
+# features"). Mirrors the scalars `_codes` computes internally, but returns the float, never the
+# category -- e.g. `spread_angle` (degrees) instead of `spread` ("0"/"1"). NaN wherever `_codes`
+# would have returned NOT_COMPUTABLE. A separate, additive function -- does not touch `_codes`.
+# ---------------------------------------------------------------------------
+
+CONTINUOUS_FEATURES = (
+    "ext_thumb", "ext_index", "ext_middle", "ext_ring", "ext_pinky",
+    "base_flex", "nonbase_flex", "spread_angle", "thumb_open", "thumb_contact_dist",
+    "ulnar_rotation_deg", "movement_length", "movement_straightness", "movement_turning",
+    "movement_reversals", "aperture_reversals", "flexion_change_deg", "spread_change_deg",
+    "contact_min_dist", "hand_min_dist", "head_min_dist", "has_h2", "sign_type_sym",
+)
+
+
+def continuous_features(feats: dict, t: Thresholds) -> dict[str, float]:
+    """Pre-threshold continuous measurements for the dominant hand (one float per :data:`_codes`
+    decision), for training a classifier per ASL-LEX parameter directly on the measurement instead
+    of the rule engine's binarized code. Wraps :func:`_continuous_features` to silence all-NaN-slice
+    warnings, matching :func:`codes`."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        return _continuous_features(feats, t)
+
+
+def _continuous_features(feats: dict, t: Thresholds) -> dict[str, float]:
+    """See :func:`continuous_features`. Units match the thresholds each value would otherwise be
+    compared against: angles in degrees, distances as multiples of ``eye_d`` (or shoulder width
+    under ``use_pose``), ratios dimensionless (fraction of palm length, from `_handshape`)."""
+    h1, h2, eye_d = feats["h1"], feats["h2"], feats["eye_d"]
+    unit = float(np.nanmedian(eye_d)) if np.isfinite(np.nanmedian(eye_d)) else 1.0
+    out: dict[str, float] = dict.fromkeys(CONTINUOUS_FEATURES, float("nan"))
+    present_idx = np.flatnonzero(h1["present"]) if h1["present"].any() else np.zeros(0, int)
+    out["has_h2"] = float(h2["present"].any() and np.mean(h2["present"]) >= 0.05)
+    if len(present_idx) == 0:
+        return out
+    a, b = int(present_idx[0]), int(present_idx[-1]) + 1
+    cut = int(round((b - a) * t.nucleus_trim))
+    nucleus = slice(a + cut, max(b - cut, a + cut + 1))
+    n = nucleus.stop - nucleus.start
+    third = slice(nucleus.start + n // 3, nucleus.stop - n // 3) if n >= 3 else nucleus
+
+    hs = h1["hs"][third]
+    if hs.shape[0] and not np.all(np.isnan(hs[:, 0:5])):
+        ext = np.nanmedian(hs[:, 0:5], axis=0)
+        (out["ext_thumb"], out["ext_index"], out["ext_middle"],
+         out["ext_ring"], out["ext_pinky"]) = (float(v) for v in ext)
+    out["base_flex"] = _med(h1["base_flex"][third])
+    out["nonbase_flex"] = _med(h1["nonbase_flex"][third])
+    out["spread_angle"] = _med(h1["spread"][third])
+    out["thumb_open"] = _med(h1["thumb_open"][third])
+    out["thumb_contact_dist"] = _med(h1["thumb_contact"][third])
+
+    normal = h1["normal"][third]
+    if len(normal) >= 2 and not np.isnan(normal[:1]).all() and not np.isnan(normal[-1:]).all():
+        n0 = np.nanmedian(normal[:max(1, len(normal) // 3)], axis=0)
+        n1 = np.nanmedian(normal[-max(1, len(normal) // 3):], axis=0)
+        out["ulnar_rotation_deg"] = float(_angle(n0, n1))
+
+    pos = _smooth(h1["centre"][nucleus])
+    if len(pos) > 1:
+        length = float(np.linalg.norm(np.diff(pos, axis=0), axis=1).sum())
+        disp = pos[-1] - pos[0]
+        out["movement_length"] = length / unit
+        out["movement_straightness"] = float(np.linalg.norm(disp)) / max(length, 1e-9)
+        if len(pos) >= 4:
+            out["movement_turning"] = _turning(pos, 0.02 * unit)
+            out["movement_reversals"] = float(_path_reversals(pos, t.amp_t * unit))
+
+    apt = h1["aperture"][a:b]
+    apt = apt[~np.isnan(apt)]
+    if len(apt) >= 4:
+        out["aperture_reversals"] = float(reversals(apt, t.apt_amp_t))
+
+    third_len = max(1, (b - a) // 3)
+    fl0, fl1 = _med(h1["nonbase_flex"][a:a + third_len]), _med(h1["nonbase_flex"][b - third_len:b])
+    if not (np.isnan(fl0) or np.isnan(fl1)):
+        out["flexion_change_deg"] = fl1 - fl0
+    sp0, sp1 = _med(h1["spread"][a:a + third_len]), _med(h1["spread"][b - third_len:b])
+    if not (np.isnan(sp0) or np.isnan(sp1)):
+        out["spread_change_deg"] = sp1 - sp0
+
+    touch = np.r_[h1["touch_face"][nucleus], h1["touch_other"][nucleus]]
+    if not np.isnan(touch).all():
+        out["contact_min_dist"] = float(np.nanmin(touch)) / unit
+    other_dist = h1["touch_other"][nucleus]
+    if not np.all(np.isnan(other_dist)):
+        out["hand_min_dist"] = float(np.nanmin(other_dist)) / unit
+    head_dists = [np.nanmin(h1["dist_head"][s][third]) for s in HEAD_SITES
+                  if not np.all(np.isnan(h1["dist_head"][s][third]))]
+    if head_dists:
+        out["head_min_dist"] = float(min(head_dists)) / unit
+
+    if out["has_h2"]:
+        v1, v2 = h1["vel"], h2["vel"] * np.array([-1, 1], np.float32)
+        both_move = (np.nanmean(np.linalg.norm(v1, axis=1)) > 0
+                     and np.nanmean(np.linalg.norm(v2, axis=1)) > 0)
+        if both_move:
+            out["sign_type_sym"] = float(np.nanmean((_unit(v1) * _unit(v2)).sum(-1)))
+    return out
