@@ -2,8 +2,10 @@
 
 ASL-LEX 2.0 (Caselli et al. 2017; Sehyr et al. 2021, CC BY-NC 4.0) codes 2,723
 ASL signs for handshape, selected fingers, flexion, location, movement, sign
-type and more. ``signdata.csv`` is downloaded once from OSF (project
-``zpha4``) into ``data/external/asl_lex/``.
+type and more. ``SignData.csv`` is resolved from the Kaggle mirror
+``bracu23101281/asl-lex`` (:func:`sb.core.paths.asl_lex_dir`) — a republish of
+OSF project ``zpha4``'s ``signdata.csv``, avoiding a dependency on OSF being
+reachable at run time.
 
 **Mapping a GISLR gloss to ASL-LEX entries** (:func:`gloss_entries`):
 
@@ -23,14 +25,10 @@ and the gloss is left out of that parameter's test.
 from __future__ import annotations
 
 import re
-import urllib.request
 
 import pandas as pd
 
-from sb.core.paths import DATA_DIR
-
-SIGNDATA_URL = "https://osf.io/download/9nygd/"  # ASL-LEX 2.0 signdata.csv (OSF zpha4)
-ASLLEX_DIR = DATA_DIR / "external" / "asl_lex"
+from sb.core.paths import asl_lex_dir
 
 #: GISLR gloss -> ASL-LEX EntryIDs of the same ASL sign (checked by meaning; see module doc)
 SYNONYMS: dict[str, list[str]] = {
@@ -70,13 +68,9 @@ PARAMETERS: dict[str, str] = {
 
 
 def signdata() -> pd.DataFrame:
-    """ASL-LEX 2.0 ``signdata.csv`` (downloaded on first use)."""
-    path = ASLLEX_DIR / "signdata.csv"
-    if not path.is_file():
-        ASLLEX_DIR.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        urllib.request.urlretrieve(SIGNDATA_URL, tmp)
-        tmp.replace(path)
+    """ASL-LEX 2.0 ``SignData.csv`` (resolved from the Kaggle mirror,
+    downloaded/cached by kagglehub on first use)."""
+    path = asl_lex_dir() / "SignData.csv"
     return pd.read_csv(path, encoding="latin-1")
 
 

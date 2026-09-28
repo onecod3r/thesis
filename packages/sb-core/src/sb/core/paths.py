@@ -183,6 +183,20 @@ def gislr_dir() -> Path:
     return d
 
 
+ASL_LEX_ID = "bracu23101281/asl-lex"  # TODO §3.8, public mirror of ASL-LEX 2.0 signdata.csv (OSF zpha4)
+
+
+def asl_lex_dir() -> Path:
+    """Download/resolve the ASL-LEX 2.0 phonology dataset (a Kaggle mirror of
+    OSF project ``zpha4``'s ``signdata.csv`` and friends, republished as
+    ``SignData.csv``/``ASLLEXR.csv``/``IconD_trial.csv``/``IconicityTrial.csv``/
+    ``NeigborPairs.csv`` so ``sb.recognize.aslex`` doesn't depend on OSF being
+    reachable). A regular Kaggle dataset download, like :func:`gislr_dir`."""
+    import kagglehub
+
+    return Path(kagglehub.dataset_download(ASL_LEX_ID))
+
+
 GISLR_SENTENCES_ID = "bracu23101281/gislr-sentences"  # TODO §12.1, private
 
 

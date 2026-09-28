@@ -1511,6 +1511,18 @@ ranked top-N accuracy.
   parameter combination) and to explain confusable pairs (`give`/`gift`).
 - [x] ~~Follow-up (optional, no training): add handshape; keep time with DTW; speed normalization~~ —
   **done 2026-09-25**: handshape (§7), DTW over per-frame phonology with time resampling (§8).
+- [x] **ASL-LEX 2.0 moved off OSF onto a self-published Kaggle mirror, 2026-09-28** (user made
+  `bracu23101281/asl-lex`, public, from the OSF `signdata.csv` + `ASLLEXR.csv`/`IconD_trial.csv`/
+  `IconicityTrial.csv`/`NeigborPairs.csv`). Added `sb.core.paths.asl_lex_dir()` (plain
+  `kagglehub.dataset_download`, same shape as `gislr_dir()`); `sb.recognize.aslex.signdata()` now reads
+  `SignData.csv` from there instead of `urllib`-downloading OSF's `signdata.csv` into
+  `data/external/asl_lex/`. Verified: `signdata()` returns the same 2,723×191 frame and `gloss_codes()`
+  reproduces prior mappings (`dad`→`father`, `cat`→`cat/cat_2/cat_3`, `police`→`policeman*`,
+  `wake`→`awake`) unchanged. The stale OSF-downloaded copy in `data/external/asl_lex/` and `data/temp/`
+  (empty `artifact_stage`/`mixed-test` dirs, old training logs) were deleted (`cleanup_temp()`); repo-wide
+  `__pycache__` cleared too. `data/cache/*` (incl. the 170GB GISLR npz cache) left untouched — reusable,
+  expensive to rebuild. Only remaining OSF-only asset is `IconicityTrial.csv`'s Icon columns, not currently
+  read by any `sb.recognize` module.
 
 ### 3.9 Phonology front-end models: streaming GRU, subset combos, feature importance, BiLSTM (2026-09-25, built + run; evaluated 2026-09-26: new best 0.7632)
 
