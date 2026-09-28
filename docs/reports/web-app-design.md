@@ -1,34 +1,37 @@
 # Web app UI/UX design
 
-**Status:** design-only deliverable (no `apps/web` code touched). Built 2026-09-27, extended with
-mobile coverage the same day. Canonical reference: this file, plus a live, editable canvas artifact
-(mockups are pixel-real HTML/CSS, not sketches) — **private**, not yet shared:
+**Status:** design-only deliverable (no `apps/web` code touched). Built 2026-09-27; extended with
+mobile coverage the same day, then with the remaining desktop pages 2026-09-28 — **all four pages
+now have both desktop and mobile artboards**. Canonical reference: this file, plus a live, editable
+canvas artifact (mockups are pixel-real HTML/CSS, not sketches) — **private**, not yet shared:
 <https://claude.ai/artifact/DuuUMVMPf7MUCHyxMiy6Zt>. The artifact is the source of truth for exact
 markup/spacing; this file is the durable, repo-tracked record of what it contains and why, since
-Artifacts live outside git and outside this session.
+Artifacts live outside git and outside this session. Note: the user has since rearranged some
+mobile artboards' positions on the canvas itself (cosmetic, in-artifact only — not reflected below).
 
 ## Why this exists
 
 The user asked to "design a good web app for the project," then to add mobile coverage and save
-it durably. `apps/web` already has real, working pages (`apps/web/README.md`) — Sign → Speech,
+it durably, then to "generate the remaining pages" (the two desktop screens that were still
+missing). `apps/web` already has real, working pages (`apps/web/README.md`) — Sign → Speech,
 Speech → Sign, Landmark test — so the brief was a visual-design pass over real, documented
 functionality, not invention from scratch (per the design tool's "root hi-fi mockups in context"
 rule).
 
-## Page inventory (6 artboards)
+## Page inventory (8 artboards — complete)
 
-| Artboard | Viewport | Covers | Status |
-|---|---|---|---|
-| Home | 1440×960 (desktop) | Landing/marketing page — not a page in the current app, proposed as a front door | new |
-| Home (mobile) | 390×844 | same | new |
-| Sign → Speech | 1440×900 (desktop) | `apps/web`'s `/` — the flagship live demo | new |
-| Sign → Speech (mobile) | 390×844 | same | new |
-| Speech → Sign (mobile) | 390×844 | `apps/web`'s `/speech` — text/speech → gloss via T5 | new, **mobile only** |
-| Landmark test (mobile) | 390×844 | `apps/web`'s `/landmarks` — 3-mode MediaPipe diagnostic | new, **mobile only** |
+| Artboard | Viewport | Covers |
+|---|---|---|
+| Home | 1440×960 (desktop) | Landing/marketing page — not a page in the current app, proposed as a front door |
+| Home (mobile) | 390×844 | same |
+| Sign → Speech | 1440×900 (desktop) | `apps/web`'s `/` — the flagship live demo |
+| Sign → Speech (mobile) | 390×844 | same |
+| Speech → Sign | 1440×900 (desktop) | `apps/web`'s `/speech` — text/speech → gloss via T5, session history, guarded-preset settings |
+| Speech → Sign (mobile) | 390×844 | same |
+| Landmark test | 1440×900 (desktop) | `apps/web`'s `/landmarks` — 3-mode MediaPipe diagnostic, per-mode stats + session table |
+| Landmark test (mobile) | 390×844 | same |
 
-**Not built:** desktop screens for Speech → Sign and Landmark test. The canvas marks both slots
-with a sticky note flagging the gap so it isn't mistaken for an oversight. Extend the same system
-to them if full desktop coverage is wanted.
+Every page in `apps/web` now has a desktop and a mobile mockup.
 
 ## Design system (original, not Anthropic's)
 
@@ -82,8 +85,9 @@ or a real documented feature, not invented content:
 
 - Review the artifact and decide what (if anything) gets implemented in `apps/web` — this pass
   never touched app code or ran the dev server.
-- Desktop screens for Speech → Sign and Landmark test are unbuilt; say if you want them.
 - The Home page is a new landing/marketing surface with no current route in `apps/web` — decide
   whether it should become a real page or stay reference-only.
 - The palette/type direction was picked unilaterally (auto-mode, no references given) — flag if you
   want a different aesthetic; it's a cheap change now, before any implementation.
+- Speech → Sign's session history and Landmark test's session table are illustrative sample data
+  (a mockup, not a live app) — real content once wired to `apps/web`.

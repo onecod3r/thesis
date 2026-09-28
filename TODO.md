@@ -40,7 +40,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 | 0g | §12.5 **sign → speech camera overlay improved 2026-09-25** (user: "should show the video along with mediapipe overlay live"). Audit found the video + overlay were already both showing (verified live with headless Chrome + a fake camera device) — the overlay was just barely visible (2px pale dots, no pose skeleton). Rewrote `drawFrame` with a bright pose skeleton over the model's own ME-126 upper-body landmarks and clearer hand markers; `npm test` (11/11) and the 24/24 browser replay check still pass | §12.5 | the live camera view now reads as an obviously "live" overlay, not just technically-present dots |
 | 0h | §12.8 **deployed app redeployed + every-other-frame detection, 2026-09-25** (user: "the deployed app is not working... video feed should be shown... send every other frame to the model"). The 0g overlay fix was in `src/` but `signbridge.onecoder1.workers.dev` predated the redeploy — rebuilt + `wrangler deploy` (only 2/89 assets changed). Added a "detect every other frame" toggle: halves `holistic.detect` cost, filling the gap by **interpolating** toward the next real frame (1 tick latency) instead of repeating one — same fix as §12.8's open "interpolate in `Clock`" item. `npm run build` + `npm test` (11/11) pass | §12.8 | live app was stale, not broken; now redeployed with a real perf win that (per the probes above) shouldn't cost GER the way frame-dropping does |
 | 0i | **Redeploy the web app (user): `cd apps/edge && npm run deploy`.** The live speech page has never loaded T5 (it fetched `/t5/manifest.json`, 404; fixed 2026-09-26, verified locally). Models are now public on Kaggle (MIT) and `?models=kaggle` loads them straight from there | §9.10, §13 | the deployed speech → gloss runs rules only until then |
-| 0j | **§12.10 web app UI/UX design delivered 2026-09-27** (Claude Design artifact, not code, plus `docs/reports/web-app-design.md` for a repo-durable copy): 6 mockups — Home, Sign→Speech, Speech→Sign (mobile only), Landmark test (mobile only), each desktop+mobile where built — rooted in the real `apps/web` feature set. **Next (user): review and decide whether/what to implement in `apps/web`**, and whether the two mobile-only pages need desktop screens — no app code touched this session | §12.10 | design review is a cheap gate before any UI implementation work |
+| 0j | **§12.10 web app UI/UX design, complete 2026-09-28** (Claude Design artifact, not code, plus `docs/reports/web-app-design.md` for a repo-durable copy): all 4 pages × desktop+mobile = 8 mockups — Home, Sign→Speech, Speech→Sign, Landmark test — rooted in the real `apps/web` feature set. **Next (user): review and decide whether/what to implement in `apps/web`** — no app code touched this session | §12.10 | design review is a cheap gate before any UI implementation work |
 | ~~1~~ | ~~Restart the Jupyter kernels, then run one short training~~ — **effectively done**: the four §12.3 continuous runs trained end to end through the restructured stack on 2026-09-23 | §9.8 | notebooks have been parsed, never executed since the move. `import modules...` is gone. This is the only unverified thing about the restructure |
 | 2 | ~~Run the first checkpoint backup~~ — **done 2026-09-04**: 42 on Kaggle, local copies pruned after hash verification. Model confirmed **private** 2026-09-24 | §9.3 | was the last single-copy risk |
 | 3 | **Notebook §5b: the three-arm AWP/LateDropout ablation** (~30 min) | §4.2 | the 1st-place port has collapsed at epoch 15 twice and neither switch has been run alone, so the recipe is still unmeasured |
@@ -4461,12 +4461,13 @@ new GISLR sentence dataset restricted to glosses also in ASL-LEX.
 - [ ] **Not started**: nothing in this proposal has been built. Next step is the user's answers to the
   open questions above, then a build plan.
 
-### 12.10 Web app visual design — 6 mockups delivered 2026-09-27
+### 12.10 Web app visual design — 8 mockups delivered 2026-09-27/28 (all pages, desktop + mobile)
 
 **User ask:** "design a good web app for the project," then "design the mobile versions as well and
-save it all ... so that I can reference it later" — a UI/UX design pass, not code. Deliverable is a
-Claude Design (canvas) Artifact — <https://claude.ai/artifact/DuuUMVMPf7MUCHyxMiy6Zt> (private; not
-shared) — plus a durable, repo-tracked copy of the decisions and content at
+save it all ... so that I can reference it later," then "generate the remaining pages" — a UI/UX
+design pass, not code. Deliverable is a Claude Design (canvas) Artifact —
+<https://claude.ai/artifact/DuuUMVMPf7MUCHyxMiy6Zt> (private; not shared) — plus a durable,
+repo-tracked copy of the decisions and content at
 [`docs/reports/web-app-design.md`](../docs/reports/web-app-design.md), since the artifact lives outside git.
 
 - [x] **Rooted in the real app** (`apps/web/README.md`), not invented from scratch: mocked the actual
@@ -4483,14 +4484,14 @@ shared) — plus a durable, repo-tracked copy of the decisions and content at
   Anthropic Clay/Ivory palette — this is signbridge's own product identity, not a Claude surface.
   Decision made unilaterally (auto-mode, no aesthetic references given); flagged here as reversible if the
   user wants a different direction.
-- [x] **6 artboards, desktop + mobile** (extended 2026-09-27 on request): **Home** desktop + mobile (hero,
-  stats, 4-step pipeline explainer), **Sign → Speech** desktop + mobile (camera panel + live captions + an
-  interactive sidebar: recognizer-variant picker, individual-sign toggle, input-source picker all have real
-  click state in the artifact; mobile is camera-first with a bottom caption sheet, no fake status bar),
-  **Speech → Sign (mobile only)** and **Landmark test (mobile only)** — both new pages this pass, marked
-  on the canvas as missing their desktop screens rather than silently incomplete.
-- [ ] **Not covered**: desktop screens for Speech → Sign and Landmark test. Extend the same system to
-  them if full desktop coverage is wanted.
+- [x] **8 artboards, every page desktop + mobile** (mobile added 2026-09-27, remaining desktop screens
+  added 2026-09-28 on request): **Home** (hero, stats, 4-step pipeline explainer), **Sign → Speech**
+  (camera panel + live captions + an interactive sidebar: recognizer-variant picker, individual-sign
+  toggle, input-source picker all have real click state in the artifact; mobile is camera-first with a
+  bottom caption sheet, no fake status bar), **Speech → Sign** (mic/text input, gloss-chip output,
+  guarded-preset T5 settings, session history, honest notice that sign-video playback isn't built), and
+  **Landmark test** (3-mode tab bar, camera+overlay panel, per-mode stats plus the real "session table
+  keeps every mode's averages" feature) — all four now have both viewports.
 - [ ] **Open question for the user**: whether to implement any of this in `apps/web` (vanilla TS/Vite,
   current stack) — this session did not touch app code, and nobody was asked to run the app or take
   screenshots, so the mockups are unverified against the real running UI.
