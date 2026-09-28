@@ -22,7 +22,11 @@ import { Ensemble, Recognizer } from "./pipeline/recognizer.ts";
 import type { StepModel } from "./pipeline/recognizer.ts";
 import { Clock, glossErrors, Session } from "./pipeline/session.ts";
 import type { Sentence, Sign, StepResult } from "./pipeline/session.ts";
+import { glossToEnglish } from "./pipeline/gloss2en.ts";
 import { MovementGate } from "./pipeline/movement.ts";
+import type { RecordedSign } from "./pipeline/record.ts";
+import { recognizeRecording } from "./pipeline/record.ts";
+import { WholeClipRecognizer } from "./pipeline/wholeclip.ts";
 import { onVoicesChanged, speak, voices } from "./pipeline/speech.ts";
 
 const BASE = import.meta.env.BASE_URL;
@@ -68,6 +72,10 @@ const ui = {
   isolatedMode: $<HTMLInputElement>("isolated-mode"),
   isolatedSection: $<HTMLElement>("isolated-section"),
   isolatedSigns: $<HTMLOListElement>("isolated-signs"),
+  recordMode: $<HTMLInputElement>("record-mode"),
+  recordSection: $<HTMLElement>("record-section"),
+  recordStatus: $<HTMLParagraphElement>("record-status"),
+  recordSigns: $<HTMLOListElement>("record-signs"),
   check: $<HTMLElement>("check"),
   checkSummary: $<HTMLParagraphElement>("check-summary"),
   checkRows: $<HTMLTableSectionElement>("check-rows"),
@@ -100,6 +108,61 @@ async function getIsolatedSession(): Promise<IsolatedSession> {
     (rec) => (isolatedSession = new IsolatedSession(rec)),
   );
   return isolatedLoading;
+}
+
+interface RecordModels {
+  bilstm: WholeClipRecognizer;
+  phono: IsolatedRecognizer; // a dedicated instance -- driven whole-clip-style here (record.ts),
+  // never shared with the live isolated-mode session, which steps its own instance frame by frame.
+}
+
+let recordModels: RecordModels | null = null;
+let recordLoading: Promise<RecordModels> | null = null;
+let recordedFrames: Float32Array[] = [];
+
+/** Lazy: `bilstm` (11 MB) and a second `gru_phono_raw` instance only load once record
+ * mode is actually used. */
+async function getRecordModels(): Promise<RecordModels> {
+  if (recordModels) return recordModels;
+  recordLoading ??= Promise.all([
+    WholeClipRecognizer.load(ASSETS, `${WASM}/litert/`, "models/bilstm_wholeclip"),
+    IsolatedRecognizer.load(ASSETS, `${WASM}/litert/`, "models/gru_phono_raw"),
+  ]).then(([bilstm, phono]) => (recordModels = { bilstm, phono }));
+  return recordLoading;
+}
+
+function showRecordSign(gloss: string, candidates: readonly { gloss: string; prob: number }[]): void {
+  const li = document.createElement("li");
+  const alt = candidates.slice(1).map((c) => `${c.gloss} ${(c.prob * 100).toFixed(0)}%`).join(", ");
+  li.textContent = alt ? `${gloss} (top-5 also considered: ${alt})` : gloss;
+  ui.recordSigns.prepend(li);
+}
+
+/** Runs the whole-clip pipeline over the frames buffered while recording, renders the
+ * result, and speaks it. Clears the buffer either way. */
+async function finishRecording(): Promise<void> {
+  const frames = recordedFrames;
+  recordedFrames = [];
+  if (!frames.length) return;
+  ui.recordSection.hidden = false;
+  ui.recordStatus.textContent = `Processing ${frames.length} frames…`;
+  let signs: RecordedSign[];
+  try {
+    const { bilstm, phono } = await getRecordModels();
+    signs = await recognizeRecording(frames, app.base, bilstm, phono, app.prior.prior);
+  } catch (e) {
+    ui.recordStatus.textContent = `Record & recognize failed: ${String(e)}`;
+    return;
+  }
+  if (!signs.length) {
+    ui.recordStatus.textContent = "No signs recognized in the recording.";
+    return;
+  }
+  ui.recordStatus.textContent = `${signs.length} sign(s) recognized.`;
+  for (const s of signs) showRecordSign(s.gloss, s.candidates);
+  const english = glossToEnglish(signs.map((s) => s.gloss), app.lexicon);
+  void logSentence({ signs: signs.map((s) => ({ gloss: s.gloss, conf: s.candidates[0]?.prob ?? 1, frame: s.frame,
+    decidedAt: s.frame, uncertain: false })), english, autoSpeak: ui.autoSpeak.checked });
 }
 
 function showIsolatedGuess(gloss: string, conf: number, reason: "hand_left" | "stable"): void {
@@ -433,6 +496,7 @@ async function runLive(kind: "camera" | "file"): Promise<void> {
   let capturedFrames = 0, lastFed: Float32Array | null = null;
   const nullFrame = new Float32Array(app.rec.glosses.length + 1);
   nullFrame[app.rec.manifest.null_index] = 1;
+  recordedFrames = []; // TODO §16.2: a fresh recording buffer per source start
   setStatus(kind === "camera" ? "Signing: pause for about 1.5 s to end a sentence." : "Playing the video…");
 
   await new Promise<void>((resolve) => {
@@ -442,6 +506,7 @@ async function runLive(kind: "camera" | "file"): Promise<void> {
       if (end.sentence) void logSentence(end.sentence);
       showLive([], null);
       stream?.getTracks().forEach((t) => t.stop());
+      if (ui.recordMode.checked) void finishRecording();
       resolve();
     };
     video.onended = finish;
@@ -477,6 +542,10 @@ async function runLive(kind: "camera" | "file"): Promise<void> {
           movement.reset();
         }
         wasEmpty = nobody;
+        // TODO §16.2: buffer one real (non-interpolated) frame per detection for
+        // record-then-recognize, skipping "nobody in view" gaps -- GISLR clips always
+        // contain a body, so an empty frame is a pause to drop, not content to record.
+        if (ui.recordMode.checked && !nobody) recordedFrames.push(frame);
         // Real-frame-only (TODO §16.1): a sign run this still for this long is over,
         // even if the model's null head hasn't caught up yet.
         const noMovement = nobody ? false : movement.push(frame);

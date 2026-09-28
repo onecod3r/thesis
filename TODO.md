@@ -5177,20 +5177,51 @@ the user's explicit "proceed with bilstm (best performing one)" (2026-09-28).
   signal. Full write-up: `docs/reports/bilstm-wholeclip-eval.md` Part 3. Not pursued
   further (the negative trend is too consistent for a narrower application to plausibly
   reverse).
-- [ ] **UI: not started, now unblocked** — the design is decided (segmentation = C4 D3,
-  classifier = `bilstm` + `gru_phono_raw` ensemble, decision = top-5 Viterbi over the
-  deployed trigram, λ=0.7). Record button, processing spinner, decoded sentence, and
-  the top-5-before-rescore shown alongside (so a user can see what the sentence-level
-  search overruled). Needs: a TS port of `viterbi_rescore` (small — the Python version
-  is ~50 lines of dynamic programming, no external deps) and
-  `fuse.segments_d3`/`decode.frame_outputs`'s TS equivalents (largely already ported —
-  `decoder.ts` has D3-shaped logic; check what's reusable vs. new before writing), and
-  two model runners in the browser: `bilstm`'s new whole-clip export (genuinely needs
-  one — it has a backward pass) and `gru_phono_raw`'s **existing** step export from
-  §15 (no new export needed there — it's causal, so feeding a segment's frames through
-  its step model one at a time and reading the final frame's output *is* its whole-clip
-  readout, the same thing `forward_full` computes; only the driving loop is new code,
-  reusable from `IsolatedSession`'s per-frame pattern).
+- [x] **UI built and deployed, same day (user: "proceed to the UI build. Deploy models
+  and update the UI according to the design").** `apps/web/src/pipeline/`:
+  - `viterbi.ts` (`viterbiRescore`) — TS port of `sb.rescore.prior.viterbi_rescore`.
+    Not parity-tested against a Python fixture (no fixture export exists for this
+    yet); instead checked against a brute-force search over every top-k combination on
+    synthetic cases (`test/record.test.ts`, exact match at several λ, plus a case that
+    demonstrates the prior actually flipping an argmax-ambiguous choice).
+  - `decoder.ts`'s new `segmentsD3` — TS port of `sb.recognize.continuous.fuse
+    .segments_d3`/`vote`, the batch/offline sibling of `OnlineDecoder`'s existing D3
+    branch. Unit-tested directly (maximal below-`nu` runs, `minLen` drop, an
+    end-of-stream close) — no Python fixture, same reasoning as above.
+  - `wholeclip.ts` (`WholeClipRecognizer`, `classifyWithStepModel`) — a whole-clip
+    LiteRT.js runner for `bilstm` (dynamic-length input, matches
+    `export_web_wholeclip`'s contract) and a helper that drives `gru_phono_raw`'s
+    *existing* step model (§15) frame-by-frame over a segment, keeping the last
+    frame's output as its whole-clip readout — no new export needed there, it's causal.
+  - `record.ts` (`recognizeRecording`) — orchestrates all of the above with the
+    measured settings (D3 `nu=0.5`/`min_len=4`, Viterbi `λ=0.7`/`k=5`).
+  - `main.ts`/`index.html`: a "Record & recognize mode" checkbox next to "Individual
+    sign mode" (additive, same pattern). While checked, the live camera/file loop also
+    buffers one real (non-interpolated, non-empty) frame per detection; on stop, the
+    buffer is handed to `recognizeRecording` using `app.base` (the deployed C4
+    instance already loaded) for segmentation, and the result is rendered (each sign,
+    its top-5 alternatives before rescoring) and spoken through the existing English +
+    speech pipeline.
+  - `bilstm`'s export (`registry/runs/1784447175/export/web/`) copied to
+    `apps/web/public/assets/models/bilstm_wholeclip/` — manual placement, same
+    precedent as §15's `gru_phono_raw` (the asset pipeline, `tools/export.py`, doesn't
+    know about either model yet — a future run of it won't regenerate these, same
+    caveat §15 already flagged).
+  - Verified: `tsc --noEmit` clean, `npm test` **16/16** (11 original + 5 new, no
+    regressions), `npm run build` succeeds and bundles the new model (confirmed present
+    under `dist/assets/models/bilstm_wholeclip/`).
+  - **Deployed**: `wrangler deploy` from `apps/edge` using the `.env` API token
+    (non-interactive; `wrangler login` needs a browser this environment doesn't have).
+    Live at https://signbridge.onecoder1.workers.dev — verified post-deploy with a
+    direct fetch: the page HTML contains the new checkbox, and
+    `/assets/models/bilstm_wholeclip/manifest.json` resolves (200).
+- [ ] **Not yet done**: a real-camera check of record-then-recognize (the isolated and
+  continuous modes both got one before being trusted; this one hasn't, same standing
+  caveat as every other web change — first live test is the user's). No Python-fixture
+  parity check for `viterbiRescore`/`segmentsD3` (unlike `decoder.ts`'s existing D3
+  logic, which `test/decoder.test.ts` checks against cached Python outputs) — the
+  brute-force/unit tests give real confidence but aren't the same guarantee; building a
+  proper fixture would mean extending `tools/export.py`'s `fixtures()`, not done here.
 - [ ] **`bilstm_phono` swap, later** (§3.9's open follow-up, run stopped at epoch 14,
   no export path built yet either way) — now a real option worth revisiting once
   trained, given how much the classifier swap alone was worth here.

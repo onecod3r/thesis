@@ -44,6 +44,45 @@ export interface Lattice {
 
 export const D3_ONLY: Rule = { kind: "rule", mode: "none", lam: 0, theta: 0, k: 5, theta_lo: 0, theta_hi: 1.01, max_len: null };
 
+/** D3 segments over a *whole* recorded stream's per-frame gloss+null probabilities
+ * (TODO §16.2's record-then-recognize mode): a port of `sb.recognize.continuous
+ * .fuse.segments_d3`/`vote`. Maximal runs of frames with null probability below `nu`,
+ * at least `minLen` long. Batch/offline sibling of `OnlineDecoder`'s frame-by-frame
+ * D3 branch (same rule, no incremental state -- the whole clip is already in hand). */
+export function segmentsD3(gp: readonly Float64Array[], nu: number, minLen: number, nullIndex: number): Segment[] {
+  const out: Segment[] = [];
+  let start: number | null = null;
+  const close = (end: number) => {
+    if (start === null) return;
+    if (end - start >= minLen) {
+      const q = new Float64Array(nullIndex);
+      const peak = new Float64Array(nullIndex);
+      let mass = 0;
+      for (let t = start; t < end; t++) {
+        const w = 1 - gp[t][nullIndex];
+        mass += w;
+        for (let c = 0; c < nullIndex; c++) {
+          q[c] += w * gp[t][c];
+          if (gp[t][c] > peak[c]) peak[c] = gp[t][c];
+        }
+      }
+      const s = q.reduce((a, b) => a + b, 0);
+      for (let c = 0; c < nullIndex; c++) q[c] /= Math.max(s, 1e-12);
+      out.push({ start, end, q, mass, peak });
+    }
+    start = null;
+  };
+  for (let t = 0; t < gp.length; t++) {
+    if (gp[t][nullIndex] < nu) {
+      if (start === null) start = t;
+    } else {
+      close(t);
+    }
+  }
+  close(gp.length);
+  return out;
+}
+
 function argmax(v: ArrayLike<number>): number {
   let best = 0;
   for (let i = 1; i < v.length; i++) if (v[i] > v[best]) best = i;

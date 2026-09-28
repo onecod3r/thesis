@@ -49,6 +49,8 @@
         <label id="llm-wrap" hidden><input id="llm" type="checkbox" /> English by LLM (edge; rules offline otherwise)</label>
         <label title="A separate, higher-accuracy isolated classifier (gru_phono_raw). Commits a word when the hand leaves the frame, or right away once its guess has held steady.">
           <input id="isolated-mode" type="checkbox" /> Individual sign mode (commit on hand-out-of-frame or a stable repeat)</label>
+        <label title="Record the whole clip, then process it once at the end: C4 segments it, bilstm + gru_phono_raw classify each segment, and the whole sentence's top-5 candidates are decoded together against the deployed language model. Measured GER 0.177 / sentence accuracy 0.619 vs. 0.278 / ~0.37 live -- docs/reports/bilstm-wholeclip-eval.md.">
+          <input id="record-mode" type="checkbox" /> Record &amp; recognize mode (process the whole clip at the end, higher accuracy)</label>
       </div>
       <p id="variant-note" class="note"></p>
     </section>
@@ -90,6 +92,12 @@
     <section id="isolated-section" hidden>
       <h2>Individual signs</h2>
       <ol id="isolated-signs" class="sentences" reversed></ol>
+    </section>
+
+    <section id="record-section" hidden>
+      <h2>Recorded recognition</h2>
+      <p id="record-status" class="note"></p>
+      <ol id="record-signs" class="sentences" reversed></ol>
     </section>
 
     <section id="check" class="check" hidden>
