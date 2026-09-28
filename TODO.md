@@ -5065,21 +5065,47 @@ the user's explicit "proceed with bilstm (best performing one)" (2026-09-28).
   oracle spans (headroom for a downstream re-ranker) and a segmentation-coverage
   diagnostic (candidate segments vs true sign count/overlap) before any scoring.
   8-sequence smoke run (`nbclient`, in-process, no jupyter CLI needed on this machine)
-  passed end to end with no errors; **full run (~3,000 selection + ~9,700 evaluation
-  sequences across 21 signers) launched 2026-09-28, in progress at the time of writing
-  — results not yet read.** Next: read `data/cache/gislr/bilstm_wholeclip_eval/results/
-  final_table.csv`, write the numbers here and into a `docs/reports/` note, and decide
-  from them (not from the noisy 8-sequence smoke numbers) whether this mode is worth the
-  UI work below.
-- [ ] **UI, not started — blocked on the eval result above.** A new mode alongside
-  "Individual sign mode": record button, processing spinner, decoded sentence, and the
-  top-5 per segment before re-ranking (so a user can see what context overruled). Needs
-  a TS port of `movement_segments` reused from `movement.ts` directly (same module,
-  offline mode just buffers the whole clip first) and a whole-clip LiteRT.js runner
-  (new — every existing `apps/web/src/pipeline/*.ts` model wrapper is step-shaped).
+  passed end to end with no errors; **full run finished 2026-09-28** (21 signers, 6,616
+  `sentence` + 6,111 `control` sequences). **Full write-up: `docs/reports
+  /bilstm-wholeclip-eval.md`.**
+- [x] **Result: two findings pulling in opposite directions.** (1) **`bilstm`'s
+  whole-clip classification is excellent given accurate segmentation** — oracle
+  boundaries (B0) score GER **0.106** (0.089 with the trigram prior), beating every
+  existing number in this repo including the isolated-model oracle (0.221); 91.8% top-5
+  hit rate says the prior has real headroom to work with. (2) **Movement-only
+  segmentation is not adequate for it** — GER **0.953** (0.827 with the prior),
+  sentence accuracy ≈0, despite a reasonable-looking segmentation diagnostic (3.21 vs
+  3.13 true signs/sequence, 95.7% mean overlap coverage). Three follow-up probes (not
+  parameter-tuning wins, actual attempted fixes) didn't close the gap: trimming the
+  trailing stillness off each segment did nothing (GER 0.966–0.968 across 0–15 frames
+  trimmed); restricting each span to its oracle `frame_kind == SIGN` sub-range helped
+  some (0.97 → 0.80) but flipped the error to deletion-dominated (0.458) — two close
+  signs with a quick transition don't produce a stillness gap at all, so one gets
+  dropped. **This is the same fixed-hold failure mode §12.2 already diagnosed for the
+  continuous GRU family** ("no single hold serves both [short and long signs]... the
+  design brief for 12.3: per-frame supervision + a model-signalled boundary, not a
+  fixed hold") — movement/stillness gating is structurally the same kind of heuristic,
+  hitting the same wall independently here.
+- [x] **Decision: don't build the UI on pure movement segmentation** — the measured
+  accuracy doesn't clear a usable bar. Two ways forward, neither built, recorded in the
+  report: (a) **hybrid** — reuse C4's own learned boundary/null decoding (already
+  deployed, 0.278 GER) for segment proposals, classify each accepted segment with
+  `bilstm`'s already-exported whole-clip readout instead of/alongside C4's per-frame
+  vote (cheap next experiment, no new export or training needed); (b) a dedicated
+  learned boundary signal for whole-clip mode, mirroring §12.3 (meaningfully more work
+  — a new training run — not justified before trying (a)).
+- [ ] **Next (open): try the hybrid (a) above**, or get the user's call on whether 16.2
+  is worth continuing at all given movement segmentation alone doesn't work. The
+  whole-clip export itself (`export_web_wholeclip`, parity-verified) and the Python
+  `movement_segments` port are reusable regardless of which path this takes.
+- [ ] **UI: not started, and now blocked on the decision above**, not just on reading a
+  result. If pursued: record button, processing spinner, decoded sentence, top-5 per
+  segment before re-ranking. Needs a TS port of whatever segmentation wins and a
+  whole-clip LiteRT.js runner (new — every existing `apps/web/src/pipeline/*.ts` model
+  wrapper is step-shaped).
 - [ ] **`bilstm_phono` swap, later** (§3.9's open follow-up, run stopped at epoch 14,
-  no export path built yet either way) — once finished and only if 16.2 ships, same
-  incremental pattern as §15 (`gru` before `gru_phono_raw`).
+  no export path built yet either way) — moot unless 16.2 finds a working segmentation
+  path first.
 
 ### 16.4 MediaPipe capture resolution/fps — research done 2026-09-28, camera constraints updated
 
