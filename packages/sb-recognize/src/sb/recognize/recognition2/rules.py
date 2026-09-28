@@ -26,9 +26,18 @@ Consequences of the pose-free default:
 - **MajorLocation** can only reach `Hand`/`Head`/`Neutral` -- ASL-LEX's `Body`/`Arm` categories name
   torso/forearm contact this module cannot see without pose, and are reported `NOT_COMPUTABLE`
   rather than guessed.
-- **MinorLocation**/**SecondMinorLocation**: only the face-adjacent categories in
-  :data:`MINOR_LOCATION_MAP` are attempted; the rest (torso/arm sites, and hand-part-of-contact
-  categories like `FingerTip`/`Palm`/`WristBack`) are `NOT_COMPUTABLE`.
+- **MinorLocation**: only the face-adjacent categories in :data:`MINOR_LOCATION_MAP` are attempted;
+  the rest (torso/arm sites, and hand-part-of-contact categories like `FingerTip`/`Palm`/`WristBack`)
+  are `NOT_COMPUTABLE`.
+- **SecondMinorLocation** (added 2026-09-28, was previously 0% coverage): ASL-LEX's own value set
+  here is dominated by `Neutral`/`HeadAway`/`HandAway`/`BodyAway` (80% of the non-null ground truth
+  among the 233 mapped glosses) -- not a second face site, but whether the hand moves *away* from
+  wherever `MajorLocation` found contact by the end of the sign. Implemented as a path-departure
+  check: find the hand's closest approach to that site, then see if it has moved more than
+  ``away_t`` (x eye distance) away from that point by the sign's last tracked frame. `Neutral` when
+  `MajorLocation` is `Neutral`/`Arm` (nothing to leave); `NOT_COMPUTABLE` when `MajorLocation` is
+  `Body` without pose, or the departure can't be measured (too few tracked frames). Finer sub-site
+  categories (`TorsoMid`, `ElbowBack`, `Other`, ...) are not attempted -- still `NOT_COMPUTABLE`.
 
 **With ``use_pose=True``** (hands and face stay the primary signal for every hand-internal parameter
 -- pose only fills the specific gaps above, per the user's "prioritize face and hands" instruction):
@@ -115,7 +124,9 @@ class Thresholds:
     flat_base_t: float = 25.0      # base flexion at/above this with straight non-base: "Flat"
     curved_t: float = 90.0         # non-base flexion at/above this: "Curved"
     closed_t: float = 150.0        # non-base flexion at/above this (or low extension): "FullyClosed"
-    nucleus_trim: float = 0.2      # share of the dominant hand's detected span dropped at each end
+    nucleus_trim: float = 0.2      # share of a hand's own detected span dropped at each end
+    away_t: float = 0.5            # hand's displacement from its closest approach to a site, by the
+                                    # sign's end, needed to call SecondMinorLocation "...Away" (x eye distance)
 
 
 def load_thresholds(path: str | Path | None = None) -> Thresholds:
@@ -319,6 +330,20 @@ def _med(a: np.ndarray) -> float:
         return float(np.nanmedian(a)) if len(a) else float("nan")
 
 
+def _away(dist: np.ndarray, centre: np.ndarray, thresh: float) -> bool | None:
+    """For `second_minor_location`: does the hand end up more than ``thresh`` from the point where
+    it was closest to ``dist``'s site, by the last tracked frame? ``None`` if there isn't enough
+    valid data to judge (never guessed as True/False)."""
+    valid = ~np.isnan(dist)
+    if not valid.any():
+        return None
+    close_pt = centre[int(np.nanargmin(dist))]
+    tracked = np.flatnonzero(~np.isnan(centre[:, 0]))
+    if len(tracked) == 0 or np.isnan(close_pt).any():
+        return None
+    return float(np.linalg.norm(centre[tracked[-1]] - close_pt)) > thresh
+
+
 def _selected_fingers(medial: dict, t: Thresholds) -> str:
     ext = medial["hs"][:, 0:5]  # thumb, index, middle, ring, pinky extension (see _handshape order)
     ext_med = np.nanmedian(ext, axis=0)
@@ -383,14 +408,31 @@ def _codes(feats: dict, t: Thresholds, lookup: dict[tuple, str], is_marked: dict
     def seg(d: dict, key: str, sl):
         return d[key][sl]
 
-    def medial_of(d: dict) -> dict:
-        n = nucleus.stop - nucleus.start
-        third = slice(nucleus.start + n // 3, nucleus.stop - n // 3) if n >= 3 else nucleus
-        out = {k: v[third] for k, v in d.items()
-               if k in ("hs", "thumb_open", "base_flex", "nonbase_flex", "spread", "aperture",
-                        "thumb_contact", "normal", "finger_dir")}
-        out["dist_head"] = {s: v[third] for s, v in d["dist_head"].items()}
-        return out
+    def own_nucleus(present: np.ndarray) -> slice | None:
+        """Same trim-the-ends logic as `nucleus`, but on a hand's *own* detected span -- added
+        2026-09-28 for `non_dominant_handshape`: reusing `nucleus` (h1's span) for hand 2 meant its
+        features were sliced at whatever window h1 happened to be active in, which is frequently a
+        window where h2 itself is absent even on two-handed signs where h2 IS tracked elsewhere in
+        the clip (found analyzing the near-zero non_dominant_handshape coverage, 2026-09-28)."""
+        idx = np.flatnonzero(present)
+        if len(idx) == 0:
+            return None
+        pa, pb = int(idx[0]), int(idx[-1]) + 1
+        pcut = int(round((pb - pa) * t.nucleus_trim))
+        return slice(pa + pcut, max(pb - pcut, pa + pcut + 1))
+
+    def medial_of(d: dict, nuc: slice | None) -> dict:
+        keys = ("hs", "thumb_open", "base_flex", "nonbase_flex", "spread", "aperture",
+                "thumb_contact", "normal", "finger_dir")
+        if nuc is None:
+            out: dict = {k: np.full((0, *np.shape(d[k])[1:]), np.nan, np.float32) for k in keys}
+            out["dist_head"] = {s: np.full(0, np.nan, np.float32) for s in d["dist_head"]}
+            return out
+        n = nuc.stop - nuc.start
+        third = slice(nuc.start + n // 3, nuc.stop - n // 3) if n >= 3 else nuc
+        out2: dict = {k: d[k][third] for k in keys}
+        out2["dist_head"] = {s: v[third] for s, v in d["dist_head"].items()}
+        return out2
 
     def _bin(value: bool | None) -> str:
         """``value`` -> a canonical ``"0"``/``"1"``, matching :func:`_norm_cell`'s normalization of
@@ -399,7 +441,9 @@ def _codes(feats: dict, t: Thresholds, lookup: dict[tuple, str], is_marked: dict
         directly to ground truth with no per-parameter format lookup."""
         return NOT_COMPUTABLE if value is None else str(int(value))
 
-    m1, m2 = medial_of(h1), medial_of(h2)
+    has_h2 = h2["present"].any() and np.mean(h2["present"]) >= 0.05  # matches _sign_type's own threshold
+    m1 = medial_of(h1, nucleus)
+    m2 = medial_of(h2, own_nucleus(h2["present"]) if has_h2 else None)
     sel1 = _selected_fingers(m1, t)
     flex1 = _flexion(m1, t)
     spread1_v = None if np.isnan(_med(m1["spread"])) else _med(m1["spread"]) > t.spread_t
@@ -416,7 +460,6 @@ def _codes(feats: dict, t: Thresholds, lookup: dict[tuple, str], is_marked: dict
     out["thumb_position"] = thumb_pos1
     out["thumb_contact"] = _bin(thumb_contact1_v)
 
-    has_h2 = h2["present"].any()
     sel2 = _selected_fingers(m2, t) if has_h2 else NOT_COMPUTABLE
     flex2 = _flexion(m2, t) if has_h2 else NOT_COMPUTABLE
     spread2_v = None if not has_h2 or np.isnan(_med(m2["spread"])) else _med(m2["spread"]) > t.spread_t
@@ -457,6 +500,23 @@ def _codes(feats: dict, t: Thresholds, lookup: dict[tuple, str], is_marked: dict
         out["major_location"] = "Arm"  # use_pose only; minor sub-site (UpperArm/ForearmBack/...) not attempted
     else:
         out["major_location"] = "Neutral"
+
+    # SecondMinorLocation (added 2026-09-28): ASL-LEX's own value set here is mostly "does the hand
+    # move away from wherever MajorLocation found contact, by the sign's end" -- see the module
+    # docstring. Reuses the site MajorLocation already picked; Body needs pose (matching
+    # MajorLocation's own gating), Neutral/Arm have no site to leave.
+    if out["major_location"] == "Hand":
+        away = _away(h1["touch_other"][a:b], h1["centre"][a:b], t.away_t * unit)
+        out["second_minor_location"] = NOT_COMPUTABLE if away is None else ("HandAway" if away else "Neutral")
+    elif out["major_location"] == "Head":
+        site = min(head, key=lambda s: head[s])
+        away = _away(h1["dist_head"][site][a:b], h1["centre"][a:b], t.away_t * unit)
+        out["second_minor_location"] = NOT_COMPUTABLE if away is None else ("HeadAway" if away else "Neutral")
+    elif out["major_location"] == "Body" and "dist_torso" in h1:
+        away = _away(h1["dist_torso"][a:b], h1["centre"][a:b], t.away_t * unit)
+        out["second_minor_location"] = NOT_COMPUTABLE if away is None else ("BodyAway" if away else "Neutral")
+    elif out["major_location"] in ("Neutral", "Arm"):
+        out["second_minor_location"] = "Neutral"
 
     # movement: the hand's own trajectory, unless it is absent for more than `hand_absent_frac` of
     # the nucleus and a pose wrist is available to fall back to (use_pose only) -- phonology.py's

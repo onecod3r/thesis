@@ -1,7 +1,8 @@
 # recognition_2: the rule-based ASL-LEX engine, retuned, and a pose ablation
 
-**Status: run 2026-09-27.** TODO §14. Follows the first run (`README.md`/TODO §14, same date) and the error
-analysis that found the issues fixed here. Module: `sb.recognize.recognition2.rules`/`validate`. Notebook:
+**Status: run 2026-09-27, extended 2026-09-28 (§5).** TODO §14. Follows the first run (`README.md`/TODO
+§14, same date) and the error analysis that found the issues fixed here. Module:
+`sb.recognize.recognition2.rules`/`validate`. Notebook:
 `experiments/recognition2/gislr.1.pipeline.stage1-rules.ipynb`. Isolated as before — nothing in
 `sb.recognize.phonology`/`aslex` is touched.
 
@@ -93,3 +94,46 @@ not done here given the fallback already looks like the wrong lever for `movemen
 `data/cache/gislr_aslex_rules/`: `agreement_no_pose.csv`, `agreement_with_pose.csv`,
 `agreement_comparison.csv`, `records_no_pose.json`, `records_with_pose.json` (every scored clip's truth and
 prediction, both variants, for further error analysis).
+
+## 5. Extended 2026-09-28: full canonical test split + the two remaining gaps
+
+User ask: build/extract every ASL-LEX feature and check it against ASL-LEX, "one by one." Sections 1–4
+above already cover 16 of 18 parameters with real numbers; this section closes the last two
+(`second_minor_location`, `non_dominant_handshape`) and reruns everything on far more data.
+
+**Sample size.** The runs above scored a 6-clips/gloss sample of `train.csv` (1,398 clips). GISLR actually
+has 239–332 train clips and 60–83 test clips per one of the 233 ASL-LEX-mapped glosses. This run scores
+**every clip in `test.csv`** (the same fixed 80/20 canonical split used for GISLR model evaluation
+elsewhere in this repo) — 16,741–16,772 clips per parameter (`n_with_ground_truth` varies per parameter
+since an ambiguous/unmapped gloss is excluded per-parameter, same policy as `aslex.gloss_codes`), for both
+variants. Rule evaluation is pure numpy geometry (~16ms/clip measured), no training, so both variants
+together ran in a few minutes.
+
+**Result: the numbers from the 6-clip sample hold up.** Every parameter's agreement is within ±0.02 of the
+first run's, on ~12x the data — the small sample was already a fair estimate, not noise. `movement`'s
+`with_pose` penalty (−0.107 here vs. −0.116 before) and `major_location`'s flat pose delta both replicate.
+
+**`second_minor_location` (new — was 0% coverage, no rule existed).** ASL-LEX's own value set here, checked
+against `signdata.csv`, is dominated by `Neutral`/`HeadAway`/`HandAway`/`BodyAway` — not a second face
+site, but whether the hand moves *away* from wherever `MajorLocation` found contact by the sign's end.
+Implemented as a path-departure check (`rules.py::_away`): find the hand's closest approach to that site
+across its whole detected span, then check whether it ends up more than `away_t` (0.5x inter-eye distance)
+further away by the last tracked frame. Result: **coverage ~100%, agreement 0.390 vs. chance 0.048** (8.2x
+chance) — a genuinely strong new signal, not just "attempted." Finer sub-site categories (`TorsoMid`,
+`ElbowBack`, `Other`, ...) are still `NOT_COMPUTABLE`, not guessed; `Body`→`BodyAway` needs pose, matching
+`major_location`'s own gating.
+
+**`non_dominant_handshape` (fix — mechanism works, ceiling is the data, not the bug).** The bug: its
+features were sliced using the *dominant* hand's active window (`nucleus`), which on a two-handed sign is
+frequently a window where hand 2 itself isn't tracked, even though hand 2 IS tracked elsewhere in the clip.
+Fixed by giving hand 2 its own independently-computed nucleus (`rules.py::own_nucleus`). Effect: attempted
+predictions went from 2/1,308 (0.4 %, old 6-clip run) to 36/16,741 (0.6%, full run) — mechanically working,
+7x more clips now get an attempt, but still near-chance agreement (0.028 vs. chance 0.032, 1/36 correct).
+**The real bottleneck isn't the bug — it's that GISLR's vocabulary is overwhelmingly one-handed or has a
+passive/non-varying second hand**: only ~2.5% of a spot-checked sample even has the non-dominant hand
+tracked for ≥5% of frames, and ASL-LEX ground truth itself only exists for 108/290 mapped entries (the rest
+are coded one-handed, no second handshape to have). This parameter's ceiling on GISLR is structural, not a
+threshold-tuning problem.
+
+**Updated artifacts**: same file names as §4, now holding the full-test-split run (previous 6-clip-sample
+files were overwritten — the sample-size finding above is the record of what changed).

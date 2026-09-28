@@ -4765,7 +4765,7 @@ deployment covers both directions; `apps/` gains a speech → sign surface.
 
 ---
 
-## 14. Recognition v2: ASL-LEX-complete rule-based phonology (no pose) — new, built + run 2026-09-27
+## 14. Recognition v2: ASL-LEX-complete rule-based phonology (no pose) — built + run 2026-09-27, extended 2026-09-28
 
 Follows the critique in §12.9/`docs/reports/phonology-pipeline-proposal.md`. **User's ask (2026-09-27):**
 build two things as a deliberately isolated workstream ("recognition_2") that never edits any existing
@@ -4852,9 +4852,31 @@ module shows up in `git diff` from this work.
 - [ ] **Not tried**: pose for `SecondMinorLocation`'s torso/arm sub-sites; a smarter movement fallback than
   "swap to wrist entirely" (blending, or a higher absence threshold) — not pursued since the fallback
   already looks like the wrong lever for `movement` specifically, per the finding above.
-- [ ] **Next action**: user reviews `docs/reports/recognition2-phonology-rules.md` and the records/agreement
-  files, decides whether to keep the no-pose design as primary (per the finding above) and whether to
-  proceed to stage 2 design or further error analysis.
+- [x] **Extended (Claude, 2026-09-28, user ask: "build an engine/s that extract every feature ... check if
+  the values match with the asl-lex dataset"), `docs/reports/recognition2-phonology-rules.md` §5:**
+  - **Scaled the run from a 6-clips/gloss sample (1,398 clips) to every clip in GISLR's canonical
+    `test.csv` split** (16,741–16,772 clips/parameter, ~12x the data) — pure geometry, no training, ran
+    myself in a few minutes. **Every parameter's agreement held within ±0.02 of the 6-clip numbers above**
+    — confirms the small sample wasn't noise.
+  - **Implemented `second_minor_location`** (was 0% coverage, no rule existed). ASL-LEX's value set here
+    is mostly `Neutral`/`HeadAway`/`HandAway`/`BodyAway` — whether the hand moves *away* from
+    `major_location`'s site by the sign's end, not a second face site. New path-departure check
+    (`rules.py::_away`). **Result: ~100% coverage, agreement 0.390 vs. chance 0.048 (8.2x chance)** — a
+    real, working signal now.
+  - **Fixed `non_dominant_handshape`**: it sliced hand 2's features inside hand 1's active window, so on
+    two-handed signs hand 2 was frequently absent from that exact window even when tracked elsewhere in
+    the clip. Gave hand 2 its own independently-computed nucleus (`rules.py::own_nucleus`). Attempted
+    predictions rose from 2/1,308 (0.4%) to 36/16,741 (0.6%) — mechanically working, but agreement is
+    still ~chance (0.028 vs 0.032). **Root cause isn't the bug**: only ~2.5% of GISLR clips even have the
+    non-dominant hand tracked for ≥5% of frames, and ASL-LEX ground truth for this parameter only exists
+    for 108/290 mapped entries (most are coded one-handed) — a structural ceiling on this dataset, not a
+    threshold problem.
+  - Code: `packages/sb-recognize/src/sb/recognize/recognition2/rules.py` (`own_nucleus`, `_away`,
+    `away_t` threshold, `second_minor_location` block). `validate.py`/`stage1-rules.json` unchanged — both
+    already had the ground-truth column and chance-category entries for these two parameters.
+- [ ] **Next action**: user reviews `docs/reports/recognition2-phonology-rules.md` (§1-4 original + §5
+  extension) and the records/agreement files, decides whether to keep the no-pose design as primary and
+  whether to proceed to stage 2 design or further error analysis.
 
 ---
 
