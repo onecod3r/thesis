@@ -399,7 +399,21 @@ async function runLive(kind: "camera" | "file"): Promise<void> {
   ui.replayCard.hidden = true;
   let stream: MediaStream | null = null;
   if (kind === "camera") {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
+    // Resolution/fps chosen from research (TODO §16.4, 2026-09-28), not measured on this
+    // app: MediaPipe's own pose model runs at a fixed low internal resolution regardless
+    // of input size, but the fine hand/face landmarks are cropped from the *original*
+    // frame, so more source resolution still helps there, with diminishing returns past
+    // ~720p (a secondary source reports 480p->720p +8% landmark confidence, 720p->1080p
+    // +2%). `ideal` (not exact) lets the browser fall back on a camera that can't do
+    // 720p. 30 fps matches GISLR's own confirmed capture rate (Pixel 4A recordings,
+    // FSboard/PopSign's shared collection pipeline: "1944x2592 pixels and 30 frames per
+    // second" -- arxiv.org/abs/2407.15806), which `target_fps` in pipeline.config.json
+    // already assumed; this just also asks the camera for it instead of taking whatever
+    // default the browser picks. Live fps/accuracy impact is unmeasured here -- TODO §16.1.
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+      audio: false,
+    });
     video.srcObject = stream;
   } else {
     const f = ui.file.files?.[0];

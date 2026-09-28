@@ -26,6 +26,55 @@ import torch
 
 from sb.recognize.continuous.fuse import Segment
 
+# Defaults mirror `apps/web/src/pipeline/movement.ts`'s `MovementGate` exactly (TODO
+# §16.1/§16.2) -- these are the numbers the live browser heuristic actually uses, not a
+# separately-tuned offline choice, so `movement_segments` below tests the real thing.
+MOVEMENT_POINT_NOISE_EPS = 0.0015
+MOVEMENT_SMOOTHING_ALPHA = 0.3
+MOVEMENT_STILL_THRESHOLD = 0.003
+MOVEMENT_STILL_FRAMES = 10
+
+
+def movement_segments(x: np.ndarray, min_len: int = 1,
+                      point_noise_eps: float = MOVEMENT_POINT_NOISE_EPS,
+                      smoothing_alpha: float = MOVEMENT_SMOOTHING_ALPHA,
+                      still_threshold: float = MOVEMENT_STILL_THRESHOLD,
+                      still_frames: int = MOVEMENT_STILL_FRAMES) -> list[tuple[int, int]]:
+    """Cut a stream into candidate-sign spans, the offline (whole-clip-in-hand) sibling of
+    `movement.ts`'s live per-frame gate -- for the record-then-recognize BiLSTM mode
+    (§16.2), whose only segmentation signal is stillness (unlike the continuous GRU
+    family, there is no learned null/boundary head here at all).
+
+    `x` is `(T, F)`, `F = 2 * n_landmarks` (xy pairs, already NaN -> 0, the model's own
+    input convention -- no z, so nothing to drop here unlike the browser side, which
+    drops z from a raw (543, 3) frame). The frame-to-frame math (sub-jitter clamp, EMA,
+    streak count) is a literal port of `MovementGate.push`, frame by frame, so behaviour
+    matches the browser's rather than merely resembling it.
+
+    A cut lands at the frame where a `still_frames`-long stillness streak is first
+    satisfied (the frame the live gate would force a run closed on); segments are the
+    spans between consecutive cuts (and clip start/end), each at least `min_len` long --
+    shorter ones (e.g. an opening stillness run with nothing before it) are dropped."""
+    T = x.shape[0]
+    if T < 2:
+        return [(0, T)] if T >= min_len else []
+    xy = x.reshape(T, -1, 2)
+    d = np.linalg.norm(np.diff(xy, axis=0), axis=-1)  # (T-1, n_landmarks)
+    d = np.where(d < point_noise_eps, 0.0, d)
+    per_frame = d.mean(axis=1)  # (T-1,), frame t's movement vs frame t-1
+
+    ema, streak = 0.0, 0
+    cuts = []
+    for t, m in enumerate(per_frame, start=1):  # t = the frame just arrived (1..T-1)
+        ema = smoothing_alpha * float(m) + (1.0 - smoothing_alpha) * ema
+        streak = streak + 1 if ema < still_threshold else 0
+        if streak == still_frames:  # the instant `MovementGate.push` would first return True
+            cuts.append(t)
+
+    bounds = [0, *cuts, T]
+    return [(bounds[i], bounds[i + 1]) for i in range(len(bounds) - 1)
+            if bounds[i + 1] - bounds[i] >= min_len]
+
 
 @torch.no_grad()
 def window_probs(model, x: torch.Tensor, win: int, stride: int, offset: int = 0,

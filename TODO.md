@@ -5007,65 +5007,117 @@ next guess and the same sign is repeated then the sign should be selected right 
 - [ ] Not deployed yet — code is built and tested, `wrangler deploy` from `apps/edge` is
   the user's, same as every other web change (§12.5's pattern).
 
-### 16.2 Record-then-recognize BiLSTM mode — plan, not yet built
+### 16.2 Record-then-recognize BiLSTM mode — export + offline eval built 2026-09-28, UI not started
 
 A second, independent mode next to the live continuous C4 pipeline (additive, like
 §15's isolated-mode checkbox): record a clip start-to-finish, then process it offline
-in the browser rather than streaming frame-by-frame.
+in the browser rather than streaming frame-by-frame. Model chosen: **`bilstm`**, run
+`1784447175` (ME_126, xy), **0.7569 canonical** — the accuracy leader (§4.1/§4.3), per
+the user's explicit "proceed with bilstm (best performing one)" (2026-09-28).
 
-**What exists already that this reuses:**
-- `bilstm` is in the offline five-arch benchmark (§4.3/§3.7, 0.7392 canonical-adjacent,
-  the accuracy leader — `docs/reports/five-arch-benchmark.md`) but was never exported
-  for the web (`export.keras`'s `BUILDERS` has `gru`/`lstm`/`bilstm`/`cnn1d`, but no step
-  export exists for it — `export.step` only covers the causal architectures today, since
-  a bidirectional model can't run frame-by-frame; it needs the *whole* clip, which fits
-  "record then recognize" exactly and sidesteps the streaming-viability constraint that
-  rules it out everywhere else in this repo).
-- Segmentation reuses **16.1's `MovementGate`** on the recorded frame buffer (offline, so
-  no real-time constraint — could even smooth non-causally, e.g. a centered moving
-  average instead of an EMA, since the whole clip is already in hand before segmenting).
-- Top-5 per segment: `bilstm`'s softmax head already gives a full distribution; take the
-  top 5 by probability instead of argmax — no model change, just reading more of the
-  output.
-- Downstream sentence-context re-ranking over the top-5 per segment is structurally the
-  same problem as §12.6's next-gloss n-gram prior (`sb.recognize.sequences` /
-  `apps/web/src/pipeline/prior.ts`'s `NgramPrior`, already ported to TS) and this file's
-  own `decoder.ts`'s `fused()`/lattice machinery (log-space fusion of a per-segment
-  distribution with a context prior, already built and tested) — the "downstream model"
-  the user asks for is an existing building block, not new research, unless a stronger
-  prior (e.g. an LLM over gloss sequences, §12.6's Workers AI arm) is wanted instead of
-  the n-gram.
+- [x] **Whole-clip TFLite export, Flex-free — `sb.recognize.export.step.export_web_wholeclip`
+  (+ `_build_wholeclip_module`, `convert_wholeclip`, `check_wholeclip_parity`,
+  `WHOLECLIP_ARCHS = ("bilstm",)`).** Reuses `export/keras.py`'s already-parity-checked
+  `build_bilstm` Keras rebuild (the same one the Kaggle grader path uses) — only the
+  TFLite conversion differs. **Key finding (measured 2026-09-28, not assumed):** the
+  Kaggle grader export needs `SELECT_TF_OPS` (Flex) because TFLite has **no fused GRU
+  builtin** (confirmed by testing) — but `Bidirectional(LSTM)` converts through the
+  fused `UnidirectionalSequenceLSTM` builtin for *both* directions, **with the time
+  dimension left fully dynamic**, no Flex, no fixed-length padding needed. So unlike
+  16.2's original plan (which expected to need a padding/bucketing scheme), the export
+  takes a clip of any length directly. One gotcha hit and fixed: `TFLiteConverter`
+  freezing (required — the Keras RNN layers hold resource variables, same
+  `READ_VARIABLE` failure `export/tflite.py` already documents) loses the concrete
+  function's output *name*, so the frozen function is re-wrapped in a module that
+  re-declares `recognize(frames) -> {"probs": ...}` before conversion (mirrors
+  `export/tflite.py`'s `export_saved_model` fix for the same problem).
+- [x] **Verified end to end** on run `1784447175`: Keras-rebuild parity 3.3e-6, TFLite
+  parity (vs PyTorch `forward_full`, 6 clip lengths 1–200 frames incl. the corpus
+  median/p95/max) **max prob diff 6.3e-7**, ops list has no `Flex*` entry (asserted).
+  11.06 MB fp32 (bigger than the ~3.5 MB causal-step exports — 2.75M params vs those
+  models' ≤1M — still a reasonable one-time lazy-load for an opt-in mode). Registered:
+  `run_dir/export/web/{model.tflite,manifest.json}` (`sb-docs.exe` re-run afterward to
+  catch up `README.md`/`registry/index.csv`, which were separately stale from
+  already-registered-but-unindexed runs, unrelated to this change).
+- [x] **Movement-based segmentation ported to Python** — `sb.recognize.sequences.windows
+  .movement_segments` (+ `MOVEMENT_*` constants), a **literal, frame-by-frame port of
+  `movement.ts`'s `MovementGate.push`** (same defaults: 0.0015 noise floor, 0.3 EMA α,
+  0.003 still threshold, 10-frame hold), not a reimplementation from scratch — so the
+  offline eval below tests the actual heuristic the browser will run. Verified on a
+  synthetic stream (moving/still/moving/still/moving) that cuts land where the EMA decay
+  math says they should.
+- [x] **Offline evaluation notebook —
+  `experiments/recognition/gislr.3.streaming.bilstm-wholeclip-eval.ipynb`** (+ its
+  generator script, `build_bilstm_wholeclip_eval.py`, kept so the notebook can be
+  regenerated). Pure inference + a closed-form n-gram count-fit, no training, so run
+  directly (not handed off) — same class of work as the deterministic cells already run
+  this session. Reuses existing machinery rather than rebuilding it:
+  `sb.recognize.sequences.baselines.StreamFeatures`/`signer_split` (§12.2),
+  `sb.recognize.continuous.fuse.Segment/Rule/decide/decode_fused` (§12.6, the exact
+  Python source `decoder.ts` was ported from), `sb.recognize.sequences.metrics
+  .score_sequence/aggregate` (GER scoring), `sb.rescore.prior.NgramLM` (the same
+  Kneser-Ney trigram already deployed for C4, `pipeline.config.json`'s `prior`, order=3
+  discount=0.75, fit on the full corpus — same choice, same circularity caveat as
+  there). Arms: **B0** (oracle sign boundaries + `bilstm`, no prior — the ceiling,
+  isolates classification error from segmentation error), **B-mv** (`movement_segments`
+  + `bilstm`, no prior), and both **+prior** (shallow-fusion rescore, `lam=0.2` from the
+  deployed value, `theta` swept on selection signers). Also reports top-5 hit rate on
+  oracle spans (headroom for a downstream re-ranker) and a segmentation-coverage
+  diagnostic (candidate segments vs true sign count/overlap) before any scoring.
+  8-sequence smoke run (`nbclient`, in-process, no jupyter CLI needed on this machine)
+  passed end to end with no errors; **full run (~3,000 selection + ~9,700 evaluation
+  sequences across 21 signers) launched 2026-09-28, in progress at the time of writing
+  — results not yet read.** Next: read `data/cache/gislr/bilstm_wholeclip_eval/results/
+  final_table.csv`, write the numbers here and into a `docs/reports/` note, and decide
+  from them (not from the noisy 8-sequence smoke numbers) whether this mode is worth the
+  UI work below.
+- [ ] **UI, not started — blocked on the eval result above.** A new mode alongside
+  "Individual sign mode": record button, processing spinner, decoded sentence, and the
+  top-5 per segment before re-ranking (so a user can see what context overruled). Needs
+  a TS port of `movement_segments` reused from `movement.ts` directly (same module,
+  offline mode just buffers the whole clip first) and a whole-clip LiteRT.js runner
+  (new — every existing `apps/web/src/pipeline/*.ts` model wrapper is step-shaped).
+- [ ] **`bilstm_phono` swap, later** (§3.9's open follow-up, run stopped at epoch 14,
+  no export path built yet either way) — once finished and only if 16.2 ships, same
+  incremental pattern as §15 (`gru` before `gru_phono_raw`).
 
-**Not yet built — plan before writing code:**
-- [ ] Export `bilstm` (or `bilstm_phono`, once §8e finishes — better accuracy, same
-  export shape) as a **whole-clip** TFLite graph: fixed or padded-length input
-  `(T, 543, 3)` in, per-segment or per-frame probabilities out. Different from every
-  existing web export (`export.step`'s causal one-frame-in-one-state-out contract) — new
-  code in `sb.recognize.export`, not a variant of `_phono_tf`/`export_web_isolated`.
-  Needs a padding/length convention decided (GISLR clips run 1–405 frames, §12.3's
-  facts) — pad-and-mask, or bucket to a few fixed lengths, needs a plan reviewed before
-  building.
-- [ ] Segment the recorded clip with `MovementGate` (buffered/offline variant), run the
-  whole-clip model once, slice its per-frame or per-window output at segment boundaries,
-  take top-5 per segment.
-- [ ] Downstream re-ranking: reuse `decoder.ts`'s `fused()` (log-space q · p^lam) with
-  `NgramPrior`, applied per segment in sequence order (Viterbi-style over the top-5
-  lattice, not the streaming lag-2 lattice which is a live-decoding structure this
-  offline mode doesn't need) to pick the sentence-consistent path. Offline eval on 12.1
-  (GISLR-Sentences) before any UI work, the same protocol as §12.2/§12.3's GER
-  measurement, so accuracy is known before it ships.
-- [ ] UI: a new mode alongside "Individual sign mode" — record button, processing
-  spinner, then the decoded sentence (and, worth showing since it's new: the top-5 per
-  segment before re-ranking, so a user can see what the context prior overruled).
-- [ ] **Question for the user before building:** is `bilstm` (already benchmarked,
-  0.7392) the intended model, or `bilstm_phono` (phonology front-end, not yet trained —
-  §3.9's open follow-up, run stopped at epoch 14)? The phonology front-end has no
-  Keras/TFLite port yet either way (§15 built one for the causal `gru_phono_raw`; a
-  whole-clip bidirectional port is separate work). Recommend: build the whole-clip
-  export + segmentation + re-ranking pipeline against plain `bilstm` first (no export
-  path to build from scratch), swap in `bilstm_phono` later if/when it's trained and
-  exported — same incremental pattern as §15 (`gru` shipped first as C4, `gru_phono_raw`
-  followed once its export existed).
+### 16.4 MediaPipe capture resolution/fps — research done 2026-09-28, camera constraints updated
+
+Researched (not assumed) per the user's ask "research on what is the best video
+resolution and framerate for MediaPipe Holistic landmark extraction and also what is
+the framerate of the GISLR dataset". Findings, with sources:
+
+- **GISLR's capture rate is confirmed: 30 fps.** GISLR/PopSign's Pixel-4A-selfie-camera
+  collection pipeline is documented directly (FSboard, the sibling smartphone-ASL
+  dataset from the same collection methodology): "videos were usually recorded at
+  1944x2592 pixels and 30 frames per second" ([FSboard, arxiv.org/abs/2407.15806]).
+  This *confirms*, with a citable source, what `deployment-research.md` §4 had
+  previously only noted as unverified ("the rate isn't stored per clip") and what
+  `pipeline.config.json`'s `target_fps: 30` had already assumed — no change needed
+  there, but the assumption is no longer just a guess.
+- **MediaPipe Holistic resolution/accuracy tradeoff is logarithmic, not linear**
+  (secondary sources, not MediaPipe's own docs — its official docs give no numeric
+  guidance): roughly +8% landmark confidence going 480p→720p, +2% 720p→1080p, +0.5%
+  1080p→1440p; latency roughly doubles 480p→720p in one measured example (25ms→45ms).
+  The pose model itself runs at a small fixed internal resolution regardless of input
+  size (~224–256px reported in different sources), but the fine hand/face landmarks are
+  cropped from the **original** frame, so higher source resolution still helps those
+  specifically (the ones sign recognition depends on most) — with fast diminishing
+  returns past ~720p.
+- **Decision:** bumped the live camera's `getUserMedia` constraints
+  (`apps/web/src/main.ts`, `runLive`) from a fixed `640×480` to
+  `{width: {ideal: 1280}, height: {ideal: 720}, frameRate: {ideal: 30}}` — `ideal` (not
+  `exact`) so a camera that can't do 720p/30fps still works, just degrades. This sits in
+  the sweet spot the research points to (most of the resolution benefit, well short of
+  the latency cost above 720p) and explicitly requests the fps that matches training,
+  rather than leaving fps to whatever default the browser picks. `tsc --noEmit` clean,
+  `npm test` 11/11 unchanged (no replay-path code touched).
+- [ ] **Not measured live** — same standing caveat as every other web change in this
+  repo: whether 720p actually helps *this* app's accuracy, and what it costs in fps on
+  the user's machine (CPU delegate, §12.5's deliberate choice — a heavier frame could
+  push fps down enough to erase the accuracy gain), needs the user's own camera check.
+  If it regresses fps noticeably, drop back to 640×480 or try 960×540 as a middle
+  ground.
 
 ### 16.3 Custom signs — research (16.3 here; model-side plan still filed as §12.4)
 

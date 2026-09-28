@@ -51,6 +51,7 @@ import torch
 
 from sb.mlops import registry as R
 from sb.recognize.data import ROWS_PER_FRAME
+from sb.recognize.export import keras as KE
 from sb.recognize.export.tflite import load_run_model
 
 LAYER_NORM_EPS = 1e-5  # PyTorch nn.LayerNorm default
@@ -62,6 +63,18 @@ STEP_ARCHS = ("gru_continuous", "lstm_continuous", "gru_continuous_norm")
 # boundary head. `gru_phono_raw` behind a `PhonologyFrontend` is the only one wired below; plain
 # `gru`/`gru_phono` would need the same treatment (skip `_phono_tf` for `gru`).
 ISOLATED_STEP_ARCHS = ("gru_phono_raw",)
+
+# Whole-clip (bidirectional) classifiers -- TODO §16.2, "record then recognize" mode. A
+# bidirectional model cannot step frame-by-frame (it needs the backward pass over the whole
+# sequence), so this is the opposite contract from the step exports above: the recorded clip
+# goes in whole, one softmax distribution over the 250 glosses comes out. Only `bilstm` is
+# wired (the accuracy leader, TODO §4.3/§3.7, 0.7569 canonical -- run `1784447175`). Verified
+# 2026-09-28: `Bidirectional(LSTM)` converts through the fused `UnidirectionalSequenceLSTM`
+# builtin for *both* directions, with the time dimension left dynamic, no Flex needed -- unlike
+# the Kaggle grader export (`export/tflite.py`), which does need `SELECT_TF_OPS` for its
+# combined GRU/BiLSTM/CNN graph (TFLite has no fused GRU builtin at all, which is why the step
+# exports above hand-roll the GRU as matmuls instead of using a Keras layer).
+WHOLECLIP_ARCHS = ("bilstm",)
 
 
 def state_shape(model) -> tuple[int, int]:
@@ -509,3 +522,153 @@ def export_web_isolated(run_dir: Path, checkpoint: str = R.CKPT_BEST, register: 
         R.register_assets(run_dir, web_step_tflite="export/web/model.tflite",
                           web_manifest="export/web/manifest.json")
     return {"out_dir": str(out), "tflite_mb": round(len(blob) / 1e6, 2), "ops": ops, **parity}
+
+
+# ============================================================
+# Whole-clip (bidirectional) -- TODO §16.2, "record then recognize" mode.
+#
+# `bilstm` cannot step frame-by-frame; it reads the sequence forward *and*
+# backward before it says anything. So this export takes the opposite shape
+# from every step export above: one call, the whole clip, one softmax
+# distribution out. It reuses `export/keras.py`'s already-parity-checked
+# `build_bilstm` Keras rebuild (the same one the Kaggle grader path uses) --
+# only the TFLite conversion step differs, because the Kaggle path allows
+# `SELECT_TF_OPS` (Flex) and LiteRT.js in the browser does not.
+# ============================================================
+
+def _build_wholeclip_module(keras_model, rows: np.ndarray, cols: np.ndarray, feature_dim: int):
+    """Keras rebuild -> tf.Module with one ``recognize(frames)`` signature: the
+    whole clip's raw ``(T, 543, 3)`` frames in (NaN where undetected, dynamic
+    T), a softmax distribution over the training glosses out. Same NaN
+    handling / landmark-subset gather as the Kaggle `serving_module`, but
+    reshaped for a single (unbatched) clip rather than the grader's batch-of-1
+    convention, and wrapped so the dynamic time dimension converts without
+    Flex (measured 2026-09-28: `Bidirectional(LSTM)` needs no fused-GRU-style
+    fallback -- see `WHOLECLIP_ARCHS`'s note)."""
+    import tensorflow as tf
+
+    rows_c = tf.constant(rows, tf.int32)
+    cols_c = tf.constant(cols, tf.int32)
+
+    class WholeClip(tf.Module):
+        def __init__(self, model):
+            super().__init__()
+            self.model = model
+
+        @tf.function(input_signature=[
+            tf.TensorSpec([None, ROWS_PER_FRAME, 3], tf.float32, name="frames"),
+        ])
+        def recognize(self, frames):
+            x = tf.where(tf.math.is_nan(frames), tf.zeros_like(frames), frames)
+            x = tf.gather(tf.gather(x, rows_c, axis=1), cols_c, axis=2)
+            t = tf.shape(x)[0]
+            x = tf.reshape(x, [1, t, feature_dim])
+            logits = self.model(x, training=False)
+            return {"probs": tf.reshape(tf.nn.softmax(logits, axis=-1), [-1])}
+
+    return WholeClip(keras_model)
+
+
+def convert_wholeclip(module) -> tuple[bytes, list[str]]:
+    """tf.Module -> (TFLite bytes, sorted op names), builtins only. The Keras
+    RNN layers hold resource variables; freezing them to constants first is
+    required (`export/tflite.py`'s `export_saved_model` hit
+    ``READ_VARIABLE ... variable != nullptr`` inside the RNN without this, in
+    the dynamic-loop grader path -- the same fix applies here). Freezing also
+    loses the concrete function's output *name* (same doc note there), so the
+    frozen function is re-wrapped in a module that re-declares the exact
+    ``recognize(frames) -> {"probs": ...}`` signature before conversion."""
+    import tensorflow as tf
+    from tensorflow.python.framework.convert_to_constants import (
+        convert_variables_to_constants_v2)
+
+    frozen = convert_variables_to_constants_v2(module.recognize.get_concrete_function())
+
+    class Frozen(tf.Module):
+        @tf.function(input_signature=[
+            tf.TensorSpec([None, ROWS_PER_FRAME, 3], tf.float32, name="frames")])
+        def recognize(self, frames):
+            return {"probs": tf.identity(frozen(frames)[0], name="probs")}
+
+    rewrapped = Frozen()
+    conv = tf.lite.TFLiteConverter.from_concrete_functions(
+        [rewrapped.recognize.get_concrete_function()], rewrapped)
+    conv.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS]
+    blob = conv.convert()
+    interp = tf.lite.Interpreter(model_content=blob)
+    ops = sorted({d["op_name"] for d in interp._get_ops_details()})
+    assert not any("Flex" in o for o in ops), f"Flex op in whole-clip graph: {ops}"
+    return blob, ops
+
+
+def check_wholeclip_parity(torch_model, blob: bytes, rows: np.ndarray, cols: np.ndarray,
+                           lengths: tuple[int, ...] = (1, 5, 22, 64, 131, 200),
+                           atol: float = 1e-3) -> dict:
+    """Run the exported TFLite file on several clip lengths (median/p95/max
+    from §12.1's GISLR-Sentences facts, plus edge cases) and compare with
+    PyTorch's own ``forward_full`` on the same frames. Raises if any disagree
+    by more than `atol`."""
+    import tensorflow as tf
+
+    run = tf.lite.Interpreter(model_content=blob).get_signature_runner()
+    torch_model.eval()
+    worst = 0.0
+    for i, n in enumerate(lengths):
+        rng = np.random.default_rng(i)
+        frames = (rng.standard_normal((n, ROWS_PER_FRAME, 3)) * 0.3 + 0.5).astype(np.float32)
+        frames[rng.random(frames.shape) < 0.06] = np.nan
+        x = np.nan_to_num(frames)[:, rows][:, :, cols].reshape(1, n, -1)
+        with torch.no_grad():
+            ref = torch.softmax(torch_model.forward_full(torch.from_numpy(x)), -1)[0].numpy()
+        got = run(frames=frames)["probs"]
+        worst = max(worst, float(np.abs(got - ref).max()))
+    assert worst <= atol, (
+        f"whole-clip export disagrees with PyTorch by {worst:.2e} (> {atol:.0e}) over "
+        f"lengths {lengths} -- the exported model is not the evaluated model")
+    return {"max_prob_diff": worst, "lengths": list(lengths)}
+
+
+def export_web_wholeclip(run_dir: Path, checkpoint: str = R.CKPT_BEST,
+                         register: bool = True) -> dict:
+    """Bidirectional run -> ``<run_dir>/export/web/``: ``model.tflite`` (whole-
+    clip graph, one call per recorded segment) and ``manifest.json``. No
+    external class matrix -- the classifier weights are baked in, same as
+    `export_web_isolated`; the difference is the input contract (whole clip,
+    not one frame + state)."""
+    torch_model, ck = load_run_model(run_dir, checkpoint)
+    arch = ck.get("arch")
+    assert arch in WHOLECLIP_ARCHS, f"whole-clip export supports {WHOLECLIP_ARCHS}, not {arch!r}"
+    rows = np.asarray(ck["landmarks"], dtype=np.int32)
+    cols = np.asarray(["xyz".index(c) for c in ck.get("coords", "xyz")], dtype=np.int32)
+
+    keras_model = KE.build_keras_model(torch_model, arch, ck["feature_dim"])
+    keras_parity = KE.check_parity(torch_model, keras_model, ck["feature_dim"])
+    blob, ops = convert_wholeclip(_build_wholeclip_module(keras_model, rows, cols, ck["feature_dim"]))
+    parity = check_wholeclip_parity(torch_model, blob, rows, cols)
+
+    out = run_dir / "export" / "web"
+    if out.exists():
+        shutil.rmtree(out)
+    out.mkdir(parents=True)
+    (out / "model.tflite").write_bytes(blob)
+
+    idx2sign = {i: s for s, i in ck["sign2idx"].items()}
+    manifest = {
+        "format": "signbridge-web-wholeclip/1",
+        "run_id": int(run_dir.name),
+        "architecture": arch,
+        "checkpoint": checkpoint,
+        "landmarks": rows.tolist(),
+        "coords": ck.get("coords", "xyz"),
+        "glosses": [idx2sign[i] for i in range(len(idx2sign))],
+        "tflite_ops": ops,
+        "keras_parity": keras_parity,
+        "parity": parity,
+        "sha256": {"model.tflite": hashlib.sha256((out / "model.tflite").read_bytes()).hexdigest()},
+    }
+    (out / "manifest.json").write_text(json.dumps(manifest, indent=1))
+    if register:
+        R.register_assets(run_dir, web_step_tflite="export/web/model.tflite",
+                          web_manifest="export/web/manifest.json")
+    return {"out_dir": str(out), "tflite_mb": round(len(blob) / 1e6, 2), "ops": ops,
+            "keras_parity": keras_parity, **parity}
