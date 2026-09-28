@@ -420,7 +420,7 @@ cells.append(code("""\
 # ============================================================
 K_CANDIDATES = 5
 BEAM_WIDTH = 64
-LAM_GRID_V = [0.1, 0.2, 0.3, 0.4, 0.5]
+LAM_GRID_V = [0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 0.9, 1.1]  # widened 2026-09-28 -- 0.5 was the old grid's edge
 
 
 def score_viterbi(subset: pd.DataFrame, lam: float) -> list[dict]:
@@ -455,6 +455,79 @@ for kind in ("sentence", "control"):
 write_json(OUT / "final_viterbi.json", {"results": viterbi_final, "lam": LAM_V})
 print(f"scored {len(viterbi_final)} rows on {len(EVAL)} evaluation signers")"""))
 
+cells.append(md("""\
+## 8. Ensembling a second classifier
+
+The user's ask (2026-09-28): "how can we increase the sentence accuracy?" `gru_phono_raw`
+(run `1790355555`, ME_134, 0.7632 canonical) is the single best *isolated* classifier in
+the repo -- ahead of `bilstm`'s own 0.7569 -- so averaging its per-segment vote with
+`bilstm`'s before the §7 Viterbi search is the cheapest next lever: no training, no new
+export (already exported for §15's isolated mode), same C4 segments. It is *not*
+guaranteed to win outright on these particular (imperfectly-segmented) spans: unlike
+`bilstm`, it is unidirectional (`forward_full` reads only forward), so it has no way to
+average out a segment's leading/trailing contamination the way a bidirectional model
+can -- a quick 600-sequence probe (selection signers, not written back here) found it
+noticeably *worse alone* than `bilstm` alone on C4's segments (GER 0.35 vs 0.29) despite
+its higher canonical accuracy, but the **average of the two still beat either alone**
+(0.27) -- the two are wrong on different spans often enough for averaging to help."""))
+
+cells.append(code("""\
+# ============================================================
+# gru_phono_raw setup + the averaged-vote scorer
+# ============================================================
+PHONO_RUN_ID = 1790355555  # gru_phono_raw, ME_134, 0.7632 canonical -- best isolated classifier
+PHONO = B.load_registry_model(MODELS_DIR / str(PHONO_RUN_ID), N_CLASSES, DEVICE)
+PHONO_FEATS = B.StreamFeatures.build(DATASET_ROOT, pd.read_csv(DATASET_ROOT / "sequences.csv", keep_default_na=False),
+                                     PHONO.rows, PHONO.coords, progress=lambda d, t: None)
+print(f"ensemble member 2: {PHONO.name} ({PHONO.arch}, {len(PHONO.rows)} rows/{PHONO.coords})")
+
+
+@torch.no_grad()
+# Same as span_probs (section 2) but for an arbitrary model -- span_probs is hardwired
+# to MODEL (bilstm), which would silently feed the wrong feature width into the wrong
+# model if reused here for PHONO.
+def clip_probs(model, x: np.ndarray, spans: list[tuple[int, int]]) -> list[np.ndarray]:
+    out = []
+    for a, b in spans:
+        t = torch.from_numpy(np.ascontiguousarray(x[a:b])).unsqueeze(0).to(DEVICE)
+        out.append(torch.softmax(model.forward_full(t), -1).squeeze(0).float().cpu().numpy())
+    return out
+
+
+def score_ensemble(subset: pd.DataFrame, lam: float) -> list[dict]:
+    out = []
+    for _, r in tqdm(subset.iterrows(), total=len(subset), desc="scoring ensemble", leave=False):
+        labels, seg = seq_arrays(r)
+        segs = c4_segments(r)
+        spans = [(s.start, s.end) for s in segs]
+        qb = clip_probs(MODEL.model, FEATS.x(r["row"]), spans)
+        qp = clip_probs(PHONO.model, PHONO_FEATS.x(r["row"]), spans)
+        qs = [(a + b) / 2 for a, b in zip(qb, qp)]
+        choice = viterbi_rescore(qs, NGRAM, GLOSSES, lam, k=K_CANDIDATES, beam_width=BEAM_WIDTH)
+        emissions = [(c, s.end - 1, 1.0) for c, s in zip(choice, segs)]
+        out.append(M.score_sequence(emissions, labels, seg, FEATS.kind(r["row"])))
+    return out
+
+
+path = OUT / "sweep_ensemble_lam.json"
+if not path.exists():
+    rows = [{"lam": lam, **M.aggregate(score_ensemble(sel, lam), frame_totals(sel["row"]))}
+            for lam in LAM_GRID_V]
+    write_json(path, rows)
+best_e = min(json.loads(path.read_text()), key=lambda d: d["ger"])
+LAM_E = best_e["lam"]
+print("ensemble best lam", LAM_E, "selection GER", round(best_e["ger"], 4))
+
+ensemble_final = []
+for kind in ("sentence", "control"):
+    ev = SEQ[(SEQ.group == "eval") & (SEQ.kind == kind)]
+    ft = frame_totals(ev["row"])
+    sc = score_ensemble(ev, LAM_E)
+    ensemble_final.append({"arm": "hybrid_ensemble_viterbi", "prior": True, "kind": kind, "lam": LAM_E,
+                           **M.aggregate(sc, ft)})
+write_json(OUT / "final_ensemble.json", {"results": ensemble_final, "lam": LAM_E})
+print(f"scored {len(ensemble_final)} rows on {len(EVAL)} evaluation signers")"""))
+
 cells.append(md("## Results"))
 
 cells.append(code("""\
@@ -464,7 +537,8 @@ cells.append(code("""\
 res = pd.json_normalize(json.loads((OUT / "final.json").read_text())["results"])
 res_h = pd.json_normalize(json.loads((OUT / "final_hybrid.json").read_text())["results"])
 res_v = pd.json_normalize(json.loads((OUT / "final_viterbi.json").read_text())["results"])
-res = pd.concat([res, res_h, res_v], ignore_index=True)
+res_e = pd.json_normalize(json.loads((OUT / "final_ensemble.json").read_text())["results"])
+res = pd.concat([res, res_h, res_v, res_e], ignore_index=True)
 table = res[res.kind == "sentence"].set_index(["arm", "prior"])[
     ["ger", "correct_rate", "sub_rate", "del_rate", "ins_rate", "sentence_acc", "emissions_per_sign"]
 ].sort_values("ger")

@@ -79,7 +79,8 @@ instead of one gloss at a time.
 | C4 alone | C4 D3 | C4's own vote | argmax, no prior | 0.310 | 0.374 |
 | hybrid | C4 D3 | `bilstm` | argmax, no prior | 0.251 | 0.479 |
 | hybrid + prior | C4 D3 | `bilstm` | greedy rescore (`fuse.decide`) | 0.220 | 0.525 |
-| **hybrid + top-5 + Viterbi** | C4 D3 | `bilstm` top-5 | **exact sentence decode** | **0.195** | **0.586** |
+| hybrid + top-5 + Viterbi (λ=0.7) | C4 D3 | `bilstm` top-5 | exact sentence decode | 0.189 | 0.598 |
+| **hybrid + top-5 + Viterbi, ensembled** | C4 D3 | `bilstm` + `gru_phono_raw` avg. top-5 | **exact sentence decode** | **0.177** | **0.619** |
 | *(reference)* deployed C4 | C4 D3 + lattice | C4's own vote | tuned lag-2 lattice | 0.278 | — |
 | *(reference)* B0 oracle + prior | true boundaries | `bilstm` | greedy rescore | 0.089 | 0.763 |
 
@@ -87,10 +88,25 @@ instead of one gloss at a time.
 (0.251 vs 0.278) with no prior at all — segmentation was never `bilstm`'s problem, and
 C4's segments, while not as tight as oracle boundaries, are tight enough for `bilstm`
 to do much better on than its own movement-cut spans (Part 1) ever were. **Global
-sentence decoding over the top-5 (§7) is the single biggest additional lever** — 0.220
-→ 0.195, a bigger jump than moving from no-prior to greedy-prior gave (0.251 → 0.220).
-Selection-signer λ sweep for the Viterbi arm picked λ=0.5 (the top of the swept grid —
-an interior optimum was not reached; a wider sweep is a cheap follow-up, not done here).
+sentence decoding over the top-5 is the single biggest additional lever** — 0.220 →
+0.189, a bigger jump than moving from no-prior to greedy-prior gave (0.251 → 0.220).
+The first λ sweep (grid 0.1–0.5) had picked λ=0.5 at the grid's own edge, an
+unconfirmed optimum; widening the grid to 1.1 found the real one at **λ=0.7** (GER
+0.303→0.303→0.304 across 0.7/0.9/1.1 on selection signers — a shallow interior optimum,
+not another edge), worth **0.189 vs. the original 0.195** on its own, no new model.
+
+**Ensembling `bilstm` with `gru_phono_raw`** (run `1790355555`, ME_134, 0.7632
+canonical — the single best *isolated* classifier in the repo, ahead of `bilstm`'s own
+0.7569) — averaging their per-segment softmax before the Viterbi search — pushed this
+further, to **0.177 / 0.619 sentence accuracy**, λ retuned to 0.7 again (same grid,
+same optimum). Notably, `gru_phono_raw` **alone** on these same C4 segments is *worse*
+than `bilstm` alone (a 600-sequence probe: GER 0.35 vs. 0.29) despite its higher
+canonical accuracy — it is unidirectional (`forward_full` only reads forward), so
+unlike `bilstm` it has no way to average out a segment's leading/trailing contamination
+from C4's imperfect (not oracle) boundaries. The two are simply wrong on different
+spans often enough that averaging still wins even though one member is individually
+worse — the same logic behind this repo's earlier C1+C2 per-frame ensemble
+(`window-ensemble.ipynb`, GER 0.244 vs. 0.278 single-model).
 
 **Why an n-gram and not an LLM for the "best sentence" search:** this repo already
 researched a hosted-LLM prior for this exact role (§12.6, `deployment-research.md` §5)
@@ -99,21 +115,30 @@ LLM here means either one generation per candidate combination or asking it to "
 these," neither a calibrated probability a real search can use. The n-gram +
 `viterbi_rescore` is what actually implements "pick the sign that makes the best
 sentence" cheaply and exactly today; the documented trigger for trying an LLM instead
-is if this still leaves a real gap, which — at 0.195 vs. deployed's 0.278 — it does not
+is if this still leaves a real gap, which — at 0.177 vs. deployed's 0.278 — it does not
 look like it does.
+
+**Not yet tried (open, cheap, inference-only):** top-10 instead of top-5 candidates;
+attacking the deletion rate specifically (0.052, likely two close signs landing inside
+one C4 segment) by comparing/combining D1 (boundary-head crossings) with D3 (null-run)
+segment proposals rather than D3 alone; a wider n-gram order; adding a third ensemble
+member.
 
 ## Recommendation
 
-**Worth building.** The hybrid + top-5 + Viterbi arm (GER 0.195) beats the currently
-deployed continuous pipeline (0.278) by about 30% relative, using only models and code
-that already exist (C4, `bilstm`'s parity-verified export, `fuse.segments_d3`, one new
-~50-line search function) plus one architectural change: **record-then-recognize now
-means "run C4 to get segments, then reclassify each with `bilstm` and decode the whole
+**Worth building.** The best arm found (GER 0.177, sentence accuracy 0.619) beats the
+currently deployed continuous pipeline (0.278, ~0.37) by about **36% relative GER
+reduction and nearly double the sentence accuracy**, using only models and code that
+already exist (C4, `bilstm` and `gru_phono_raw`'s parity-verified exports,
+`fuse.segments_d3`, one new ~50-line search function) plus one architectural change:
+**record-then-recognize now means "run C4 to get segments, reclassify each with an
+ensemble of `bilstm` and `gru_phono_raw`, and decode the whole
 sentence," not "segment by stillness alone"** (Part 1's original plan). TODO §16.2's UI
 checklist is unblocked, scoped to this design.
 
 ## Artifacts
 
 `data/cache/gislr/bilstm_wholeclip_eval/results/` — `select_*_noprior.json`,
-`sweep_*_prior.json`, `sweep_viterbi_lam.json`, `b0_top5.json`, `final.json`,
-`final_hybrid.json`, `final_viterbi.json`, `final_table.csv`.
+`sweep_*_prior.json`, `sweep_viterbi_lam.json`, `sweep_ensemble_lam.json`,
+`b0_top5.json`, `final.json`, `final_hybrid.json`, `final_viterbi.json`,
+`final_ensemble.json`, `final_table.csv`.

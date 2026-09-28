@@ -5118,29 +5118,68 @@ the user's explicit "proceed with bilstm (best performing one)" (2026-09-28).
   for the sequence that scores best as a *whole sentence* under the n-gram (not
   `fuse.decide`'s greedy one-segment-at-a-time commit). No training: the n-gram is
   already fit; this is search over its output, beam-limited but exact for this k/order.
-  Selection-signer λ sweep picked λ=0.5 (grid top — an interior optimum wasn't reached,
-  a wider sweep is a cheap follow-up). **GER 0.195**, sentence accuracy 0.586 — the
-  best number in the whole evaluation short of the oracle-segmentation ceiling (0.089).
   **Why n-gram, not an LLM:** already researched and decided against for this role —
   Workers AI gives no per-token logprobs (§12.6, `deployment-research.md` §5), so an
   LLM here means slow per-candidate calls or an uncalibrated "rank these" prompt. The
-  documented trigger for trying one anyway is a real remaining gap; 0.195 vs. deployed
-  0.278 doesn't look like one.
+  documented trigger for trying one anyway is a real remaining gap; the final number
+  below doesn't look like one.
+- [x] **Further tuning, same day (user: "how can we increase the sentence accuracy?").**
+  Two cheap, inference-only levers, both confirmed at full scale:
+  1. **Wider λ sweep.** The first grid (0.1–0.5) had picked λ=0.5 at its own edge, an
+     unconfirmed optimum. Widened to 1.1: the real optimum is **λ=0.7** (a shallow
+     interior one — 0.303/0.303/0.304 GER at 0.7/0.9/1.1 on selection signers), worth
+     0.195 → **0.189** on its own, no new model.
+  2. **Ensemble a second classifier.** `gru_phono_raw` (run `1790355555`, ME_134,
+     0.7632 canonical — the single best *isolated* classifier in the repo, ahead of
+     `bilstm`'s own 0.7569, already exported for §15) averaged with `bilstm`'s
+     per-segment softmax before the Viterbi search. Caught and fixed a bug in the first
+     attempt (a reused helper silently fed the wrong model the wrong feature width —
+     `clip_probs` now takes the model explicitly, no more implicit `MODEL` capture).
+     `gru_phono_raw` **alone** on C4's segments is *worse* than `bilstm` alone (0.35 vs
+     0.29 GER, 600-sequence probe) despite its higher canonical accuracy — it's
+     unidirectional, so it can't average out a segment's leading/trailing contamination
+     from C4's imperfect boundaries the way `bilstm` can — but the two are wrong on
+     different spans often enough that **averaging them still wins**, the same logic as
+     the repo's earlier C1+C2 per-frame ensemble (`window-ensemble.ipynb`, 0.244 vs.
+     0.278 single-model).
+
+  **Final full-corpus numbers, evaluation signers, `sentence` split (5,054 sequences):**
+
+  | arm | GER | sentence acc |
+  |---|---|---|
+  | deployed C4 (tuned lattice+prior) | 0.278 | ~0.37 |
+  | hybrid, C4 segments + `bilstm`, no prior | 0.251 | 0.479 |
+  | hybrid + top-5 Viterbi (λ=0.7) | 0.189 | 0.598 |
+  | **hybrid + top-5 Viterbi, ensembled (`bilstm` + `gru_phono_raw`)** | **0.177** | **0.619** |
+  | *(reference)* B0 oracle segmentation + prior | 0.089 | 0.763 |
+
+  **36% relative GER reduction, sentence accuracy nearly doubled** vs. what's currently
+  deployed — no new training, no new export.
 - [x] **Full write-up: `docs/reports/bilstm-wholeclip-eval.md`** (Part 1: the movement-
-  segmentation negative result; Part 2: the hybrid + Viterbi positive result).
-  **Recommendation: worth building.** Record-then-recognize now means "run C4 for
-  segments, reclassify with `bilstm`, decode top-5 as a whole sentence" — not "segment
-  by stillness alone" (16.2's original plan, abandoned per Part 1).
+  segmentation negative result; Part 2: the hybrid + Viterbi + ensemble positive
+  result). **Recommendation: worth building.** Record-then-recognize now means "run C4
+  for segments, reclassify with an ensemble of `bilstm` + `gru_phono_raw`, decode top-5
+  as a whole sentence" — not "segment by stillness alone" (16.2's original plan,
+  abandoned per Part 1).
+- [ ] **Not yet tried** (open, cheap, inference-only, flagged in the report but not
+  built): top-10 instead of top-5 candidates; comparing/combining D1 (boundary-head
+  crossings) with D3 (null-run) segment proposals to attack the 0.052 deletion rate
+  specifically (likely two close signs landing inside one C4 segment); a wider n-gram
+  order; a third ensemble member.
 - [ ] **UI: not started, now unblocked** — the design is decided (segmentation = C4 D3,
-  classifier = `bilstm` whole-clip, decision = top-5 Viterbi over the deployed trigram).
-  Record button, processing spinner, decoded sentence, and the top-5-before-rescore
-  shown alongside (so a user can see what the sentence-level search overruled). Needs:
-  a TS port of `viterbi_rescore` (small — the Python version is ~30 lines of dynamic
-  programming, no external deps) and `fuse.segments_d3`/`decode.frame_outputs`'s TS
-  equivalents (largely already ported — `decoder.ts` has D3-shaped logic; check what's
-  reusable vs. new before writing), and a whole-clip LiteRT.js runner for `bilstm` (new
-  — every existing `apps/web/src/pipeline/*.ts` model wrapper is step-shaped, this one
-  takes a whole buffered clip).
+  classifier = `bilstm` + `gru_phono_raw` ensemble, decision = top-5 Viterbi over the
+  deployed trigram, λ=0.7). Record button, processing spinner, decoded sentence, and
+  the top-5-before-rescore shown alongside (so a user can see what the sentence-level
+  search overruled). Needs: a TS port of `viterbi_rescore` (small — the Python version
+  is ~50 lines of dynamic programming, no external deps) and
+  `fuse.segments_d3`/`decode.frame_outputs`'s TS equivalents (largely already ported —
+  `decoder.ts` has D3-shaped logic; check what's reusable vs. new before writing), and
+  two model runners in the browser: `bilstm`'s new whole-clip export (genuinely needs
+  one — it has a backward pass) and `gru_phono_raw`'s **existing** step export from
+  §15 (no new export needed there — it's causal, so feeding a segment's frames through
+  its step model one at a time and reading the final frame's output *is* its whole-clip
+  readout, the same thing `forward_full` computes; only the driving loop is new code,
+  reusable from `IsolatedSession`'s per-frame pattern).
 - [ ] **`bilstm_phono` swap, later** (§3.9's open follow-up, run stopped at epoch 14,
   no export path built yet either way) — now a real option worth revisiting once
   trained, given how much the classifier swap alone was worth here.
