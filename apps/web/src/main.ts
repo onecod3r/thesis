@@ -73,6 +73,7 @@ const ui = {
   isolatedSection: $<HTMLElement>("isolated-section"),
   isolatedSigns: $<HTMLOListElement>("isolated-signs"),
   recordMode: $<HTMLInputElement>("record-mode"),
+  recordModeNote: $<HTMLElement>("record-mode-note"),
   recordSection: $<HTMLElement>("record-section"),
   recordStatus: $<HTMLParagraphElement>("record-status"),
   recordSigns: $<HTMLOListElement>("record-signs"),
@@ -143,8 +144,11 @@ function showRecordSign(gloss: string, candidates: readonly { gloss: string; pro
 async function finishRecording(): Promise<void> {
   const frames = recordedFrames;
   recordedFrames = [];
-  if (!frames.length) return;
   ui.recordSection.hidden = false;
+  if (!frames.length) {
+    ui.recordStatus.textContent = "Nothing recorded (no frames with a body in view). Try again.";
+    return;
+  }
   ui.recordStatus.textContent = `Processing ${frames.length} frames…`;
   let signs: RecordedSign[];
   try {
@@ -545,7 +549,11 @@ async function runLive(kind: "camera" | "file"): Promise<void> {
         // TODO §16.2: buffer one real (non-interpolated) frame per detection for
         // record-then-recognize, skipping "nobody in view" gaps -- GISLR clips always
         // contain a body, so an empty frame is a pause to drop, not content to record.
-        if (ui.recordMode.checked && !nobody) recordedFrames.push(frame);
+        if (ui.recordMode.checked && !nobody) {
+          recordedFrames.push(frame);
+          ui.recordSection.hidden = false;
+          ui.recordStatus.textContent = `Recording… ${recordedFrames.length} frames buffered. Press Stop to process.`;
+        }
         // Real-frame-only (TODO §16.1): a sign run this still for this long is over,
         // even if the model's null head hasn't caught up yet.
         const noMovement = nobody ? false : movement.push(frame);
@@ -640,6 +648,10 @@ function syncSource(): void {
   ui.replayStream.hidden = src !== "replay";
   ui.replayAll.hidden = src !== "replay";
   if (src === "file") ui.file.click();
+  // Record & recognize mode buffers frames from the live capture loop (runLive) --
+  // "Held-out replay" goes through a different path (runReplay) that never touches
+  // it, so checking the box there would silently do nothing.
+  ui.recordModeNote.hidden = !(ui.recordMode.checked && src === "replay");
 }
 
 async function start(): Promise<void> {
@@ -723,6 +735,7 @@ async function main(): Promise<void> {
     ui.isolatedSection.hidden = !ui.isolatedMode.checked;
     if (ui.isolatedMode.checked) void getIsolatedSession().catch((e) => setStatus(`Individual sign model: ${String(e)}`, true));
   };
+  ui.recordMode.onchange = syncSource; // toggles the replay-source warning; syncSource reads both
   ui.start.onclick = () => void start();
   ui.stop.onclick = () => {
     stopRequested = true;

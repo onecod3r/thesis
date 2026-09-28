@@ -52,6 +52,7 @@
         <label title="Record the whole clip, then process it once at the end: C4 segments it, bilstm + gru_phono_raw classify each segment, and the whole sentence's top-5 candidates are decoded together against the deployed language model. Measured GER 0.177 / sentence accuracy 0.619 vs. 0.278 / ~0.37 live -- docs/reports/bilstm-wholeclip-eval.md.">
           <input id="record-mode" type="checkbox" /> Record &amp; recognize mode (process the whole clip at the end, higher accuracy)</label>
       </div>
+      <p id="record-mode-note" class="note" hidden>Record &amp; recognize needs Camera or Video file as the source (not Held-out replay) — switch Source above to use it.</p>
       <p id="variant-note" class="note"></p>
     </section>
 
