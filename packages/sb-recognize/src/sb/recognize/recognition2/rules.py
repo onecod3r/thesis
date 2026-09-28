@@ -393,6 +393,21 @@ def codes(feats: dict, t: Thresholds, lookup: dict[tuple, str], is_marked: dict[
         return _codes(feats, t, lookup, is_marked)
 
 
+def _own_nucleus(present: np.ndarray, trim: float) -> slice | None:
+    """Same trim-the-ends logic as `_codes`'s `nucleus`, but on a hand's *own* detected span --
+    added 2026-09-28 for `non_dominant_handshape`: reusing h1's nucleus for hand 2 meant its
+    features were sliced at whatever window h1 happened to be active in, which is frequently a
+    window where h2 itself is absent even on two-handed signs where h2 IS tracked elsewhere in
+    the clip (found analyzing the near-zero non_dominant_handshape coverage, 2026-09-28).
+    Promoted to module level 2026-09-28 so :func:`continuous_features` can reuse it too."""
+    idx = np.flatnonzero(present)
+    if len(idx) == 0:
+        return None
+    pa, pb = int(idx[0]), int(idx[-1]) + 1
+    pcut = int(round((pb - pa) * trim))
+    return slice(pa + pcut, max(pb - pcut, pa + pcut + 1))
+
+
 def _codes(feats: dict, t: Thresholds, lookup: dict[tuple, str], is_marked: dict[str, bool]) -> dict[str, str]:
     """See :func:`codes`."""
     h1, h2, eye_d = feats["h1"], feats["h2"], feats["eye_d"]
@@ -409,17 +424,7 @@ def _codes(feats: dict, t: Thresholds, lookup: dict[tuple, str], is_marked: dict
         return d[key][sl]
 
     def own_nucleus(present: np.ndarray) -> slice | None:
-        """Same trim-the-ends logic as `nucleus`, but on a hand's *own* detected span -- added
-        2026-09-28 for `non_dominant_handshape`: reusing `nucleus` (h1's span) for hand 2 meant its
-        features were sliced at whatever window h1 happened to be active in, which is frequently a
-        window where h2 itself is absent even on two-handed signs where h2 IS tracked elsewhere in
-        the clip (found analyzing the near-zero non_dominant_handshape coverage, 2026-09-28)."""
-        idx = np.flatnonzero(present)
-        if len(idx) == 0:
-            return None
-        pa, pb = int(idx[0]), int(idx[-1]) + 1
-        pcut = int(round((pb - pa) * t.nucleus_trim))
-        return slice(pa + pcut, max(pb - pcut, pa + pcut + 1))
+        return _own_nucleus(present, t.nucleus_trim)
 
     def medial_of(d: dict, nuc: slice | None) -> dict:
         keys = ("hs", "thumb_open", "base_flex", "nonbase_flex", "spread", "aperture",
@@ -571,6 +576,7 @@ CONTINUOUS_FEATURES = (
     "ulnar_rotation_deg", "movement_length", "movement_straightness", "movement_turning",
     "movement_reversals", "aperture_reversals", "flexion_change_deg", "spread_change_deg",
     "contact_min_dist", "hand_min_dist", "head_min_dist", "has_h2", "sign_type_sym",
+    "away_displacement", "handshape_similarity",
 )
 
 
@@ -652,10 +658,49 @@ def _continuous_features(feats: dict, t: Thresholds) -> dict[str, float]:
     if head_dists:
         out["head_min_dist"] = float(min(head_dists)) / unit
 
+    # away_displacement (added 2026-09-28, closes a gap found analyzing the trained
+    # second_minor_location classifier: it lost badly to the rule engine because this function
+    # never exposed the one signal `_away` uses -- displacement between the hand's closest
+    # approach to a site and its position at the LAST tracked frame, over the *whole* span, not
+    # just the trimmed nucleus. Generic here (not conditioned on which site `major_location`
+    # picked): compares the hand-touch and best-head-site channels over the full span and uses
+    # whichever came closer, mirroring `_codes`'s own priority (Hand before Head).
+    full_head = {s: h1["dist_head"][s][a:b] for s in HEAD_SITES}
+    full_hand = h1["touch_other"][a:b]
+    candidates = [full_hand] + list(full_head.values())
+    mins = [np.nanmin(c) if not np.all(np.isnan(c)) else np.nan for c in candidates]
+    if not np.all(np.isnan(mins)):
+        best = candidates[int(np.nanargmin(mins))]
+        valid = ~np.isnan(best)
+        if valid.any():
+            close_pt = h1["centre"][a:b][int(np.nanargmin(best))]
+            tracked = np.flatnonzero(~np.isnan(h1["centre"][a:b][:, 0]))
+            if len(tracked) and not np.isnan(close_pt).any():
+                end_pt = h1["centre"][a:b][tracked[-1]]
+                out["away_displacement"] = float(np.linalg.norm(end_pt - close_pt)) / unit
+
     if out["has_h2"]:
         v1, v2 = h1["vel"], h2["vel"] * np.array([-1, 1], np.float32)
         both_move = (np.nanmean(np.linalg.norm(v1, axis=1)) > 0
                      and np.nanmean(np.linalg.norm(v2, axis=1)) > 0)
         if both_move:
             out["sign_type_sym"] = float(np.nanmean((_unit(v1) * _unit(v2)).sum(-1)))
+        # handshape_similarity (added 2026-09-28, closes the other gap the classifier report
+        # flagged: sign_type's loss likely traces to having no direct handshape-identity signal,
+        # only the velocity-correlation proxy above. Computed geometrically here (not via the
+        # ASL-LEX handshape lookup, which needs signdata.csv and doesn't belong in pure
+        # continuous-feature extraction): cosine similarity between the two hands' own median
+        # 5-finger extension vectors, each over its own independently-computed nucleus.
+        nuc2 = _own_nucleus(h2["present"], t.nucleus_trim)
+        if nuc2 is not None:
+            n2 = nuc2.stop - nuc2.start
+            third2 = slice(nuc2.start + n2 // 3, nuc2.stop - n2 // 3) if n2 >= 3 else nuc2
+            hs2 = h2["hs"][third2]
+            if hs2.shape[0] and not np.all(np.isnan(hs2[:, 0:5])) and hs.shape[0] and not np.all(np.isnan(hs[:, 0:5])):
+                ext1 = np.nanmedian(hs[:, 0:5], axis=0)
+                ext2 = np.nanmedian(hs2[:, 0:5], axis=0)
+                if not (np.isnan(ext1).any() or np.isnan(ext2).any()):
+                    denom = float(np.linalg.norm(ext1) * np.linalg.norm(ext2))
+                    if denom > 1e-9:
+                        out["handshape_similarity"] = float(np.dot(ext1, ext2) / denom)
     return out

@@ -4897,10 +4897,19 @@ module shows up in `git diff` from this work.
     to last-tracked-frame displacement over the *whole* clip) — the classifier structurally can't
     see what the rule sees for this parameter. `sign_type`'s loss likely shares this cause (no
     direct handshape-identity feature, only a velocity-correlation proxy).
-- [ ] **Next action**: user reviews `docs/reports/recognition2-phonology-rules.md` (§1-6) and decides
-  whether to add the missing continuous features (full-span displacement, handshape-identity) and
-  retrain, keep the rule engine as primary for the parameters it still wins, or move to stage 2
-  design.
+- [x] **Both feature gaps closed (Claude, 2026-09-28).** Added `away_displacement` (full-span
+  closest-approach-to-last-tracked-frame, picking whichever of hand-touch/head-site channels came
+  closer, mirroring `_codes`'s own priority — coverage ~100% in a 200-clip smoke test, matching
+  `second_minor_location`'s rule-engine coverage) and `handshape_similarity` (cosine similarity
+  between the two hands' own 5-finger extension vectors, each over its own independently-computed
+  nucleus via the now-module-level `_own_nucleus` — only ~2% coverage, as expected: most GISLR
+  signs are one-handed). `CONTINUOUS_FEATURES` now 25 scalars. Cache
+  (`data/cache/gislr_aslex_rules/continuous_features.jsonl`) needs a rerun before the next training
+  pass picks these up — not done automatically since it's a ~15 min extraction, not something to
+  fire off without being asked.
+- [ ] **Next action**: user decides whether to rerun the extraction + retrain with the two new
+  features (should specifically help `second_minor_location` and `sign_type`), keep the rule engine
+  as primary for the parameters it still wins, or move to stage 2 design.
 
 ---
 
