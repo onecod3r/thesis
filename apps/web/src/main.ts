@@ -22,6 +22,7 @@ import { Ensemble, Recognizer } from "./pipeline/recognizer.ts";
 import type { StepModel } from "./pipeline/recognizer.ts";
 import { Clock, glossErrors, Session } from "./pipeline/session.ts";
 import type { Sentence, Sign, StepResult } from "./pipeline/session.ts";
+import { MovementGate } from "./pipeline/movement.ts";
 import { onVoicesChanged, speak, voices } from "./pipeline/speech.ts";
 
 const BASE = import.meta.env.BASE_URL;
@@ -412,6 +413,7 @@ async function runLive(kind: "camera" | "file"): Promise<void> {
   const session = newSession();
   app.rec.reset();
   const clock = new Clock(app.cfg.target_fps);
+  const movement = new MovementGate();
   let signs: Sign[] = [];
   let frames = 0, fpsT0 = performance.now(), busy = false, recMs = 0, recN = 0, wasEmpty = false;
   let capturedFrames = 0, lastFed: Float32Array | null = null;
@@ -456,8 +458,14 @@ async function runLive(kind: "camera" | "file"): Promise<void> {
         // frame is out of distribution (p_null ~ 0.01 on it), so it is a pause, not a sign.
         const nobody = Number.isNaN(frame[POSE_ROW * 3]) && Number.isNaN(frame[POSE_ROW * 3 + 3]);
         ui.bodyInView.textContent = nobody ? "no" : "yes";
-        if (nobody && !wasEmpty) app.rec.reset();
+        if (nobody && !wasEmpty) {
+          app.rec.reset();
+          movement.reset();
+        }
         wasEmpty = nobody;
+        // Real-frame-only (TODO §16.1): a sign run this still for this long is over,
+        // even if the model's null head hasn't caught up yet.
+        const noMovement = nobody ? false : movement.push(frame);
         if (ui.isolatedMode.checked && isolatedSession) {
           const handPresent = !!(res.leftHandLandmarks?.[0]?.length || res.rightHandLandmarks?.[0]?.length);
           const guess = await isolatedSession.feed(frame, handPresent);
@@ -474,11 +482,12 @@ async function runLive(kind: "camera" | "file"): Promise<void> {
           const p = nobody ? nullFrame : await app.rec.step(stepFrame);
           recMs += performance.now() - t1;
           recN += nobody ? 0 : 1;
-          const r = session.push(p);
+          const r = session.push(p, i === k - 1 && noMovement);
           signs.push(...r.signs);
           if (r.sentence) {
             void logSentence(r.sentence);
             signs = [];
+            movement.reset();
           }
           showLive(signs, r);
         }

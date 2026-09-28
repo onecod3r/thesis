@@ -4961,6 +4961,182 @@ next guess and the same sign is repeated then the sign should be selected right 
 
 ---
 
+## 16. Movement-gated completion, record-then-recognize BiLSTM mode, custom signs (2026-09-28, new)
+
+**User ask (2026-09-28), three items, "work on the items one by one":**
+1. The deployed continuous GRU (C4, §12.8) should also end a sign whenever there is no
+   overall movement across all landmark points, after filtering for noise — not only on
+   the model's own null head crossing `nu`.
+2. A second, parallel pipeline: record a clip, then process it (not live-streaming) with
+   a BiLSTM, segmenting signs the same way (no-movement gaps), giving **top-5** per
+   segment, with a downstream model picking the actual sign per segment from **sentence
+   context**.
+3. Research a user-facing **custom-sign** feature (this is §12.4/§12.7, already filed and
+   ordered — §12.4 first, §12.7 last, behind §12.5/§12.6. Not re-numbered; picked up
+   below as 16.3, doing the *research* part now while 12.4's model-side plan stays where
+   it is).
+
+### 16.1 Movement-gated completion for C4 — done 2026-09-28
+
+- [x] New `apps/web/src/pipeline/movement.ts`: `frameMovement(prev, curr)` — mean xy
+  displacement over landmarks present in both frames (z dropped, per the ME-126 finding
+  that it's mostly noise; sub-jitter per-point displacements < 0.0015 clamped to 0 before
+  averaging, the noise filter the user asked for). `MovementGate` EMA-smooths that
+  (α=0.3) and reports "still" once the smoothed signal has stayed below 0.003 for 10
+  consecutive **real** (non-interpolated) frames.
+- [x] `OnlineDecoder.step` (`decoder.ts`) takes an optional `noMovement` flag: when true
+  and a run is open, it closes the run this frame regardless of `p_null`, reusing the
+  same `close()` path the null-gated branch uses — the two signals are additive (either
+  can end a run), not a replacement. `Session.push` passes it through.
+- [x] Wired into `main.ts`'s live camera/file loop only (`runLive`), not `runReplay` —
+  replay feeds pre-recorded GISLR landmarks and is the Python-parity fixture
+  (`npm test`'s decoder tests, `scripts/browser-check.ts`'s 24/24 headless-Chrome replay
+  check); movement gating is a browser-only heuristic with no Python reference, the same
+  status as `isolated.ts`'s hand-left-frame trigger, and must not perturb that parity.
+  `MovementGate` resets alongside the recognizer/decoder: on "nobody in view" and at
+  sentence end.
+- [x] Verified: `npx tsc --noEmit` clean; `npm test` 11/11 (no change from before this
+  edit — confirms replay/parity paths are untouched).
+- [ ] **Not done**: the four constants (noise floor 0.0015, EMA α 0.3, still threshold
+  0.003, hold 10 frames) are first-guess, untuned against any held-out data or real
+  footage — same caveat as §15's 4/8/0.6/12 isolated-mode constants. **Next (user):**
+  live-camera check once deployed (`wrangler deploy` from `apps/edge`), watching whether
+  it closes signs correctly on natural pauses vs. cutting a still-but-ongoing sign short
+  (e.g. a held handshape with only finger movement — POINT_NOISE_EPS may need to be
+  smaller, or the metric may need to weight hand landmarks more than face/pose).
+- [ ] Not deployed yet — code is built and tested, `wrangler deploy` from `apps/edge` is
+  the user's, same as every other web change (§12.5's pattern).
+
+### 16.2 Record-then-recognize BiLSTM mode — plan, not yet built
+
+A second, independent mode next to the live continuous C4 pipeline (additive, like
+§15's isolated-mode checkbox): record a clip start-to-finish, then process it offline
+in the browser rather than streaming frame-by-frame.
+
+**What exists already that this reuses:**
+- `bilstm` is in the offline five-arch benchmark (§4.3/§3.7, 0.7392 canonical-adjacent,
+  the accuracy leader — `docs/reports/five-arch-benchmark.md`) but was never exported
+  for the web (`export.keras`'s `BUILDERS` has `gru`/`lstm`/`bilstm`/`cnn1d`, but no step
+  export exists for it — `export.step` only covers the causal architectures today, since
+  a bidirectional model can't run frame-by-frame; it needs the *whole* clip, which fits
+  "record then recognize" exactly and sidesteps the streaming-viability constraint that
+  rules it out everywhere else in this repo).
+- Segmentation reuses **16.1's `MovementGate`** on the recorded frame buffer (offline, so
+  no real-time constraint — could even smooth non-causally, e.g. a centered moving
+  average instead of an EMA, since the whole clip is already in hand before segmenting).
+- Top-5 per segment: `bilstm`'s softmax head already gives a full distribution; take the
+  top 5 by probability instead of argmax — no model change, just reading more of the
+  output.
+- Downstream sentence-context re-ranking over the top-5 per segment is structurally the
+  same problem as §12.6's next-gloss n-gram prior (`sb.recognize.sequences` /
+  `apps/web/src/pipeline/prior.ts`'s `NgramPrior`, already ported to TS) and this file's
+  own `decoder.ts`'s `fused()`/lattice machinery (log-space fusion of a per-segment
+  distribution with a context prior, already built and tested) — the "downstream model"
+  the user asks for is an existing building block, not new research, unless a stronger
+  prior (e.g. an LLM over gloss sequences, §12.6's Workers AI arm) is wanted instead of
+  the n-gram.
+
+**Not yet built — plan before writing code:**
+- [ ] Export `bilstm` (or `bilstm_phono`, once §8e finishes — better accuracy, same
+  export shape) as a **whole-clip** TFLite graph: fixed or padded-length input
+  `(T, 543, 3)` in, per-segment or per-frame probabilities out. Different from every
+  existing web export (`export.step`'s causal one-frame-in-one-state-out contract) — new
+  code in `sb.recognize.export`, not a variant of `_phono_tf`/`export_web_isolated`.
+  Needs a padding/length convention decided (GISLR clips run 1–405 frames, §12.3's
+  facts) — pad-and-mask, or bucket to a few fixed lengths, needs a plan reviewed before
+  building.
+- [ ] Segment the recorded clip with `MovementGate` (buffered/offline variant), run the
+  whole-clip model once, slice its per-frame or per-window output at segment boundaries,
+  take top-5 per segment.
+- [ ] Downstream re-ranking: reuse `decoder.ts`'s `fused()` (log-space q · p^lam) with
+  `NgramPrior`, applied per segment in sequence order (Viterbi-style over the top-5
+  lattice, not the streaming lag-2 lattice which is a live-decoding structure this
+  offline mode doesn't need) to pick the sentence-consistent path. Offline eval on 12.1
+  (GISLR-Sentences) before any UI work, the same protocol as §12.2/§12.3's GER
+  measurement, so accuracy is known before it ships.
+- [ ] UI: a new mode alongside "Individual sign mode" — record button, processing
+  spinner, then the decoded sentence (and, worth showing since it's new: the top-5 per
+  segment before re-ranking, so a user can see what the context prior overruled).
+- [ ] **Question for the user before building:** is `bilstm` (already benchmarked,
+  0.7392) the intended model, or `bilstm_phono` (phonology front-end, not yet trained —
+  §3.9's open follow-up, run stopped at epoch 14)? The phonology front-end has no
+  Keras/TFLite port yet either way (§15 built one for the causal `gru_phono_raw`; a
+  whole-clip bidirectional port is separate work). Recommend: build the whole-clip
+  export + segmentation + re-ranking pipeline against plain `bilstm` first (no export
+  path to build from scratch), swap in `bilstm_phono` later if/when it's trained and
+  exported — same incremental pattern as §15 (`gru` shipped first as C4, `gru_phono_raw`
+  followed once its export existed).
+
+### 16.3 Custom signs — research (16.3 here; model-side plan still filed as §12.4)
+
+§12.4/§12.7 already cover this ground — filed 2026-09-24, ordered 12.4 (model side)
+first, 12.7 (user-facing feature) last, behind 12.5 (deploy) and 12.6 (downstream LLM).
+Nothing below duplicates that; it's the literature/design research the user asked for,
+done in front of 12.4's still-open plan.
+
+**What the codebase already has toward this (found, not built new):**
+- `CosineGlossHead.enroll()` (`architectures.py`, built for §12.3's C-open run) —
+  prototype imprinting: average an embedding over a few examples of a new class, append
+  it as a row to the cosine head's class matrix, no retraining. This is the standard
+  **few-shot/metric-learning enrollment** pattern (matching-networks / prototypical-
+  networks style) and is *why* the continuous models use a cosine head at all rather
+  than a plain linear softmax classifier — a linear head's final layer has no way to add
+  a class without retraining, a cosine head's does by construction.
+- C-open (run `1790146838`) holds out 20 glosses for exactly this: it's the fixture for
+  measuring `enroll()`'s new-class accuracy and forgetting, § 12.4's still-open first
+  bullet.
+- `apps/web`'s deployed export already keeps the class matrix (`classes.f32`) **outside**
+  the TFLite graph (§12.5's build notes) specifically so a custom sign is one appended
+  row client-side, no re-export — the deploy-side half of this feature is already
+  designed, not just planned.
+- §12.5's research (`docs/reports/deployment-research.md`) sized custom-sign storage:
+  1 KB prototype rows, Durable Object storage or D1 + an IndexedDB cache, R2 not needed.
+
+**Research findings (literature, 2026-09-28):**
+- The enrollment method **`enroll()` already implements — prototype imprinting from a
+  few examples, no gradient step** — is the standard low-shot approach for adding
+  classes to an embedding-based classifier (weight imprinting / Prototypical Networks:
+  average the new class's embeddings, drop the vector in as a new prototype). It is the
+  right choice here specifically *because* it requires no backward pass and no access to
+  old training data on-device — both hard constraints for a browser-only feature with no
+  server-side training loop. The alternative the field uses when imprinting alone
+  underperforms is a **short fine-tune with replay** (a handful of gradient steps over
+  the new examples mixed with a small buffer of old-class examples, to fight
+  catastrophic forgetting) — §12.4's still-open first bullet already plans to measure
+  both and pick, which matches how this is actually decided in practice (imprinting
+  first, fine-tune only if forgetting/accuracy demands it).
+- **Signer generalization is the open risk, not the enrollment math.** A prototype built
+  from one user's few examples of a *new* sign may not transfer to how a different
+  signer performs it — production few-shot sign-recognition systems (and ASL fingerspell/
+  isolated-sign literature generally) report a real accuracy gap between same-signer and
+  cross-signer few-shot evaluation. §12.4's second bullet ("does a new signer's few
+  examples transfer") is exactly this question and is the right thing to measure before
+  shipping 12.7 — a custom sign a user teaches must work when *they* sign it; whether it
+  generalizes to a second person using the same device is a separate, weaker claim to
+  make in the UI copy.
+- **Where enrollment should live, revisited for this app's shape:** C-open's `enroll()`
+  works on the *continuous* model (C4-family). The isolated mode (§15, `gru_phono_raw`)
+  and the planned record-then-recognize BiLSTM mode (16.2) are both **plain softmax**
+  heads today, not cosine heads — `enroll()`'s append-a-row trick does not apply to them
+  as built. Two ways to reconcile, to decide before 12.7's UI work: (a) give the
+  isolated/whole-clip heads a cosine layer too (architectural change, needs retraining
+  per model), or (b) scope custom signs to the continuous C4 pipeline only, where the
+  mechanism already exists end-to-end. Recommend (b) for a first shippable version — it
+  needs no new training run, just 12.4's enrollment eval.
+- **UX pattern found in the existing deploy notes, not from outside research:**
+  capture-few-examples → enroll → the new gloss is usable immediately in the same
+  session (no page reload, no server round trip beyond persisting the prototype row) is
+  already the natural flow given the client-side class-matrix design — worth keeping as
+  the north star for 12.7's UI rather than a "submit for review" pattern, since there is
+  no server-side training step that would justify a delay.
+- [ ] Still open, unchanged from 12.4's filing: run the enrollment eval itself (1/5/10
+  examples, new-class accuracy + forgetting, same-signer vs cross-signer transfer) on
+  C-open's 20 held-out glosses. This is a notebook + a training-adjacent run, so it goes
+  through the usual "Claude builds it, hands it to the user to execute" split — not done
+  as part of this research pass; §12.4's checklist is where it's tracked.
+
+---
+
 ## Backlog / Someday
 
 - [ ] **Layered end-to-end model (user, 2026-09-24, future work):** group the recognizer and

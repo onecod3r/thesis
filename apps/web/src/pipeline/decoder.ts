@@ -249,10 +249,12 @@ export class OnlineDecoder {
     return this.emit({ cls: d[0], frame: end - 1, conf: d[1] });
   }
 
-  /** Frame `t`'s probabilities over glosses + null -> the sign accepted at this frame, if any. */
-  step(p: ArrayLike<number>, t: number): Emission | null {
+  /** Frame `t`'s probabilities over glosses + null -> the sign accepted at this frame, if
+   * any. `noMovement` (TODO §16.1, browser-side stillness heuristic, `movement.ts`) forces
+   * a run in progress closed even if the model's own null head hasn't crossed `nu` yet. */
+  step(p: ArrayLike<number>, t: number, noMovement = false): Emission | null {
     const pn = p[this.nullIndex];
-    if (pn < this.nu) {
+    if (pn < this.nu && !(noMovement && this.start !== null)) {
       const w = 1.0 - pn;
       const w32 = Math.fround(w);
       for (let i = 0; i < this.nullIndex; i++) {

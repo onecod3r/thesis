@@ -83,11 +83,12 @@ export class Session {
              uncertain: e.conf < this.cfg.display.uncertain_below };
   }
 
-  /** Feed one tick's probabilities. */
-  push(p: Float32Array): StepResult {
+  /** Feed one tick's probabilities. `noMovement` (§16.1) forces the current run closed
+   * regardless of the model's own null head -- passed through from `movement.ts`. */
+  push(p: Float32Array, noMovement = false): StepResult {
     const t = this.tick++;
     const signs: Sign[] = [];
-    const e = this.decoder.step(p, t);
+    const e = this.decoder.step(p, t, noMovement);
     if (e) signs.push(this.toSign(e, t));
     this.current.push(...signs);
     const pNull = p[this.nullIndex];
