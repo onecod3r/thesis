@@ -18,7 +18,7 @@ kept but marked paused, not deleted. GISLR is the only active dataset.
 
 ---
 
-## Current focus (2026-09-27)
+## Current focus (2026-09-28)
 
 The workstream sections below are the source of truth; this is just the short
 list of what is actually next, in order. Re-derived at each audit — if it looks
@@ -4470,7 +4470,7 @@ the design system and component library" — a UI/UX design pass, not code. Two 
 mockups) and [Signbridge Design System](https://claude.ai/artifact/CcjhBtaptGx9inyakJpy8D) (tokens +
 brand book + 6-component library + cover) — both private, not shared — plus a durable, repo-tracked
 copy of the decisions and content at
-[`docs/reports/web-app-design.md`](../docs/reports/web-app-design.md), since artifacts live outside git.
+[`docs/reports/web-app-design.md`](docs/reports/web-app-design.md), since artifacts live outside git.
 
 - [x] **Rooted in the real app** (`apps/web/README.md`), not invented from scratch: mocked the actual
   documented features — recognizer variants (C1/C2/C1+C2), the lag-2 lattice uncertainty UI ("?" glosses,
