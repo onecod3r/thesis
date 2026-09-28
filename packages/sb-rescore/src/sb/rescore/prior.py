@@ -217,3 +217,52 @@ def top_next(model: NextGlossModel, history: Sequence[str], k: int = 10) -> list
     p = model.dist(history)
     order = np.argsort(-p)[:k]
     return [(model.vocab[i], float(p[i])) for i in order]
+
+
+# ============================================================
+# Whole-sentence rescoring -- "pick the sign that makes the best sentence",
+# not just the next one (TODO §16.2's downstream-model follow-up, 2026-09-28).
+# ============================================================
+
+def viterbi_rescore(candidates: Sequence[np.ndarray], model: NextGlossModel, glosses: Sequence[str],
+                    lam: float, k: int = 5, beam_width: int = 64) -> list[int]:
+    """The recognizer's per-segment top-``k`` candidates in sentence order ->
+    the single sequence of choices (one per segment, forced -- no skip) that
+    maximizes ``sum_i log(q_i[c_i]) + lam * log(p(c_i | c_1..c_{i-1}))``
+    under ``model``, found exactly (not greedily) by dynamic programming.
+
+    This is *global* sentence-level decoding, not the segment-by-segment
+    greedy fusion `sb.recognize.continuous.fuse.decide` does (which commits
+    each segment before seeing the next, and only ever sees ``argmax``) --
+    the difference matters when the best per-segment guess and the best
+    *sentence* disagree, which is exactly the case a downstream model earns
+    its keep on. Because ``model`` only needs a bounded context (n-gram
+    order), the exact search collapses to tracking `beam_width` best partial
+    hypotheses at each step (a standard n-best-list Viterbi rescore) --
+    beam-limited for safety, but ``beam_width`` covers every reachable state
+    when ``k`` is small (an n-gram's branching factor is exactly ``k`` per
+    step), so this is exact in the common case, not an approximation.
+
+    No training, no gradient step: `model` (an already-fit `NgramLM`, or any
+    other `NextGlossModel`) is called as a black box. A hosted LLM could
+    stand in for `model` too, but Workers AI gives no per-token logprobs
+    (`deployment-research.md` §5) -- an n-gram is what actually implements
+    "best sentence construction" cheaply today; an LLM is the fallback if
+    this still leaves a real gap, not the default.
+    """
+    beams: list[tuple[tuple[int, ...], float]] = [((), 0.0)]
+    for q in candidates:
+        top = np.argsort(-q)[:k]
+        scored: dict[tuple[int, ...], tuple[tuple[int, ...], float]] = {}
+        for hist, score in beams:
+            hist_glosses = tuple(glosses[c] for c in hist)
+            p = model.gloss_dist(hist_glosses)
+            for c in top:
+                s = score + math.log(max(float(q[c]), 1e-12)) + lam * math.log(max(float(p[c]), 1e-12))
+                new_hist = hist + (int(c),)
+                if new_hist not in scored or scored[new_hist][1] < s:
+                    scored[new_hist] = (new_hist, s)
+        beams = sorted(scored.values(), key=lambda hs: -hs[1])[:beam_width]
+    if not beams:
+        return []
+    return list(max(beams, key=lambda hs: hs[1])[0])

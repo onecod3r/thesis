@@ -74,7 +74,7 @@ from sb.recognize.sequences import metrics as M
 from sb.recognize.sequences.compose import FRAME_KINDS
 from sb.recognize.sequences.corpus import load_sentences
 from sb.recognize.sequences.windows import movement_segments
-from sb.rescore.prior import NgramLM
+from sb.rescore.prior import NgramLM, viterbi_rescore
 
 RUN_ID = 1784447175          # bilstm, ME_126 xy, 0.7569 canonical -- TODO §4.1/§4.3 leader
 CORPUS_VERSION = "v1"
@@ -301,6 +301,160 @@ for kind in ("sentence", "control"):
 write_json(OUT / "final.json", {"results": final, "chosen_theta": chosen_theta})
 print(f"scored {len(final)} (arm x prior x kind) rows on {len(EVAL)} evaluation signers")"""))
 
+cells.append(md("""\
+## 6. Hybrid: C4's segmentation + `bilstm`'s classification
+
+B0/B-mv above isolate the two things a working pipeline needs -- `bilstm` alone has
+excellent classification (B0), but stillness alone can't segment well (B-mv). C4 (the
+**deployed** continuous model, GER 0.278 with its full lattice+prior, TODO §12.8) is
+already good at the segmentation half: its D3 decoder (null-gated runs, the same
+mechanism as `sb.recognize.continuous.decode.decode_null`) needs no new training and no
+new export -- it's the live model. This section asks: swap C4's own per-segment vote
+for `bilstm`'s whole-clip vote on the *same* C4-produced segments, does it beat C4
+alone? `bilstm` gets frames C4 never sees during training (transition/rest-contaminated
+spans, the same content that broke B-mv) via C4's segments, so this is not guaranteed
+to work -- it's an experiment, not a foregone conclusion."""))
+
+cells.append(code("""\
+# ============================================================
+# C4 setup (loaded here, not the main setup cell, since only this section needs it)
+# ============================================================
+from sb.recognize.continuous import decode as CDEC
+from sb.recognize.continuous.train import load_run, run_dir_for
+
+C4_NU, C4_MIN_LEN = 0.5, 4  # C4's deployed D3 settings -- apps/web/pipeline.config.json
+C4_RUN_NAME = "C4"
+
+c4_dir = run_dir_for(C4_RUN_NAME)
+C4_MODEL, C4_CK = load_run(c4_dir, DEVICE)
+assert C4_CK["arch"] == "gru_continuous_norm", C4_CK["arch"]
+C4_FEATS = B.StreamFeatures.build(DATASET_ROOT, pd.read_csv(DATASET_ROOT / "sequences.csv", keep_default_na=False),
+                                  np.asarray(C4_CK["landmarks"]), C4_CK["coords"])
+print(f"C4: run {c4_dir.name}, null_index {C4_CK['null_index']}")
+
+
+def c4_segments(row) -> list[F.Segment]:
+    \"\"\"C4's own D3 segments for one sequences.csv row -- frame indices are on the
+    same time axis as `FEATS` (bilstm's own feature cache), just a different landmark
+    subset/coords per frame, so a span from here indexes `FEATS.x(row)` unchanged.\"\"\"
+    x = torch.from_numpy(np.ascontiguousarray(C4_FEATS.x(row["row"])))
+    gp, _ = CDEC.frame_outputs(C4_MODEL, x)
+    return F.segments_d3(gp, C4_NU, C4_MIN_LEN, C4_CK["null_index"])
+
+
+def score_hybrid(subset: pd.DataFrame, classify: bool, rule: F.Rule, prior) -> list[dict]:
+    \"\"\"C4's segmentation, either C4's own vote (`classify=False`, the reference arm)
+    or bilstm's whole-clip vote on the same spans (`classify=True`, the hybrid).\"\"\"
+    out = []
+    for _, r in tqdm(subset.iterrows(), total=len(subset), desc="scoring hybrid", leave=False):
+        labels, seg = seq_arrays(r)
+        segs = c4_segments(r)
+        if classify:
+            x = FEATS.x(r["row"])
+            qs = span_probs(x, [(s.start, s.end) for s in segs])
+            segs = [F.Segment(s.start, s.end, q, s.mass, q) for s, q in zip(segs, qs)]
+        emissions = F.decode_fused(segs, prior, rule)
+        out.append(M.score_sequence(emissions, labels, seg, FEATS.kind(r["row"])))
+    return out"""))
+
+cells.append(code("""\
+# ============================================================
+# Sweep theta for the hybrid+prior arm on selection signers, sentence kind
+# ============================================================
+path = OUT / "sweep_hybrid_prior.json"
+if not path.exists():
+    rows = []
+    for theta in THETA_GRID:
+        rule = F.Rule(mode="rescore", lam=LAM, theta=theta)
+        sc = score_hybrid(sel, True, rule, prior_fn)
+        rows.append({"theta": theta, "lam": LAM, **M.aggregate(sc, frame_totals(sel["row"]))})
+    write_json(path, rows)
+best = min(json.loads(path.read_text()), key=lambda d: d["ger"])
+chosen_theta["hybrid"] = best["theta"]
+print("hybrid best theta", best["theta"], "selection GER", round(best["ger"], 4))"""))
+
+cells.append(code("""\
+# ============================================================
+# Final: C4-alone (reference) vs hybrid vs hybrid+prior, evaluation signers, both kinds
+# ============================================================
+hybrid_final = []
+for kind in ("sentence", "control"):
+    ev = SEQ[(SEQ.group == "eval") & (SEQ.kind == kind)]
+    ft = frame_totals(ev["row"])
+    sc = score_hybrid(ev, False, NO_PRIOR, None)
+    hybrid_final.append({"arm": "c4_alone", "prior": False, "kind": kind, **M.aggregate(sc, ft)})
+    sc = score_hybrid(ev, True, NO_PRIOR, None)
+    hybrid_final.append({"arm": "hybrid", "prior": False, "kind": kind, **M.aggregate(sc, ft)})
+    rule = F.Rule(mode="rescore", lam=LAM, theta=chosen_theta["hybrid"])
+    sc = score_hybrid(ev, True, rule, prior_fn)
+    hybrid_final.append({"arm": "hybrid", "prior": True, "kind": kind, "theta": chosen_theta["hybrid"],
+                         **M.aggregate(sc, ft)})
+write_json(OUT / "final_hybrid.json", {"results": hybrid_final, "chosen_theta": chosen_theta["hybrid"]})
+print(f"scored {len(hybrid_final)} rows on {len(EVAL)} evaluation signers")"""))
+
+cells.append(md("""\
+## 7. Global sentence decoding: top-5 per segment, picked by "best sentence" (not greedy)
+
+The user's ask (2026-09-28): take the hybrid's top-5 per segment and have a downstream
+model "correctly pick the sign based on the best possible sentence construction" --
+i.e. decode the *whole sentence* at once, not one segment at a time. `fuse.decide`
+(§6 above) is greedy: it commits each segment before it has seen the next one, and only
+ever compares `argmax(q)` against the prior. `sb.rescore.prior.viterbi_rescore` instead
+searches every combination of each segment's top-`k` candidates for the one whose
+*whole sequence* scores best under the n-gram, by dynamic programming (exact for this
+`k` and n-gram order, not a heuristic). No training: `NgramLM` is already fit (§Setup);
+this is search over its output, and `bilstm`'s top-5 are already computed.
+
+**Model choice: n-gram, not an LLM.** This repo already investigated a hosted LLM for
+exactly this role (§12.6, `deployment-research.md` §5) and found Workers AI gives no
+per-token logprobs -- without those, an LLM prior means either one generation per
+candidate (slow) or asking it to "rank these," which isn't a calibrated probability a
+search like this needs. The n-gram is what actually implements "best sentence
+construction" today; an LLM is the documented fallback if this still leaves a real
+gap, not the default."""))
+
+cells.append(code("""\
+# ============================================================
+# Score: hybrid top-5 (K=5, per the user's ask) + exact Viterbi sentence decode
+# over the n-gram, vs the same hybrid's greedy per-segment rescore (§6)
+# ============================================================
+K_CANDIDATES = 5
+BEAM_WIDTH = 64
+LAM_GRID_V = [0.1, 0.2, 0.3, 0.4, 0.5]
+
+
+def score_viterbi(subset: pd.DataFrame, lam: float) -> list[dict]:
+    out = []
+    for _, r in tqdm(subset.iterrows(), total=len(subset), desc="scoring viterbi", leave=False):
+        labels, seg = seq_arrays(r)
+        segs = c4_segments(r)
+        x = FEATS.x(r["row"])
+        qs = span_probs(x, [(s.start, s.end) for s in segs])
+        choice = viterbi_rescore(qs, NGRAM, GLOSSES, lam, k=K_CANDIDATES, beam_width=BEAM_WIDTH)
+        emissions = [(c, s.end - 1, 1.0) for c, s in zip(choice, segs)]
+        out.append(M.score_sequence(emissions, labels, seg, FEATS.kind(r["row"])))
+    return out
+
+
+path = OUT / "sweep_viterbi_lam.json"
+if not path.exists():
+    rows = [{"lam": lam, **M.aggregate(score_viterbi(sel, lam), frame_totals(sel["row"]))}
+            for lam in LAM_GRID_V]
+    write_json(path, rows)
+best_v = min(json.loads(path.read_text()), key=lambda d: d["ger"])
+LAM_V = best_v["lam"]
+print("viterbi best lam", LAM_V, "selection GER", round(best_v["ger"], 4))
+
+viterbi_final = []
+for kind in ("sentence", "control"):
+    ev = SEQ[(SEQ.group == "eval") & (SEQ.kind == kind)]
+    ft = frame_totals(ev["row"])
+    sc = score_viterbi(ev, LAM_V)
+    viterbi_final.append({"arm": "hybrid_viterbi", "prior": True, "kind": kind, "lam": LAM_V,
+                          **M.aggregate(sc, ft)})
+write_json(OUT / "final_viterbi.json", {"results": viterbi_final, "lam": LAM_V})
+print(f"scored {len(viterbi_final)} rows on {len(EVAL)} evaluation signers")"""))
+
 cells.append(md("## Results"))
 
 cells.append(code("""\
@@ -308,6 +462,9 @@ cells.append(code("""\
 # Headline table + comparison against the existing references
 # ============================================================
 res = pd.json_normalize(json.loads((OUT / "final.json").read_text())["results"])
+res_h = pd.json_normalize(json.loads((OUT / "final_hybrid.json").read_text())["results"])
+res_v = pd.json_normalize(json.loads((OUT / "final_viterbi.json").read_text())["results"])
+res = pd.concat([res, res_h, res_v], ignore_index=True)
 table = res[res.kind == "sentence"].set_index(["arm", "prior"])[
     ["ger", "correct_rate", "sub_rate", "del_rate", "ins_rate", "sentence_acc", "emissions_per_sign"]
 ].sort_values("ger")

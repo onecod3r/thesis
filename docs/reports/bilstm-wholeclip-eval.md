@@ -58,23 +58,62 @@ subsample, selection signers, not written back to the notebook):
   (`sentence-baselines.md` §5). Movement/stillness gating is structurally a fixed-hold
   heuristic in different clothing, and it hits the same wall independently here.
 
+## Part 2: the hybrid (2026-09-28, same day — the user asked "can we not use this for
+the model?")
+
+Segmentation is the actual blocker (Part 1), not classification, so §12.8's already-
+**deployed** C4 (a learned boundary/null decoder, GER 0.278 with its own lattice+prior)
+is a segmentation source that already works — no new training, no new export, it's the
+live model. This section reuses C4's D3 segments (`nu=0.5`, `min_len=4`, the deployed
+values, `pipeline.config.json`) and classifies each one with `bilstm`'s whole-clip
+readout instead of C4's own per-frame vote. §7 goes one step further: `bilstm`'s top-5
+per segment, picked by **exact whole-sentence decoding** (`sb.rescore.prior
+.viterbi_rescore`, new — dynamic programming over every combination of each segment's
+top-5 candidates against the same deployed trigram, not greedy left-to-right rescoring)
+instead of one gloss at a time.
+
+### Headline (evaluation signers, `sentence` split, full corpus — 5,054 sequences)
+
+| arm | segmentation | classifier | decision | GER | sentence acc |
+|---|---|---|---|---|---|
+| C4 alone | C4 D3 | C4's own vote | argmax, no prior | 0.310 | 0.374 |
+| hybrid | C4 D3 | `bilstm` | argmax, no prior | 0.251 | 0.479 |
+| hybrid + prior | C4 D3 | `bilstm` | greedy rescore (`fuse.decide`) | 0.220 | 0.525 |
+| **hybrid + top-5 + Viterbi** | C4 D3 | `bilstm` top-5 | **exact sentence decode** | **0.195** | **0.586** |
+| *(reference)* deployed C4 | C4 D3 + lattice | C4's own vote | tuned lag-2 lattice | 0.278 | — |
+| *(reference)* B0 oracle + prior | true boundaries | `bilstm` | greedy rescore | 0.089 | 0.763 |
+
+**Swapping the classifier alone (hybrid vs. C4 alone) already beats deployed C4**
+(0.251 vs 0.278) with no prior at all — segmentation was never `bilstm`'s problem, and
+C4's segments, while not as tight as oracle boundaries, are tight enough for `bilstm`
+to do much better on than its own movement-cut spans (Part 1) ever were. **Global
+sentence decoding over the top-5 (§7) is the single biggest additional lever** — 0.220
+→ 0.195, a bigger jump than moving from no-prior to greedy-prior gave (0.251 → 0.220).
+Selection-signer λ sweep for the Viterbi arm picked λ=0.5 (the top of the swept grid —
+an interior optimum was not reached; a wider sweep is a cheap follow-up, not done here).
+
+**Why an n-gram and not an LLM for the "best sentence" search:** this repo already
+researched a hosted-LLM prior for this exact role (§12.6, `deployment-research.md` §5)
+and found Cloudflare Workers AI exposes no per-token logprobs — without those, using an
+LLM here means either one generation per candidate combination or asking it to "rank
+these," neither a calibrated probability a real search can use. The n-gram +
+`viterbi_rescore` is what actually implements "pick the sign that makes the best
+sentence" cheaply and exactly today; the documented trigger for trying an LLM instead
+is if this still leaves a real gap, which — at 0.195 vs. deployed's 0.278 — it does not
+look like it does.
+
 ## Recommendation
 
-Don't build the record-then-recognize UI (TODO §16.2's remaining checklist) on pure
-movement segmentation — the measured accuracy doesn't clear a usable bar. Two ways
-forward, neither built:
-
-1. **Hybrid**: reuse C4's own learned boundary/null decoding (already deployed, already
-   segments continuous streams at 0.278 GER) to produce segment proposals, then
-   classify each accepted segment with `bilstm`'s whole-clip readout instead of (or
-   averaged with) C4's own per-frame vote — costs an extra forward pass per accepted
-   segment, on a model already exported and parity-verified. Untested; the natural next
-   experiment if this mode stays wanted.
-2. **A dedicated boundary signal for whole-clip mode**, mirroring §12.3's per-frame
-   supervision — meaningfully more work (a new training run), not justified without
-   first trying (1).
+**Worth building.** The hybrid + top-5 + Viterbi arm (GER 0.195) beats the currently
+deployed continuous pipeline (0.278) by about 30% relative, using only models and code
+that already exist (C4, `bilstm`'s parity-verified export, `fuse.segments_d3`, one new
+~50-line search function) plus one architectural change: **record-then-recognize now
+means "run C4 to get segments, then reclassify each with `bilstm` and decode the whole
+sentence," not "segment by stillness alone"** (Part 1's original plan). TODO §16.2's UI
+checklist is unblocked, scoped to this design.
 
 ## Artifacts
 
 `data/cache/gislr/bilstm_wholeclip_eval/results/` — `select_*_noprior.json`,
-`sweep_*_prior.json`, `b0_top5.json`, `final.json`, `final_table.csv`.
+`sweep_*_prior.json`, `sweep_viterbi_lam.json`, `b0_top5.json`, `final.json`,
+`final_hybrid.json`, `final_viterbi.json`, `final_table.csv`.

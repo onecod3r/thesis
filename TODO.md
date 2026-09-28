@@ -5094,18 +5094,56 @@ the user's explicit "proceed with bilstm (best performing one)" (2026-09-28).
   vote (cheap next experiment, no new export or training needed); (b) a dedicated
   learned boundary signal for whole-clip mode, mirroring §12.3 (meaningfully more work
   — a new training run — not justified before trying (a)).
-- [ ] **Next (open): try the hybrid (a) above**, or get the user's call on whether 16.2
-  is worth continuing at all given movement segmentation alone doesn't work. The
-  whole-clip export itself (`export_web_wholeclip`, parity-verified) and the Python
-  `movement_segments` port are reusable regardless of which path this takes.
-- [ ] **UI: not started, and now blocked on the decision above**, not just on reading a
-  result. If pursued: record button, processing spinner, decoded sentence, top-5 per
-  segment before re-ranking. Needs a TS port of whatever segmentation wins and a
-  whole-clip LiteRT.js runner (new — every existing `apps/web/src/pipeline/*.ts` model
-  wrapper is step-shaped).
+- [x] **Tried the hybrid, same day (user: "can we not use this for the model?") — it
+  works, decisively.** Reuse **C4's own deployed segmentation** (D3, `nu=0.5`,
+  `min_len=4`, the live settings) instead of movement/stillness, and classify each
+  segment with `bilstm`'s already-exported whole-clip readout instead of C4's own vote.
+  Full corpus, evaluation signers, `sentence` split (5,054 sequences):
+
+  | arm | GER | sentence acc |
+  |---|---|---|
+  | C4 alone (its segmentation, its classifier, no lattice) | 0.310 | 0.374 |
+  | hybrid (C4 segments + `bilstm`, no prior) | 0.251 | 0.479 |
+  | hybrid + trigram, greedy rescore | 0.220 | 0.525 |
+  | **hybrid + top-5 + exact sentence Viterbi (below)** | **0.195** | **0.586** |
+  | *(reference)* deployed C4, tuned lattice+prior | 0.278 | — |
+
+  Swapping only the classifier already beats deployed C4 (0.251 vs 0.278, no prior at
+  all) — segmentation quality was never `bilstm`'s problem; C4's segments just aren't
+  as loose as pure movement-cut ones were.
+- [x] **Top-5 + "best sentence" downstream decode, same day (user: "top 5 prediction
+  and an llm/any other type of model that correctly picks the sign based on the best
+  possible sentence construction").** New: `sb.rescore.prior.viterbi_rescore` — exact
+  dynamic-programming search over every combination of each segment's top-5 candidates
+  for the sequence that scores best as a *whole sentence* under the n-gram (not
+  `fuse.decide`'s greedy one-segment-at-a-time commit). No training: the n-gram is
+  already fit; this is search over its output, beam-limited but exact for this k/order.
+  Selection-signer λ sweep picked λ=0.5 (grid top — an interior optimum wasn't reached,
+  a wider sweep is a cheap follow-up). **GER 0.195**, sentence accuracy 0.586 — the
+  best number in the whole evaluation short of the oracle-segmentation ceiling (0.089).
+  **Why n-gram, not an LLM:** already researched and decided against for this role —
+  Workers AI gives no per-token logprobs (§12.6, `deployment-research.md` §5), so an
+  LLM here means slow per-candidate calls or an uncalibrated "rank these" prompt. The
+  documented trigger for trying one anyway is a real remaining gap; 0.195 vs. deployed
+  0.278 doesn't look like one.
+- [x] **Full write-up: `docs/reports/bilstm-wholeclip-eval.md`** (Part 1: the movement-
+  segmentation negative result; Part 2: the hybrid + Viterbi positive result).
+  **Recommendation: worth building.** Record-then-recognize now means "run C4 for
+  segments, reclassify with `bilstm`, decode top-5 as a whole sentence" — not "segment
+  by stillness alone" (16.2's original plan, abandoned per Part 1).
+- [ ] **UI: not started, now unblocked** — the design is decided (segmentation = C4 D3,
+  classifier = `bilstm` whole-clip, decision = top-5 Viterbi over the deployed trigram).
+  Record button, processing spinner, decoded sentence, and the top-5-before-rescore
+  shown alongside (so a user can see what the sentence-level search overruled). Needs:
+  a TS port of `viterbi_rescore` (small — the Python version is ~30 lines of dynamic
+  programming, no external deps) and `fuse.segments_d3`/`decode.frame_outputs`'s TS
+  equivalents (largely already ported — `decoder.ts` has D3-shaped logic; check what's
+  reusable vs. new before writing), and a whole-clip LiteRT.js runner for `bilstm` (new
+  — every existing `apps/web/src/pipeline/*.ts` model wrapper is step-shaped, this one
+  takes a whole buffered clip).
 - [ ] **`bilstm_phono` swap, later** (§3.9's open follow-up, run stopped at epoch 14,
-  no export path built yet either way) — moot unless 16.2 finds a working segmentation
-  path first.
+  no export path built yet either way) — now a real option worth revisiting once
+  trained, given how much the classifier swap alone was worth here.
 
 ### 16.4 MediaPipe capture resolution/fps — research done 2026-09-28, camera constraints updated
 
