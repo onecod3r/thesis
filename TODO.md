@@ -4910,6 +4910,22 @@ module shows up in `git diff` from this work.
 - [ ] **Next action**: user decides whether to rerun the extraction + retrain with the two new
   features (should specifically help `second_minor_location` and `sign_type`), keep the rule engine
   as primary for the parameters it still wins, or move to stage 2 design.
+- [x] **ASL-LEX 2.0 `SignData.csv` full EDA (Claude, 2026-09-29, user ask):** 2,723 rows × 191 columns
+  (101 distinct fields once the `M2.2.0`…`M6.2.0` per-morpheme repeats are collapsed — 89% of signs are
+  1 morpheme). Answered in chat: column-by-column type/range/calculation-method for every field —
+  frequency ratings (1–7 Likert, native/nonnative split), iconicity/transparency (separate rating tasks,
+  `GuessConsistency` = entropy of free-response guesses), morphology flags, timing (ms), the 18
+  phonology parameters (categorical/binary, per Brentari's Prosodic Model — cross-checked against the
+  values already read by `sb.recognize.aslex.PARAMETERS`/`recognition2.rules`), per-value lexicon
+  frequency (`<Param>.2.0Frequency` — a *lexicon* base rate, distinct from `SignFrequency(M)`'s *usage*
+  rating; this is what Part 3 of `bilstm-wholeclip-eval.md` tried blending into the n-gram and found
+  didn't help), neighborhood density/phonotactic probability/complexity, SignBank refs, CDI/AoA.
+  **Relevant to the feature-detector idea raised earlier this session**: only `Movement`,
+  `RepeatedMovement`, `Contact`, `SecondMinorLocation` have any temporal/count structure to them at all
+  (and all four are exactly the parameters §14's rule engine scores near/below chance on) — every other
+  parameter is one static per-sign label with no per-instant ground truth, so a timing/count framing has
+  nothing ASL-LEX-derived to validate against for those. Not written up as a standalone doc (chat answer
+  only) — revisit if a stage-2 architecture actually needs this reference.
 
 ---
 
