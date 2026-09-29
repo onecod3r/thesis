@@ -1,0 +1,25 @@
+{
+  "dataset": "GISLR-GapCorpus",
+  "corpus_version": "v1",
+  "seed": 20260929,
+  "shared": {
+    "hidden_size": 128,
+    "num_layers": 2,
+    "dropout": 0.2,
+    "jitter_window": 5,
+    "dist_window": 15,
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "lr_factor": 0.5,
+    "lr_patience": 3,
+    "es_patience": 8,
+    "es_min_delta": 0.001,
+    "grad_clip": 5.0,
+    "batch_size": 16,
+    "epochs": 60,
+    "pos_weight_cap": 20.0
+  },
+  "runs": {
+    "A": {"notes": "baseline GapGRU, hidden 128 x 2 layers"}
+  }
+}

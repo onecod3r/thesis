@@ -349,6 +349,165 @@ def check_roundtrip(arrays: dict, row: dict, data_dir: Path, relpath_of: dict[st
         raise AssertionError("a frame outside every segment is labelled as a sign")
 
 
+# ---------------------------------------------------------------------------
+# gap corpus (TODO §17): a boundary/gap-detector needs many transition
+# examples, not linguistic sentence structure, and the realistic-rest fix
+# `sb.recognize.continuous.data` already found (rest at signing height makes
+# "hands NaN" a trivial gap tell -- TODO §12.1's last item). This section
+# ports that fix into canonical (T, 543, 3) row space (continuous.data works
+# in flattened (subset, coords) feature space instead) and adds a
+# coverage-free, many-pass planner: a gap detector does not need every clip
+# placed exactly once, so the same clip can recur in different transition
+# contexts across passes -- more, more varied examples, not a flaw.
+# ---------------------------------------------------------------------------
+
+_POSE0 = next(g.offset for g in GROUPS if g.name == "pose")
+_LH_WRIST, _RH_WRIST = 468, 522  # hand landmark 0 of each hand block
+_POSE_WRIST = (_POSE0 + 15, _POSE0 + 16)  # left, right
+_POSE_ELBOW = (_POSE0 + 13, _POSE0 + 14)
+_POSE_HIP = (_POSE0 + 23, _POSE0 + 24)
+_LEFT_HAND_ROWS = np.arange(468, 489)
+_RIGHT_HAND_ROWS = np.arange(522, 543)
+
+
+def _hip_y(frame: np.ndarray) -> float | None:
+    hips = frame[list(_POSE_HIP), 1]
+    good = hips[np.isfinite(hips)]
+    return float(good.mean()) if good.size else None
+
+
+def _lowered_frame(frame: np.ndarray, default_drop: float) -> np.ndarray:
+    """``frame`` (543, 3) with both hands and the pose wrists/elbows moved
+    down to hip height, y only, NaN preserved -- the canonical-row-space twin
+    of ``sb.recognize.continuous.data._lowered``."""
+    out = frame.copy()
+    hip = _hip_y(frame)
+
+    def drop(wrist_row: int) -> float:
+        y = frame[wrist_row, 1]
+        return max(hip - y, 0.05) if hip is not None and np.isfinite(y) else default_drop
+
+    for hand_rows, wrist_row in ((_LEFT_HAND_ROWS, _LH_WRIST), (_RIGHT_HAND_ROWS, _RH_WRIST)):
+        out[hand_rows, 1] += drop(wrist_row)
+    for pose_wrist, pose_elbow in zip(_POSE_WRIST, _POSE_ELBOW):
+        d = drop(pose_wrist)
+        out[pose_wrist, 1] += d
+        out[pose_elbow, 1] += d / 2
+    return out
+
+
+def lowered_rest(edge: np.ndarray, n: int, entering: bool, rng: np.random.Generator, *,
+                 ramp_frames: int, hand_visible_max: float, default_drop: float, jitter: float) -> np.ndarray:
+    """``n`` realistic rest frames next to ``edge`` (543, 3): the arms ramp
+    between ``edge`` and the lowered pose over the first/last ``ramp_frames``
+    (toward the sign when ``entering``), and each hand goes NaN on every
+    frame where its wrist has dropped below ``hand_visible_max`` (out of
+    frame) -- fixes the flaw in :func:`rest` (hands always NaN, pose left at
+    signing height), where "hands NaN" alone gives away the gap."""
+    low = _lowered_frame(edge, default_drop)
+    k = min(ramp_frames, n)
+    t = np.clip(np.arange(1, n + 1) / (k + 1), 0, 1)[:, None, None]
+    frames = edge[None] + t * (low - edge)[None]  # leaving: edge -> low
+    if entering:
+        frames = frames[::-1]  # arriving: low -> edge
+    for hand_rows, wrist_row in ((_LEFT_HAND_ROWS, _LH_WRIST), (_RIGHT_HAND_ROWS, _RH_WRIST)):
+        gone = np.flatnonzero(~(frames[:, wrist_row, 1] <= hand_visible_max))
+        if gone.size:
+            frames[np.ix_(gone, hand_rows)] = np.nan
+    frames = frames + rng.normal(0.0, jitter, size=frames.shape).astype(np.float32)
+    return frames.astype(np.float32)
+
+
+def materialize_v2(
+    row: dict,
+    data_dir: Path,
+    relpath_of: dict[str, str],
+    label_of: dict[str, int],
+    rng: np.random.Generator,
+    *,
+    rest_jitter: float,
+    rest_ramp_frames: int,
+    hand_visible_max: float,
+    rest_default_drop: float,
+    p_lowered_rest: float,
+) -> dict:
+    """Like :func:`materialize`, but each sequence's rest is **lowered**
+    (realistic) with probability ``p_lowered_rest`` and hands-absent
+    (:func:`rest`, GISLR-Sentences v1's style) otherwise -- kept as a mix so
+    a model trained on this also handles the v1 style. Adds ``gap`` (uint8,
+    1 on every non-sign frame): the label a boundary/gap detector trains on,
+    equivalent to ``frame_kind != SIGN`` but named for that reader."""
+    clips = [load_clip(data_dir, relpath_of[u]) for u in row["source_uids"]]
+    labels = [label_of[g] for g in row["glosses"]]
+    parts, kinds, flabels, segments = [], [], [], []
+    t = 0
+    lowered = rng.random() < p_lowered_rest
+
+    def add(arr, kind, label):
+        nonlocal t
+        parts.append(arr)
+        kinds.append(np.full(len(arr), kind, np.uint8))
+        flabels.append(np.full(len(arr), label, np.int16))
+        t += len(arr)
+
+    def make_rest(edge, n, entering):
+        if lowered:
+            return lowered_rest(edge, n, entering, rng, ramp_frames=rest_ramp_frames,
+                                hand_visible_max=hand_visible_max, default_drop=rest_default_drop,
+                                jitter=rest_jitter)
+        return rest(edge, n, rng, rest_jitter)
+
+    add(make_rest(clips[0][0], row["rest_in"], True), REST, NULL_LABEL)
+    for i, (clip, lab) in enumerate(zip(clips, labels)):
+        if i > 0:
+            add(transition(clips[i - 1][-1], clip[0], row["gaps"][i - 1]), TRANSITION, NULL_LABEL)
+        segments.append((t, t + len(clip)))
+        add(clip, SIGN, lab)
+    add(make_rest(clips[-1][-1], row["rest_out"], False), REST, NULL_LABEL)
+
+    landmarks = np.concatenate(parts).astype(np.float32)
+    validate_tensor(landmarks, dtype=np.float32, check_values=True, where="sequence")
+    frame_kind = np.concatenate(kinds)
+    return {
+        "landmarks": landmarks,
+        "frame_labels": np.concatenate(flabels),
+        "frame_kind": frame_kind,
+        "gap": (frame_kind != SIGN).astype(np.uint8),
+        "segments": np.asarray(segments, dtype=np.int32).reshape(-1, 2),
+        "labels": np.asarray(labels, dtype=np.int16),
+        "lowered_rest": bool(lowered),
+    }
+
+
+def plan_control_multi(df: pd.DataFrame, lengths: np.ndarray, seed: int, *,
+                       gap_range: tuple[int, int], rest_range: tuple[int, int], n_passes: int) -> list[dict]:
+    """:func:`plan_control` run ``n_passes`` times, each with its own
+    ``[seed, pass]``-derived RNG, tagged ``pass_id``, and concatenated.
+
+    A gap/boundary detector's signal is the transition itself, not sentence
+    semantics or exactly-once clip coverage, so re-drawing the same clip pool
+    into different random neighbours across passes is a deliberate way to
+    grow and diversify a "very big" corpus, not a coverage bug (unlike
+    :func:`plan_sentences`, which places every clip exactly once by design)."""
+    out = []
+    for p in range(n_passes):
+        prng = np.random.default_rng([seed, p])
+        rows = plan_control(df, lengths, prng, gap_range=gap_range, rest_range=rest_range)
+        for r in rows:
+            r["pass_id"] = p
+        out.extend(rows)
+    return out
+
+
+def summarize_row_v2(row: dict, arrays: dict, seq_id: str, relpath: str) -> dict:
+    """:func:`summarize_row` plus the fields :func:`plan_control_multi` /
+    :func:`materialize_v2` add: ``pass_id`` (which of the ``n_passes`` draws
+    placed this clip pool) and ``lowered_rest`` (which rest style this
+    sequence got)."""
+    return {**summarize_row(row, arrays, seq_id, relpath),
+            "pass_id": row.get("pass_id", 0), "lowered_rest": bool(arrays.get("lowered_rest", False))}
+
+
 def summarize_row(row: dict, arrays: dict, seq_id: str, relpath: str) -> dict:
     """The ``sequences.csv`` row for one materialized sequence."""
     seg = arrays["segments"]

@@ -15,6 +15,7 @@ to price the causality gap (project constraint, README §Constraints).
 import inspect
 from dataclasses import dataclass
 
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
@@ -1046,3 +1047,151 @@ def build_model(arch: str, feature_dim: int, num_classes: int, hyp: dict) -> nn.
         feature_dim, hyp["hidden_size"], hyp["num_layers"], num_classes,
         hyp["dropout"], **extra
     )
+
+
+# ---------------------------------------------------------------------------
+# sign-vs-gap detector (TODO §17) -- deliberately NOT in ARCHS/build_model.
+# Every ARCHS entry keeps an isolated-clip gloss-classification contract
+# (`forward(x, lengths) -> (B, num_classes)`) because that's what lets
+# `sb-evaluate`, `export/tflite.py` and the generic trainer treat every
+# architecture uniformly. GapGRU has no such contract -- there is no gloss to
+# classify, only a per-frame sign-vs-gap probability -- so folding it into
+# that registry would silently break every one of those readers' assumptions
+# rather than serve them. It is trained by its own driver
+# (`sb.recognize.gapdetect.train`), the same way `sb.recognize.continuous`
+# is a separate package even though ContinuousGRU *is* in ARCHS (it kept the
+# isolated contract on purpose; GapGRU has no reason to).
+# ---------------------------------------------------------------------------
+
+_KINEMATIC_ROWS = np.concatenate([
+    np.arange(_LH0, _LH0 + 21),  # left hand, all 21 landmarks
+    np.arange(_RH0, _RH0 + 21),  # right hand, all 21 landmarks
+    np.array([_POSE0 + k for k in (11, 12, 13, 14, 15, 16, 23, 24)]),  # shoulders, elbows, wrists, hips
+])
+
+
+def _causal_window_sum(a: torch.Tensor, window: int) -> torch.Tensor:
+    """Causal rolling sum over the trailing ``window`` frames of dim -2
+    (fewer at the very start -- never looks ahead)."""
+    csum = torch.cumsum(a, dim=-2)
+    if window >= a.shape[-2]:
+        return csum
+    shifted = torch.zeros_like(csum)
+    shifted[..., window:, :] = csum[..., :-window, :]
+    return csum - shifted
+
+
+def _causal_window_stats(a: torch.Tensor, window: int) -> tuple[torch.Tensor, torch.Tensor]:
+    """``(sum, std)`` of ``a`` over a causal rolling window of ``window``
+    frames (population std, matching ``unbiased=False``): the variance
+    identity ``E[x^2] - E[x]^2`` applied to windowed sums, so the whole thing
+    is a handful of cumsum ops -- no Python loop over time."""
+    T = a.shape[-2]
+    n = torch.clamp(torch.arange(1, T + 1, device=a.device, dtype=a.dtype), max=float(window))
+    n = n.view(*([1] * (a.dim() - 2)), T, 1)
+    s = _causal_window_sum(a, window)
+    ss = _causal_window_sum(a * a, window)
+    mean = s / n
+    var = (ss / n - mean * mean).clamp_min(0.0)
+    return s, var.sqrt()
+
+
+class KinematicFrontend(nn.Module):
+    """Non-learned, **causal** feature layer for a sign-vs-gap detector
+    (TODO §17): raw ``(..., T, 543, 3)`` landmarks (NaN = not detected) to
+    per-frame motion statistics of a fixed 50-row subset (both hands' 21
+    landmarks each + the pose shoulders/elbows/wrists/hips).
+
+    Restricted to hands + arms, not all 543 rows: raw motion of the full
+    landmark set is dominated by noise/signer identity, not the sign
+    (`docs/reports/asl-phonology-features.md` §4.1 -- dropping the face mesh
+    alone raises raw-landmark template accuracy 3.1% -> 15.1%; same reasoning
+    that picked the ME_126 subset for the raw-landmark classifiers). A gap
+    detector's question is only "are the hands/arms moving," so the face
+    contributes nothing here and would only add noise for the recurrent head
+    to filter back out.
+
+    Every derivative is causal (uses only the current and earlier frames) --
+    frame 0 has zero velocity/acceleration/jerk by construction (nothing
+    before it to difference against), not because it is still. Consistent
+    with the project's streaming-viability constraint even though this
+    front-end is currently used offline (record-then-recognize/hybrid
+    segmentation, TODO §16.2/§17): nothing here would need to change to run
+    it frame-by-frame live.
+
+    Per row (50): |velocity| (xy), |acceleration|, |jerk|, jitter (causal
+    rolling std of |velocity| over ``jitter_window`` frames -- high-frequency
+    noise vs. smooth motion), distance travelled (causal rolling sum of
+    |velocity| over ``dist_window`` frames -- has this point actually gone
+    anywhere lately, as opposed to trembling in place) = 5 features/row =
+    250, plus 2 presence flags (each hand's wrist detected this frame) = 252.
+    """
+
+    rows: torch.Tensor
+
+    def __init__(self, jitter_window: int = 5, dist_window: int = 15):
+        super().__init__()
+        self.jitter_window, self.dist_window = int(jitter_window), int(dist_window)
+        self.register_buffer("rows", torch.tensor(_KINEMATIC_ROWS, dtype=torch.long), persistent=False)
+        self.out_dim = 5 * len(_KINEMATIC_ROWS) + 2
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """``x``: ``(..., T, 543, 3)``, NaN = missing -> ``(..., T, 252)``."""
+        with torch.autocast(device_type=x.device.type, enabled=False):
+            p = x.float()[..., self.rows, :2]  # (..., T, 50, 2) -- xy only
+            present = torch.isfinite(p).all(-1)  # (..., T, 50)
+            p = torch.nan_to_num(p, nan=0.0)
+
+            def dcaus(a):  # causal first difference along time, zero at t=0
+                z = torch.zeros_like(a[..., :1, :, :])
+                return torch.cat([z, a[..., 1:, :, :] - a[..., :-1, :, :]], dim=-3)
+
+            vel = dcaus(p)
+            speed = vel.norm(dim=-1)  # (..., T, 50)
+            accel_mag = dcaus(vel).norm(dim=-1)
+            jerk_mag = dcaus(dcaus(vel)).norm(dim=-1)
+            _, jitter = _causal_window_stats(speed, self.jitter_window)
+            dist, _ = _causal_window_stats(speed, self.dist_window)
+
+            lh_present = present[..., 0].float()  # row 0 = left wrist (hand landmark 0)
+            rh_present = present[..., 21].float()  # row 21 = right wrist
+
+            feats = torch.stack([speed, accel_mag, jerk_mag, jitter, dist], dim=-1).flatten(-2)  # (..., T, 250)
+            return torch.cat([feats, lh_present[..., None], rh_present[..., None]], dim=-1)
+
+
+class GapGRU(nn.Module):
+    """:class:`KinematicFrontend` -> causal GRU -> one per-frame logit: the
+    probability the current frame is a **gap** (transition or rest) rather
+    than an in-progress sign (TODO §17).
+
+    Decoupled from any classifier on purpose, so it can serve as the
+    segmentation source for either the deployed continuous GRU/LSTM (§12.3,
+    which have their own boundary head, boundary F1 ~0.42-0.45) or the
+    record-then-recognize BiLSTM hybrid (§16.2, whose only segmenter today is
+    C4's D3 decoder) -- swap one segmentation source for a better one without
+    retraining either classifier.
+
+    Contract: ``forward_all(x)`` -> ``(B, T)`` gap logits for a raw ``(B, T,
+    543, 3)`` batch (already 0-padded past each sequence's length; the loss
+    masks padding out, so no packing is needed -- the model is causal).
+    ``forward_frames`` is an alias, named to match ``ContinuousRNN``'s
+    per-frame method for readers ported between the two.
+    """
+
+    def __init__(self, hidden_size: int = 128, num_layers: int = 2, dropout: float = 0.2,
+                jitter_window: int = 5, dist_window: int = 15):
+        super().__init__()
+        self.frontend = KinematicFrontend(jitter_window, dist_window)
+        self.input_norm = nn.LayerNorm(self.frontend.out_dim)
+        self.gru = nn.GRU(self.frontend.out_dim, hidden_size, num_layers, batch_first=True,
+                          dropout=dropout if num_layers > 1 else 0.0, bidirectional=False)
+        self.dropout = nn.Dropout(dropout)
+        self.head = nn.Sequential(nn.LayerNorm(hidden_size), nn.Linear(hidden_size, 1))
+
+    def forward_all(self, x: torch.Tensor) -> torch.Tensor:
+        h = self.input_norm(self.frontend(x))
+        out, _ = self.gru(h)
+        return self.head(self.dropout(out)).squeeze(-1)
+
+    forward_frames = forward_all

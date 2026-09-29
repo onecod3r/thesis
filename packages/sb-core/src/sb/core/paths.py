@@ -242,6 +242,50 @@ def gislr_sentences_dir(version: str = "v1", *, allow_local: bool = True) -> Pat
     return root
 
 
+GISLR_GAPCORPUS_ID = "bracu23101281/gislr-gapcorpus"  # TODO §17, not yet published
+
+
+def _gapcorpus_root(d: Path) -> Path | None:
+    """The folder holding ``train.csv``/``test.csv``: the dataset root, or one
+    level down (a Kaggle-notebook-output dataset keeps the notebook's
+    ``gislr-gapcorpus/`` folder), mirroring :func:`_sentences_root`."""
+    for cand in (d, *sorted(p for p in d.iterdir() if p.is_dir())):
+        if (cand / "train.csv").is_file() and (cand / "test.csv").is_file():
+            return cand
+    return None
+
+
+def gislr_gapcorpus_dir(version: str = "v1", *, allow_local: bool = True) -> Path:
+    """Resolve GISLR-GapCorpus (the sign-vs-gap training corpus, TODO §17).
+
+    Same shape as :func:`gislr_sentences_dir`: the Kaggle dataset
+    (``GISLR_GAPCORPUS_ID``) is canonical once published; until then, falls
+    back to a local build at ``data/cache/gislr/gapcorpus/<version>/`` (e.g. a
+    smoke-scale run of ``gislr.0.dataset.gapcorpus-kaggle.ipynb`` copied
+    there by hand), printed, never silent.
+    """
+    import json
+
+    local = CACHE_DIR / "gislr" / "gapcorpus" / version
+    try:
+        import kagglehub
+
+        root = _gapcorpus_root(Path(kagglehub.dataset_download(GISLR_GAPCORPUS_ID)))
+        if root is None:
+            raise FileNotFoundError(f"{GISLR_GAPCORPUS_ID} has no train.csv/test.csv")
+        source = f"kaggle:{GISLR_GAPCORPUS_ID}"
+    except Exception as e:  # not published yet, offline, or no access
+        if not (allow_local and (local / "train.csv").is_file()):
+            raise
+        print(f"gislr_gapcorpus_dir: kaggle copy unavailable ({type(e).__name__}); "
+              f"using the local build {local}")
+        root, source = local, "local"
+    built = json.loads((root / "build_info.json").read_text(encoding="utf-8"))
+    if built["dataset_version"] != version:
+        raise ValueError(f"{source} holds GISLR-GapCorpus {built['dataset_version']}, wanted {version}")
+    return root
+
+
 def train_dir(index: int) -> Path:
     """Download/resolve exactly one POPSIGN train part (~170-200GB each) — the
     staged-extraction unit. Prefer this over ``train_dirs()`` for anything that

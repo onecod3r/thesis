@@ -1,0 +1,15 @@
+{
+  "dataset_version": "v1",
+  "seed": 20260929,
+  "signs_per_seq": [2, 6],
+  "n_passes": 4,
+  "gap_frames": [0, 15],
+  "rest_frames": [5, 25],
+  "rest_ramp_frames": 6,
+  "hand_visible_max": 0.95,
+  "rest_default_drop": 0.25,
+  "rest_jitter": 0.01,
+  "p_lowered_rest": 0.7,
+  "train_signer_frac": 0.85,
+  "n_roundtrip_checks": 300
+}
