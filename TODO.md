@@ -5408,8 +5408,24 @@ on that corpus to learn the sign/gap distinction.
   dtype). One pass at float16 ≈ 13.5 GB, comfortably under budget. Re-verified the
   full local smoke test after the change: identical 156/156 materialized, 10/10
   round-trip exact at float16, size exactly halved (0.17 GB → 0.08 GB at the smoke
-  scale) — the fix only changes size, not correctness. **User re-runs the Kaggle
-  notebook** with these new defaults.
+  scale) — the fix only changes size, not correctness.
+- [x] **Full corpus built locally instead of on Kaggle (Claude, 2026-09-29, user ask:
+  "dont go for kaggle notebook. run it locally and then i'll upload it later").**
+  New `experiments/recognition/run_gapcorpus_local.py` (a thin driver over the same
+  `sb.recognize.sequences.compose` functions the Kaggle notebook uses -- not a
+  second copy of the corpus logic, just different input/output wiring: real `sb.*`
+  imports instead of self-contained embedding, writes to
+  `data/cache/gislr/gapcorpus/v1/` instead of `/kaggle/working`). Deterministic data
+  engineering, no model training, so running it myself is within the standing rule.
+  **Result**: 94,477 clips -> **23,738 sequences** (20,110 train / 3,628 test, split
+  by the 18/3-signer division), **12.59 GB at float16**, 0 failed, **300/300
+  round-trip checks exact**, mean gap fraction 0.329 (matches the smoke test's
+  0.335), finished in **2.9 minutes**. `sb.core.paths.gislr_gapcorpus_dir("v1")`
+  correctly falls back to this local build since the Kaggle dataset isn't published
+  yet. **Next (user)**: zip `data/cache/gislr/gapcorpus/v1/` (excluding
+  `plan.json`/`roundtrip_sample.json`, build scratch) and upload it to Kaggle as a
+  new private dataset whenever convenient -- nothing downstream is blocked on that,
+  since the training notebook already works against a local `corpus_dir` override.
 - **Model**: `KinematicFrontend` + `GapGRU` in `sb.recognize.architectures.py`
   (satisfies "architectures.py is the single definition of every model class").
   Frontend: non-learned, causal, raw `(...,T,543,3)` NaN-preserving input -> per-frame
