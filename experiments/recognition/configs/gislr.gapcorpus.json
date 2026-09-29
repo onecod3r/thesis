@@ -2,7 +2,7 @@
   "dataset_version": "v1",
   "seed": 20260929,
   "signs_per_seq": [2, 6],
-  "n_passes": 4,
+  "n_passes": 1,
   "gap_frames": [0, 15],
   "rest_frames": [5, 25],
   "rest_ramp_frames": 6,

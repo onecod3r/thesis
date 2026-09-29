@@ -5392,6 +5392,24 @@ on that corpus to learn the sign/gap distinction.
   at least one such frame), hands-absent rest NaNs every hand row (48/48). Not yet
   run at real scale — **user runs it on Kaggle** (that's the explicit ask), then
   publishes the output as a new Kaggle dataset (suggested: `GISLR-GapCorpus`).
+- [x] **First real Kaggle run (user, 2026-09-29): size guard correctly caught an
+  oversized default before writing anything.** Full pool = 94,477 clips (75,581
+  train.csv + 18,896 test.csv), 21 signers (18 train / 3 test), planned 94,564
+  sequences over the original `n_passes=4` — the guard measured the first 300 built
+  sequences and projected **108 GB at float32**, 5.7x the ~19 GB budget, and stopped
+  with `RuntimeError` + instructions, exactly as designed (`docs/logs/` not filed
+  separately; the .log the user attached is the record). Math checks out: 108 GB / 4
+  passes ≈ 27 GB/pass at float32, so even **one** pass over the full combined pool
+  doesn't fit at float32 — `n_passes=1` alone would not have been enough.
+  **Fixed (Claude, 2026-09-29)**: `configs/gislr.gapcorpus.json` `n_passes` 4 → 1;
+  `gapcorpus_kaggle_notebook.py`'s `STORAGE_DTYPE` default `"float32"` → `"float16"`
+  (halves size; GISLR-Sentences v1 already established float16 round-trips exact
+  after rounding, `check_roundtrip` compares against the source cast to the stored
+  dtype). One pass at float16 ≈ 13.5 GB, comfortably under budget. Re-verified the
+  full local smoke test after the change: identical 156/156 materialized, 10/10
+  round-trip exact at float16, size exactly halved (0.17 GB → 0.08 GB at the smoke
+  scale) — the fix only changes size, not correctness. **User re-runs the Kaggle
+  notebook** with these new defaults.
 - **Model**: `KinematicFrontend` + `GapGRU` in `sb.recognize.architectures.py`
   (satisfies "architectures.py is the single definition of every model class").
   Frontend: non-learned, causal, raw `(...,T,543,3)` NaN-preserving input -> per-frame

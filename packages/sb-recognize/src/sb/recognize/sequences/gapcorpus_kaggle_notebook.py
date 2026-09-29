@@ -148,7 +148,8 @@ from tqdm.auto import tqdm
 
 INPUT_DIR = None             # None = auto-detect GISLR_Stratified under /kaggle/input
 OUT_DIR = Path("/kaggle/working/gislr-gapcorpus")
-STORAGE_DTYPE = "float32"    # "float16" halves the size
+STORAGE_DTYPE = "float16"    # float32 (~2x this) does not fit one pass over the full
+                             # train.csv+test.csv pool in Kaggle's ~20 GB /kaggle/working
 OUTPUT_LIMIT_GB = 19.0
 N_WORKERS = os.cpu_count() or 4
 
