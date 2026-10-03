@@ -5521,8 +5521,24 @@ the reports, `registry/index.csv`, `subsets.py` and the source.
 - [?] **Question to the user (open):** which model does the thesis call "final" for S2V — C4 (`gru_continuous_norm`,
   continuous, deployed) or `gru_phono_raw` (isolated, 0.7632, individual-sign mode)? Slides 17/20 currently blend the
   two. Also unanswered: defence date and format (decides how much of the 96 Q&A to rehearse).
-- Next action as of 2026-10-03: the user fixes F1–F6 on the slides and rehearses the speech and the 8-question
-  hot-seat list; Claude is available to revise slide text or extend the Q&A to V2S slides 7–16 on request.
+- [x] **Whole-thesis panel Q&A written (2026-10-03, second ask: "list of questions a thesis defence panel may ask,
+  with answers")**: `docs/reports/thesis-defense-panel-qa.md` — 92 questions (P1–P92) across framing, novelty,
+  literature, data, V2S, S2V summary (pointers into the S2V bank), accessibility/deployment, evaluation validity,
+  ethics, limitations, team, curveballs; plus an answer-technique page and 9 extra deck fixes (G1–G9).
+  V2S facts come from the deck and are marked **[deck]**: this repo does not hold the T5 training code or checkpoint
+  results (owed by the V2S authors, `speech-to-sign-audit.md` §6).
+  - **New deck-vs-deck findings:** slide 13 says hybrid BLEU-4 **29.87 (+5.33)**, slide 14 says **31.09 (+6.55)**;
+    seed 123's hybrid (27.95) is *below* neural (28.20), so per-seed gains are +7.40 / −0.26 / +8.85 (CI [+0.79, +9.12],
+    127 test pairs); **no rules-only baseline on NCSLGR is shown** while this repo's 30-sentence audit found the
+    unguarded T5 no better than its rule input (BLEU 36.0 vs 39.3, draft references); slide 6's ASLG-PC12 (24,637) and
+    WLASL (11,980) counts differ from the repo's (81,088 unique / 21,083 instances); slide 30 shows a Gradio demo
+    ("press the orange button" — unusable for a blind user) while the repo's deployed app is the Workers browser app.
+  - [?] **Ask the V2S authors (user):** rules-only NCSLGR BLEU; what 31.09 is; NCSLGR de-duplication; the Gemma
+    asterisk; hardware behind the 2.047 s latency (Colab vs Workers AI); where the T5 training code lives.
+  - [ ] Accessibility gap noted: no screen-reader/keyboard/voice operation of the demo UI for the blind user.
+- Next action as of 2026-10-03: the user fixes F1–F6 (S2V) and G1–G3, G9 (V2S/overview) on the slides, gets the
+  V2S answers above from teammates, and rehearses the speech plus the two hot-seat lists; Claude can extend either
+  bank, draft slide wording, or run a mock-viva (Claude asks, the user answers) on request.
 
 ---
 
