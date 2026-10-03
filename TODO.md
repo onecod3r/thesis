@@ -18,7 +18,7 @@ kept but marked paused, not deleted. GISLR is the only active dataset.
 
 ---
 
-## Current focus (2026-09-29)
+## Current focus (2026-10-03)
 
 The workstream sections below are the source of truth; this is just the short
 list of what is actually next, in order. Re-derived at each audit — if it looks
@@ -27,6 +27,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 
 | # | next action | where | why now |
 |---|---|---|---|
+| 0— | **§18 thesis-defence prep for S2V slides 17–23 — written 2026-10-03** (`docs/reports/s2v-defense-prep.md`: ~3-min speech, 96 Q&A, cheat-sheet). It found **10 deck-vs-repo mismatches** (F1–F10, §18) and 2 unstated limitations (no signer-disjoint eval; isolated runs select on the reported `test.csv`). **Next (user): fix slides 17/19/20/22 per §2 of the report (F1–F6 are verifiable in the repo), rehearse the 8-question hot-seat list; tell Claude whether the thesis names C4 or `gru_phono_raw` as "final"** | §18 | the user is presenting this section; the fixes cost one line each |
 | 0- | **§17 sign-vs-gap detector — built 2026-09-29, not yet run.** Corpus notebook + `GapGRU` model + training notebook all built and deterministically verified by Claude on a local slice; the actual Kaggle corpus build and the training cell are the user's per standing policy. **Next (user): run `gislr.0.dataset.gapcorpus-kaggle.ipynb` on Kaggle, publish the dataset, then train `gislr.1.models.gapdetect.ipynb`'s §4.** | §17 | new workstream, everything is ready to run but nothing has been run at real scale yet |
 | 0a | **§12.8 live camera fails on sentences — DONE, C4 exported + deployed (2026-09-27).** Fix 3 (C1 v2 = C4/C5) built 2026-09-26, trained + judged + shipped 2026-09-27: **C4 wins clean GER (0.278 vs C1 0.293) and every live-robustness axis that matters** (`live_like` 0.592→**0.408**) — `continuous-v2.md` §7. **Live now**: https://signbridge.onecoder1.workers.dev serves C4 (3.48 MB TFLite, parity 1.4e-6). Two known misses, not blockers: hard-cut GER worse than C1 (0.634 vs 0.546), mirror still ~broken. **Next (user): first real camera check of the deployed C4** — no live browser test done this session. Fix 2 (recorder) still open | §12.8 | live-camera robustness fixed and shipped; needs a real-camera sanity check |
 | 0a2 | **§3.8 sign patterns**: the first variables gave no per-sign pattern; **with handshape/orientation/location/movement, every ASL-LEX parameter is recovered on unseen signs and templates reach 38.8% top-1 (was 4.9%)**; **B3 done: DTW over per-frame phonology 41.6% top-1, 15.2% from one example**, no training. **Follow-up built as §3.9 (see row 0a3)** | §3.8 | the user's current priority (2026-09-25: "start on the sign pattern first") |
@@ -5477,6 +5478,73 @@ on that corpus to learn the sign/gap distinction.
   segmentation source — that's the next step once a trained checkpoint exists to
   evaluate; no numbers yet on whether this improves sentence accuracy over C4's D3
   decoder or the BiLSTM hybrid's Viterbi pipeline.
+
+---
+
+## 18. Thesis defence prep: Sign-to-Voice slides 17–23 (2026-10-03, new)
+
+User ask: a 3-minute speech for slides 17–23 of the thesis deck (`Bidirectional_Communication_System-1.pdf`,
+31 slides; V2S = 7–16, **S2V = 17–23**, integrated system 24, limits 25, contributions 26) plus a 50–100
+question bank (technical, overview, detailed) based on the deck and this repo. Deliverable:
+**`docs/reports/s2v-defense-prep.md`** (speech 429 words ≈ 2:57 at 145 wpm; 96 Q&A tagged O/T/D/C; numbers
+cheat-sheet; hot-seat shortlist). No training run, nothing re-measured; every number is read from the deck,
+the reports, `registry/index.csv`, `subsets.py` and the source.
+
+- [x] **Speech + Q&A written and checked against the repo (2026-10-03).** The speech avoids every claim in the
+  mismatch list below, so it stays true whether or not the slides are fixed.
+- [ ] **(user) Fix the deck, F1–F6 first.** Details and one-line replacements in the report's §2:
+  - **F1** slide 19: ME-126 is hands 42 + upper-body pose **8** + lips **40** + eyes/nose **36** (`subsets.py`);
+    the slide's "pose 33 / lips+eyes+nose 8 / face 43" labels are wrong though the sum is 126.
+  - **F2** slide 19: 70.59 → 73.73% is a **subset-only** change, **xyz both**, retired 90/10 split, val-selected
+    (`docs/logs/daily/2026-07-15.md` §6.4), not "ME-126 (xy)". Current split: `gru` ME_126/xy **0.7450**,
+    ME_132/xy **0.7517**; no current-split full-543 `gru` exists.
+  - **F3** slide 20: the "GRU · final" bar is the plain five-arch `gru` (73.8), the box describes `gru_phono_raw`
+    (76.3), the plot is **C4**. **F4** slides 17/20: the deployed continuous model C4 uses `StreamNormFrontend`,
+    not the phonology front-end (P1 failed, GER 0.587).
+  - **F5** slide 17: shipped S2V gloss → English is the **rule engine**, not "Rules + T5 guarded hybrid" (T5 is V2S);
+    LLM arm still pending. **F6** slide 22: 0.221 is the oracle-**boundary** isolated baseline, not a perfect classifier.
+  - F7 slide 22: "+122 correct signs" is the `peak`-score diagnostic (§12.6), not the lattice. F8: 0.278 is plain D3;
+    prior/lattice were tuned on C1; the lattice's clean GER (0.320) is worse than D3's (0.293). F9 slide 21/29: reset
+    evidence is oracle-boundary on isolated-trained models; reset-after-commit **hurt** the continuous models. F10
+    slide 23: numbers are from the retired 90/10 split; normalisation/augmentation not yet a controlled ablation.
+- [?] **Two limitations found in the code, not on the slides (2026-10-03):**
+  1. **Isolated registry runs select on the reported set.** `sb.recognize.train` builds `val_split` from the
+     canonical split (= `test.csv`, 18,896 clips) and uses it for ReduceLROnPlateau, early stopping and best-checkpoint,
+     then `sb-evaluate` reports on the same clips (`train_val_acc` 0.7631 ≈ canonical 0.7632 for the leader). The
+     five-arch benchmark and the continuous models select on a carve-out of `train.csv` (clean). **Bias unquantified.**
+  2. **No evaluation is signer-disjoint.** GISLR_Stratified stratifies on sign only (slide 18 says so); GER's
+     "evaluation signers" are held out from decoder tuning and the prior, **not** from the recognizer's training.
+  - [ ] Follow-up (Claude builds, user trains per policy): re-score the best configuration (`gru_phono_raw`/ME_134
+    and `gru`/ME_132) with the five-arch carve-out protocol to size the selection bias; add a leave-signers-out
+    isolated evaluation; repeat `gru_phono_raw` over ≥3 seeds (the +1.15 point phonology gain is a single run; two
+    same-config `gru` runs differ by 0.0007).
+- [?] **Question to the user (open):** which model does the thesis call "final" for S2V — C4 (`gru_continuous_norm`,
+  continuous, deployed) or `gru_phono_raw` (isolated, 0.7632, individual-sign mode)? Slides 17/20 currently blend the
+  two. Also unanswered: defence date and format (decides how much of the 96 Q&A to rehearse).
+- [x] **Whole-thesis panel Q&A written (2026-10-03, second ask: "list of questions a thesis defence panel may ask,
+  with answers")**: `docs/reports/thesis-defense-panel-qa.md` — 92 questions (P1–P92) across framing, novelty,
+  literature, data, V2S, S2V summary (pointers into the S2V bank), accessibility/deployment, evaluation validity,
+  ethics, limitations, team, curveballs; plus an answer-technique page and 9 extra deck fixes (G1–G9).
+  V2S facts come from the deck and are marked **[deck]**: this repo does not hold the T5 training code or checkpoint
+  results (owed by the V2S authors, `speech-to-sign-audit.md` §6).
+  - **New deck-vs-deck findings:** slide 13 says hybrid BLEU-4 **29.87 (+5.33)**, slide 14 says **31.09 (+6.55)**;
+    seed 123's hybrid (27.95) is *below* neural (28.20), so per-seed gains are +7.40 / −0.26 / +8.85 (CI [+0.79, +9.12],
+    127 test pairs); **no rules-only baseline on NCSLGR is shown** while this repo's 30-sentence audit found the
+    unguarded T5 no better than its rule input (BLEU 36.0 vs 39.3, draft references); slide 6's ASLG-PC12 (24,637) and
+    WLASL (11,980) counts differ from the repo's (81,088 unique / 21,083 instances); slide 30 shows a Gradio demo
+    ("press the orange button" — unusable for a blind user) while the repo's deployed app is the Workers browser app.
+  - [?] **Ask the V2S authors (user):** rules-only NCSLGR BLEU; what 31.09 is; NCSLGR de-duplication; the Gemma
+    asterisk; hardware behind the 2.047 s latency (Colab vs Workers AI); where the T5 training code lives.
+  - [ ] Accessibility gap noted: no screen-reader/keyboard/voice operation of the demo UI for the blind user.
+- [~] **Mock viva started 2026-10-03, paused by the user after Q1 + one follow-up** (the user asked for the full
+  question and answer lists instead; both files sent). Observed weak spots to rehearse: (1) the opening answer
+  to P1 was one sentence (no what-built / result / limit; asked three times, still outstanding); (2) said a
+  screen reader "cannot work without physical presence", which is wrong and undercuts the design (the app also
+  needs both people at one device); (3) called the thesis "theoretical" — it is empirical/engineering; use
+  "technical feasibility, not usability"; (4) avoid "fully abled"/"challenged" wording. Resume at P1 on request.
+- Next action as of 2026-10-03: the user fixes F1–F6 (S2V) and G1–G3, G9 (V2S/overview) on the slides, gets the
+  V2S answers above from teammates, and rehearses the speech plus the two hot-seat lists; Claude can extend either
+  bank, draft slide wording, or run a mock-viva (Claude asks, the user answers) on request.
 
 ---
 
