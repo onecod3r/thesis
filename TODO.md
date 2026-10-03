@@ -5536,6 +5536,12 @@ the reports, `registry/index.csv`, `subsets.py` and the source.
   - [?] **Ask the V2S authors (user):** rules-only NCSLGR BLEU; what 31.09 is; NCSLGR de-duplication; the Gemma
     asterisk; hardware behind the 2.047 s latency (Colab vs Workers AI); where the T5 training code lives.
   - [ ] Accessibility gap noted: no screen-reader/keyboard/voice operation of the demo UI for the blind user.
+- [~] **Mock viva started 2026-10-03, paused by the user after Q1 + one follow-up** (the user asked for the full
+  question and answer lists instead; both files sent). Observed weak spots to rehearse: (1) the opening answer
+  to P1 was one sentence (no what-built / result / limit; asked three times, still outstanding); (2) said a
+  screen reader "cannot work without physical presence", which is wrong and undercuts the design (the app also
+  needs both people at one device); (3) called the thesis "theoretical" — it is empirical/engineering; use
+  "technical feasibility, not usability"; (4) avoid "fully abled"/"challenged" wording. Resume at P1 on request.
 - Next action as of 2026-10-03: the user fixes F1–F6 (S2V) and G1–G3, G9 (V2S/overview) on the slides, gets the
   V2S answers above from teammates, and rehearses the speech plus the two hot-seat lists; Claude can extend either
   bank, draft slide wording, or run a mock-viva (Claude asks, the user answers) on request.
