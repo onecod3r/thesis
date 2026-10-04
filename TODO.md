@@ -27,7 +27,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 
 | # | next action | where | why now |
 |---|---|---|---|
-| 0-- | **Thesis review report is stale (2026-10-04 audit): says C1 is deployed (now C4, normalized input) and BiLSTM is offline-only (now in record-then-recognize, GER 0.177).** All its numbers check out. **Next (user): say whether to update `docs/reports/thesis-ch1-ch2-review.md` in place** | §3 (2026-09-26 thesis-review entry) | the paper's S2V description should match what is deployed |
+| 0-- | **Full thesis audited against the repo (2026-10-04): 14 contradictions + 10 wording issues, ~60 numbers verified** — `docs/reports/thesis-full-review.md`. Biggest: reset-at-sign-boundary presented as the design (repo: it hurts), "centred and scaled" ME-126 input (repo: raw xy), retired-split numbers labelled canonical, Gradio system absent from the repo. Also stale: `thesis-ch1-ch2-review.md` (C1 vs deployed C4, BiLSTM now in record mode). **Next (user): choose repo-side fixes and/or in-place LaTeX replacements** | §3 (thesis-review entries) | the thesis must match what the repo can back up |
 | 0- | **§17 sign-vs-gap detector — built 2026-09-29, not yet run.** Corpus notebook + `GapGRU` model + training notebook all built and deterministically verified by Claude on a local slice; the actual Kaggle corpus build and the training cell are the user's per standing policy. **Next (user): run `gislr.0.dataset.gapcorpus-kaggle.ipynb` on Kaggle, publish the dataset, then train `gislr.1.models.gapdetect.ipynb`'s §4.** | §17 | new workstream, everything is ready to run but nothing has been run at real scale yet |
 | 0a | **§12.8 live camera fails on sentences — DONE, C4 exported + deployed (2026-09-27).** Fix 3 (C1 v2 = C4/C5) built 2026-09-26, trained + judged + shipped 2026-09-27: **C4 wins clean GER (0.278 vs C1 0.293) and every live-robustness axis that matters** (`live_like` 0.592→**0.408**) — `continuous-v2.md` §7. **Live now**: https://signbridge.onecoder1.workers.dev serves C4 (3.48 MB TFLite, parity 1.4e-6). Two known misses, not blockers: hard-cut GER worse than C1 (0.634 vs 0.546), mirror still ~broken. **Next (user): first real camera check of the deployed C4** — no live browser test done this session. Fix 2 (recorder) still open | §12.8 | live-camera robustness fixed and shipped; needs a real-camera sanity check |
 | 0a2 | **§3.8 sign patterns**: the first variables gave no per-sign pattern; **with handshape/orientation/location/movement, every ASL-LEX parameter is recovered on unseen signs and templates reach 38.8% top-1 (was 4.9%)**; **B3 done: DTW over per-frame phonology 41.6% top-1, 15.2% from one example**, no training. **Follow-up built as §3.9 (see row 0a3)** | §3.8 | the user's current priority (2026-09-25: "start on the sign pattern first") |
@@ -886,9 +886,9 @@ existing content is known:
     downloaded, ~870 GB, then deleted); "no cloud servers" (ASR on Workers AI, site on Cloudflare free plan); phase
     table stops before continuous model / web app / speech→gloss / phonology (23–26 Sep). User rule (memory
     `thesis-edit-scope`): in-place, repo-grounded edits only.
-  - **2026-10-04: audit of `docs/reports/thesis-ch1-ch2-review.md` itself against the repo (user: "find all
-    discrepancies in the report in accordance to my repository"; "the report" assumed = this one, the other 31
-    reports not swept).** Thesis PDFs are not in the repo, so quotes from the paper (A3, "the paper says" column) were
+  - **2026-10-04 (superseded target, kept for the repo-side findings): audit of `docs/reports/thesis-ch1-ch2-review.md` itself
+    against the repo — Claude first read "the report" as this file; the user then pasted the full thesis, so "the report" = the thesis
+    (see the next entry).** Thesis PDFs are not in the repo, so quotes from the paper (A3, "the paper says" column) were
     not re-checked; every repo-side claim and every number in §A–§D was. **All numbers match their sources** (GER
     0.293/0.276/0.244/0.221/0.507/0.659, windows 0.523/0.687/0.777, live probes 0.504/0.516/0.651/0.990, rules
     BLEU 36.4/26.3 + WER 0.303/0.347, guard 19/11, BLEU 36.0 vs 39.3, ASR WER 1.0%/3.1% + 1.7×, 47% coverage, Holistic 10.2
@@ -922,6 +922,19 @@ existing content is known:
        README's current-split bilstm best is 0.7502, leader `gru_phono_raw` 0.7632). README §1st-place says "canonical 90/10 split"
        (it is the old split; canonical is 80/20). Neither changes the thesis numbers; both should be reworded.
     **Next:** user decides whether Claude updates the report in place (items 1–4); then fix item 5's wording.
+  - **2026-10-04: the full thesis (Ch 1–5 + conclusion, pasted by the user) audited against the repo -> `docs/reports/thesis-full-review.md`.**
+    Most of the 2026-09-26 findings are fixed in this version (GISLR, GRU, 264 values, C4, continuous). **14 contradictions (A1–A14), 10 wording
+    or number issues (B15–B24)**; ~60 numbers verified consistent. Main ones: (1) the thesis says per-sign-boundary state reset is the selected design,
+    but the repo measured reset-per-commit as harmful (C1 GER 0.566 vs 0.293) and deploys C4 with a sentence-end reset only; (2) "centred and scaled"
+    / "hips as normalisation anchor" for ME-126 — `base_v1` does neither (only C4's in-model layer normalises); (3) the landmark-subset probe table and
+    70.59→73.73 are retired-90/10-split numbers labelled "canonical"; (4) POPSIGN's 33,599 clips are the test split only; (5) the integrated Gradio
+    system, faster-whisper app and Windows-SAPI worker are not in this repo, whose deployed system is the Cloudflare web app; (6) NCSLGR / T5 tables
+    (847 pairs, 17,245/3,695/3,697 ASLG split) are not reproducible from the repo, and the repo's T5 audit (meaning changes, guard) is absent from
+    the thesis; (7) worst-signs `give` range 17–39% vs repo 11.6–39.1%; confusion-table Relation column misaligned; "GRU beats LSTM at all
+    settings" false (LSTM misses fewer); streams are GISLR-only. **Repo-side errors found:** README/five-arch/TODO say `dnn` confidence is "a quarter"
+    of the others (it is ~40%); `bilstm` run `1784447175` "0.7569 canonical leader" is on the retired split; README calls the 90/10 split canonical.
+    **Next (user):** say whether Claude should (a) fix the three repo-side wording errors, (b) draft replacement LaTeX paragraphs for A1–A14
+    in place (rule `thesis-edit-scope`: in-place, repo-grounded only). No thesis text was edited.
 - [ ] Decide the destination: a new `docs/reports/landmark-reduction.md`
   (this repo's existing convention) vs content destined for the external
   paper — depends on what the paper already contains.
