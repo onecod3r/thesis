@@ -18,7 +18,7 @@ kept but marked paused, not deleted. GISLR is the only active dataset.
 
 ---
 
-## Current focus (2026-09-29)
+## Current focus (2026-10-04)
 
 The workstream sections below are the source of truth; this is just the short
 list of what is actually next, in order. Re-derived at each audit — if it looks
@@ -27,6 +27,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 
 | # | next action | where | why now |
 |---|---|---|---|
+| 0-- | **Thesis review report is stale (2026-10-04 audit): says C1 is deployed (now C4, normalized input) and BiLSTM is offline-only (now in record-then-recognize, GER 0.177).** All its numbers check out. **Next (user): say whether to update `docs/reports/thesis-ch1-ch2-review.md` in place** | §3 (2026-09-26 thesis-review entry) | the paper's S2V description should match what is deployed |
 | 0- | **§17 sign-vs-gap detector — built 2026-09-29, not yet run.** Corpus notebook + `GapGRU` model + training notebook all built and deterministically verified by Claude on a local slice; the actual Kaggle corpus build and the training cell are the user's per standing policy. **Next (user): run `gislr.0.dataset.gapcorpus-kaggle.ipynb` on Kaggle, publish the dataset, then train `gislr.1.models.gapdetect.ipynb`'s §4.** | §17 | new workstream, everything is ready to run but nothing has been run at real scale yet |
 | 0a | **§12.8 live camera fails on sentences — DONE, C4 exported + deployed (2026-09-27).** Fix 3 (C1 v2 = C4/C5) built 2026-09-26, trained + judged + shipped 2026-09-27: **C4 wins clean GER (0.278 vs C1 0.293) and every live-robustness axis that matters** (`live_like` 0.592→**0.408**) — `continuous-v2.md` §7. **Live now**: https://signbridge.onecoder1.workers.dev serves C4 (3.48 MB TFLite, parity 1.4e-6). Two known misses, not blockers: hard-cut GER worse than C1 (0.634 vs 0.546), mirror still ~broken. **Next (user): first real camera check of the deployed C4** — no live browser test done this session. Fix 2 (recorder) still open | §12.8 | live-camera robustness fixed and shipped; needs a real-camera sanity check |
 | 0a2 | **§3.8 sign patterns**: the first variables gave no per-sign pattern; **with handshape/orientation/location/movement, every ASL-LEX parameter is recovered on unseen signs and templates reach 38.8% top-1 (was 4.9%)**; **B3 done: DTW over per-frame phonology 41.6% top-1, 15.2% from one example**, no training. **Follow-up built as §3.9 (see row 0a3)** | §3.8 | the user's current priority (2026-09-25: "start on the sign pattern first") |
@@ -885,6 +886,42 @@ existing content is known:
     downloaded, ~870 GB, then deleted); "no cloud servers" (ASR on Workers AI, site on Cloudflare free plan); phase
     table stops before continuous model / web app / speech→gloss / phonology (23–26 Sep). User rule (memory
     `thesis-edit-scope`): in-place, repo-grounded edits only.
+  - **2026-10-04: audit of `docs/reports/thesis-ch1-ch2-review.md` itself against the repo (user: "find all
+    discrepancies in the report in accordance to my repository"; "the report" assumed = this one, the other 31
+    reports not swept).** Thesis PDFs are not in the repo, so quotes from the paper (A3, "the paper says" column) were
+    not re-checked; every repo-side claim and every number in §A–§D was. **All numbers match their sources** (GER
+    0.293/0.276/0.244/0.221/0.507/0.659, windows 0.523/0.687/0.777, live probes 0.504/0.516/0.651/0.990, rules
+    BLEU 36.4/26.3 + WER 0.303/0.347, guard 19/11, BLEU 36.0 vs 39.3, ASR WER 1.0%/3.1% + 1.7×, 47% coverage, Holistic 10.2
+    vs 8.7 fps, 0.7632/0.8048, 41.4/54.3, 24/24, ME-126/132/134 sizes, 0.7459 on the retired 90/10 split). **The report
+    is stale, not wrong: it is dated 2026-09-26 and the system changed 09-27 → 09-29.** Fix list (the report is NOT
+    yet edited — awaiting the user's say-so):
+    1. **Deployed recognizer is C4, not C1** (since 2026-09-27; `pipeline.config.json` `"run": "C4"`, `continuous-v2.md` §7).
+       Hits A1 #2, #4, #5, #8, A3 #26, §B contributions, §D. C4 = `gru_continuous_norm`: same raw ME_132 xy input but
+       a fixed `StreamNormFrontend` inside the model (hands re-slotted by the pose wrist, mid-shoulder centred,
+       shoulder-width scaled) → **#5 "no coordinate normalization" is now false for the deployed model**; "untrained C4"
+       in #5 is obsolete. Deployed clean GER 0.278 (C1 0.293); live probes (C1 → C4): landscape 0.651 → 0.305,
+       15 fps 0.504 → 0.381, jitter 0.516 → 0.372, mirror 0.990 → 0.962, live_like 0.592 → 0.408; hard-cut worse (0.546 → 0.634).
+       #8's "live gap" numbers are C1's; the real-camera check of C4 is still not done.
+    2. **BiLSTM is now deployed** (record-then-recognize mode, 2026-09-28, TODO §16.2): C4 segments + `bilstm` whole-clip
+       (+ `gru_phono_raw`) + top-5 sentence-level Viterbi, **GER 0.177 / 61.9% sentences exact**, oracle-boundary ceiling 0.089
+       (`bilstm-wholeclip-eval.md`). **A1 #3 "BiLSTM appears only as an offline reference" and A3 #23 are now wrong**;
+       the BiLSTM runs only offline on a recorded clip, never in the live stream. Also new and absent from the report:
+       Individual-sign mode (`gru_phono_raw`, §15), movement-gated sentence end (§16.1), sign-vs-gap detector (§17, unrun).
+       The "no neural language model" row (#10) still holds (n-gram, not an LLM; ASL-LEX frequency prior tried, no gain).
+    3. **§B/§D headline numbers to refresh:** deployed 0.278 (C4), best offline hybrid 0.177, oracle-segmentation B0 0.089.
+    4. **Small inaccuracies:** (a) #4 calls ME-132's 14 pose points "upper-body" — 8 are upper-body (shoulders/elbows/wrists/hips) and
+       6 are pose wrist-adjacent hand points {17–22} (`subsets.py`); (b) #9/§D "LiteRT.js … 0.06 ms/frame" — the figure was
+       measured with TFLite in **Python** (`sign-to-speech-downstream.md` §cost); `window-ensembles.md` says "in the browser"
+       without a browser measurement, so no in-browser timing exists; (c) "Public release of all models on Kaggle Models" — only
+       `tfLite/c1-web` v1 (C1) and the T5 web bundle are published (`apps/web/kaggle.models.json`); the deployed C4, `gru_phono_raw`
+       and `bilstm_wholeclip` web exports were hand-copied into `public/assets/` and `?models=kaggle` still serves **C1**;
+       (d) "the repo never extracted its training data" is true, but `sb-extract` (paused POPSIGN extractor) *did* extract and uses the
+       Tasks API — fine for #6, just say "GISLR's data".
+    5. **Repo-side inconsistencies found on the way (not in the report):** TODO §4.1/§16.2 and `bilstm-wholeclip-eval.md` call
+       `bilstm` run `1784447175` "0.7569 canonical, the accuracy leader" — it is on the **retired 90/10 split** (`n_val` 9,448;
+       README's current-split bilstm best is 0.7502, leader `gru_phono_raw` 0.7632). README §1st-place says "canonical 90/10 split"
+       (it is the old split; canonical is 80/20). Neither changes the thesis numbers; both should be reworded.
+    **Next:** user decides whether Claude updates the report in place (items 1–4); then fix item 5's wording.
 - [ ] Decide the destination: a new `docs/reports/landmark-reduction.md`
   (this repo's existing convention) vs content destined for the external
   paper — depends on what the paper already contains.
