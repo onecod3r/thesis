@@ -1,6 +1,6 @@
 # signbridge
 
-> Renamed from `sign2speech` on 2026-09-04, alongside the workspace restructure. The old name described one direction; the repo is now laid out so the other one (speech → sign, `packages/sb-synthesize/`) can be built against the same landmark contract. The working directory and the git remote are unchanged.
+> Renamed from `sign2speech` on 2026-09-04, alongside the workspace restructure. The old name described one direction; the repo is now laid out so the other one (speech → sign, `packages/sb-synthesize/`) can be built against the same landmark contract. On GitLab the project was renamed from `thesis` to `signbridge` and moved to `23101281/research/thesis/signbridge` on 2026-10-08. Old URLs redirect, but update existing clones with `git remote set-url origin git@gitlab.com:23101281/research/thesis/signbridge.git`. The local working directory name is unchanged.
 
 A sign language recognition system focused on **streaming, real-time inference** rather than offline-only accuracy. The end goal is a deployable pipeline that classifies signs frame-by-frame with low latency, trained on hand/pose/face landmark sequences extracted via MediaPipe Holistic. Planned downstream (TODO §12.4–12.7, filed 2026-09-24): an LLM that fuses its next-word prediction with the recognizer's confidence and turns ASL glosses into fluent English, text-to-speech, user-taught custom signs, and deployment on Cloudflare Workers.
 
