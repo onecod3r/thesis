@@ -1,0 +1,44 @@
+n_val=18896  classes=250  chance=0.0040
+
+gru_phono_raw ME_134 (champion)      acc 0.7632  95% CI [0.7572, 0.7694]  top-5 0.9066
+gru ME_132 xy                        acc 0.7517  95% CI [0.7455, 0.7581]  top-5 0.9002
+gru ME_132 xy (rerun)                acc 0.7511  95% CI [0.7448, 0.7571]  top-5 0.9007
+bilstm ME_126 xy (offline)           acc 0.7502  95% CI [0.7442, 0.7563]  top-5 0.8978
+gru_phono130 FULL_543                acc 0.7487  95% CI [0.7429, 0.7549]  top-5 0.8961
+gru ME_126 xy                        acc 0.7450  95% CI [0.7388, 0.7513]  top-5 0.8971
+gru_phono_raw PH_55                  acc 0.7429  95% CI [0.7367, 0.7489]  top-5 0.8973
+lstm ME_126 xy                       acc 0.7366  95% CI [0.7304, 0.7427]  top-5 0.8895
+gru_deep ME_126 xy                   acc 0.7343  95% CI [0.7282, 0.7405]  top-5 0.8882
+gru_phono PH_55 (phonology only)     acc 0.7010  95% CI [0.6944, 0.7077]  top-5 0.8791
+
+paired: champion (A) vs each (B)
+  gru_phono_raw ME_134 (champion vs gru ME_132 xy                      only-A  1486 only-B  1269 diff +0.0115 CI [+0.0057, +0.0169] p=3.9e-05
+  gru_phono_raw ME_134 (champion vs gru ME_132 xy (rerun)              only-A  1513 only-B  1283 diff +0.0122 CI [+0.0068, +0.0177] p=1.5e-05
+  gru_phono_raw ME_134 (champion vs bilstm ME_126 xy (offline)         only-A  1606 only-B  1359 diff +0.0131 CI [+0.0076, +0.0187] p=6.2e-06
+  gru_phono_raw ME_134 (champion vs gru_phono130 FULL_543              only-A  1602 only-B  1328 diff +0.0145 CI [+0.0091, +0.0204] p=4.6e-07
+  gru_phono_raw ME_134 (champion vs gru ME_126 xy                      only-A  1552 only-B  1208 diff +0.0182 CI [+0.0128, +0.0240] p=6.6e-11
+  gru_phono_raw ME_134 (champion vs gru_phono_raw PH_55                only-A  1428 only-B  1044 diff +0.0203 CI [+0.0153, +0.0258] p=1.3e-14
+  gru_phono_raw ME_134 (champion vs lstm ME_126 xy                     only-A  1672 only-B  1169 diff +0.0266 CI [+0.0212, +0.0323] p=4.6e-21
+  gru_phono_raw ME_134 (champion vs gru_deep ME_126 xy                 only-A  1777 only-B  1231 diff +0.0289 CI [+0.0231, +0.0348] p=2.9e-23
+  gru_phono_raw ME_134 (champion vs gru_phono PH_55 (phonology only)   only-A  2075 only-B   899 diff +0.0622 CI [+0.0567, +0.0682] p=5.8e-103
+
+paired: the claims that are NOT significant, plus seed-free reruns
+  gru ME_132 xy                  vs bilstm ME_126 xy (offline)         only-A  1397 only-B  1367 diff +0.0016 CI [-0.0038, +0.0071] p=0.58
+  gru ME_132 xy                  vs gru_phono130 FULL_543              only-A  1650 only-B  1593 diff +0.0030 CI [-0.0028, +0.0093] p=0.33
+  gru ME_132 xy                  vs gru ME_126 xy                      only-A  1322 only-B  1195 diff +0.0067 CI [+0.0013, +0.0119] p=0.012
+  gru ME_132 xy                  vs gru ME_132 xy (rerun)              only-A   406 only-B   393 diff +0.0007 CI [-0.0022, +0.0036] p=0.67
+
+checkpoint-selection optimism proxy (best val acc - median of last 10 epochs)
+  gru_phono_raw ME_134 (champion)      best 0.7631@54  last10-median 0.7624 optimism +0.08pp  train@best 0.9360  gap 17.3pp
+  gru ME_132 xy                        best 0.7518@80  last10-median 0.7504 optimism +0.14pp  train@best 0.9359  gap 18.4pp
+  gru ME_132 xy (rerun)                best 0.7511@94  last10-median 0.7488 optimism +0.22pp  train@best 0.9442  gap 19.3pp
+  bilstm ME_126 xy (offline)           best 0.7503@76  last10-median 0.7479 optimism +0.24pp  train@best 0.9954  gap 24.5pp
+  gru_phono130 FULL_543                best 0.7487@41  last10-median 0.7444 optimism +0.43pp  train@best 0.9334  gap 18.5pp
+  gru ME_126 xy                        best 0.7451@62  last10-median 0.7437 optimism +0.14pp  train@best 0.9148  gap 17.0pp
+  gru_phono_raw PH_55                  best 0.7429@47  last10-median 0.7406 optimism +0.22pp  train@best 0.9201  gap 17.7pp
+  lstm ME_126 xy                       best 0.7367@81  last10-median 0.7344 optimism +0.23pp  train@best 0.9351  gap 19.8pp
+  gru_deep ME_126 xy                   best 0.7344@69  last10-median 0.7329 optimism +0.15pp  train@best 0.9583  gap 22.4pp
+  gru_phono PH_55 (phonology only)     best 0.7010@46  last10-median 0.6989 optimism +0.21pp  train@best 0.8873  gap 18.6pp
+
+seeds used across 91 runs: {'42': 91}
+registry: {'total': 91, 'current_split': 39, 'current_canonical': 33, 'legacy': 52}

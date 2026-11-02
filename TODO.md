@@ -18,7 +18,7 @@ kept but marked paused, not deleted. GISLR is the only active dataset.
 
 ---
 
-## Current focus (2026-09-29)
+## Current focus (2026-11-02)
 
 The workstream sections below are the source of truth; this is just the short
 list of what is actually next, in order. Re-derived at each audit — if it looks
@@ -27,6 +27,7 @@ and were re-checked against the repo on 2026-09-24 (the stale-TODO audit).
 
 | # | next action | where | why now |
 |---|---|---|---|
+| 00 | **Research-validity audit (2026-11-02, Claude) — two reports filed: `docs/reports/research-state-assessment.md` and `docs/reports/codebase-obsolescence-audit.md`.** Findings that change the plan: **(1) the §16.2 hybrid GER 0.177 / Record mode use legacy-split `bilstm` `1784447175`, almost certainly trained on the clips the sentences are built from — treat as invalid until re-run with current-split `bilstm` `1790347646`** (inference only; first verify by intersecting split uids); (2) the isolated numbers are selected on the test set, single seed (42 everywhere) and **not signer-disjoint** (all 21 signers in train and test) — "16 held-out signers" means held-out clips of seen signers; (3) no real-camera/real-continuous-signing/user evidence for C4 or any mode; (4) §7.4 augmentation, the diagnosed top lever, is still unrun. **Next (in order): §16.2-fix → validation split from `train.csv` + 3 seeds → participant-disjoint retrain → §7.4 augmentation → real-footage check.** Repo is ≈5 weeks quiet since 2026-09-29 | §16.2, §7, §4.3, §0.6 | the headline sentence-level result is unsupported and the deployment claim (new signers) has no measurement |
 | 0- | **§17 sign-vs-gap detector — built 2026-09-29, not yet run.** Corpus notebook + `GapGRU` model + training notebook all built and deterministically verified by Claude on a local slice; the actual Kaggle corpus build and the training cell are the user's per standing policy. **Next (user): run `gislr.0.dataset.gapcorpus-kaggle.ipynb` on Kaggle, publish the dataset, then train `gislr.1.models.gapdetect.ipynb`'s §4.** | §17 | new workstream, everything is ready to run but nothing has been run at real scale yet |
 | 0a | **§12.8 live camera fails on sentences — DONE, C4 exported + deployed (2026-09-27).** Fix 3 (C1 v2 = C4/C5) built 2026-09-26, trained + judged + shipped 2026-09-27: **C4 wins clean GER (0.278 vs C1 0.293) and every live-robustness axis that matters** (`live_like` 0.592→**0.408**) — `continuous-v2.md` §7. **Live now**: https://signbridge.onecoder1.workers.dev serves C4 (3.48 MB TFLite, parity 1.4e-6). Two known misses, not blockers: hard-cut GER worse than C1 (0.634 vs 0.546), mirror still ~broken. **Next (user): first real camera check of the deployed C4** — no live browser test done this session. Fix 2 (recorder) still open | §12.8 | live-camera robustness fixed and shipped; needs a real-camera sanity check |
 | 0a2 | **§3.8 sign patterns**: the first variables gave no per-sign pattern; **with handshape/orientation/location/movement, every ASL-LEX parameter is recovered on unseen signs and templates reach 38.8% top-1 (was 4.9%)**; **B3 done: DTW over per-frame phonology 41.6% top-1, 15.2% from one example**, no training. **Follow-up built as §3.9 (see row 0a3)** | §3.8 | the user's current priority (2026-09-25: "start on the sign pattern first") |
@@ -278,6 +279,19 @@ docs/
     generated the registry-derived tables for exactly this reason; the narrative
     logs were deliberately left manual, so the fix here is discipline (or a
     reminder), not another generator.
+### 0.6 Obsolescence audit follow-ups (2026-11-02) — report: `docs/reports/codebase-obsolescence-audit.md`
+
+Nothing was deleted or moved by the audit; every row is a proposal with the check to run first.
+
+- [ ] **Decision (user): POPSIGN removal.** Tag (`popsign-extraction-v1`), then drop `packages/sb-extract/`,
+  `packages/sb-extract-ts/`, the 6 `popsign.*` notebooks (largest tracked file, 3.7 MB), `migrate_caches.py`,
+  TODO §2/§10 → move to an archive file. Removes mediapipe/opencv from the default `uv sync`.
+- [ ] Untrack generated/vendored files: `graphify-out/` (2.8 MB), `.claude/skills/task-observer/` (21 files; `skills-lock.json` already pins it).
+- [ ] Registry tidy **after** the §16.2 fix: archive the 52 legacy-split runs' `meta.json`/assets (checkpoints stay on Kaggle), 6 exact-duplicate current runs, 4 dead `pending` runs. Do **not** archive `1784447175` until the web app and the §16.2 notebook use a current-split model.
+- [ ] Remove `export/tflite.py` + the evaluation notebook's TFLite section (Kaggle grader path is dead); keep `export/keras.py` (the whole-clip export reuses `build_bilstm`).
+- [ ] Decide: finish or archive the 1st-place port (`train_firstplace.py`, `firstplace_v1.py`, `optim.py`; run §5b once, and lift the augmenter for §7.4 first), the interpretability tracks, the Kaggle-notebook twins (`sentences-kaggle`, `gapcorpus-kaggle`), spectrogram arm (§5), §8.
+- [ ] Text fixes: stale `modules/...` paths inside `sb.mlops.registry.FIELDS` (propagates into the generated README/schema), README package/console-script counts and "not yet reproducible" bullets, strip notebook outputs (~6 MB), split TODO (5.5 k lines) into live + archive, write the missing 2026-09-28/29 dailies and close weekly 2026-39.
+
 ---
 
 ## 1. Landmark Motion-Over-Time Analysis (GISLR)
@@ -2071,6 +2085,16 @@ just a stale-split artifact.
 
 ---
 
+### 4.4 Evaluation-validity findings (2026-11-02, from `research-state-assessment.md`)
+
+Verified from the committed `val_predictions.npz` files (`docs/reports/assets/research-state/audit_stats.py`; clips treated as independent, so CIs are lower bounds):
+
+- Champion `gru_phono_raw`/ME_134 **0.7632**, 95% CI 0.7572–0.7694, top-5 0.9066, macro 0.7614. vs `gru` ME_132: +1.15 pt (CI +0.57…+1.69, McNemar p = 3.9e-5). **`gru` vs `bilstm`: +0.16 (p = 0.58); `gru` vs `gru_phono130`: +0.30 (p = 0.33) — indistinguishable.** LSTM −2.66, 4× deeper GRU −2.89 vs champion (p < 1e-20).
+- **Val = test = selection set**: `train.py` stops/schedules/checkpoints on `test.csv`; `val_acc == overall_accuracy` in every run. Selection optimism proxy (best − median of last 10 epochs): +0.08 pt (champion) … +0.43 (`gru_phono130`).
+- **All 91 runs use seed 42** — training-seed variance has never been measured. The 0.8048 ensemble is the best of ~56 combinations ranked on the same set.
+- **Not signer-disjoint**: all 21 signers are in train and test; the sentence benchmark's "16 held-out signers" are held-out clips of seen signers. No accuracy for a withheld signer exists anywhere.
+- [ ] **Next (Claude builds, user runs):** carve the validation set from `train.csv` for all selection (keep `test.csv` for one final score); ≥ 3 seeds for champion and `gru`; participant-disjoint retrain (reuse the GapCorpus 18/3 signer splitter) for `gru` and `gru_phono_raw`; add a shoulder-normalised raw baseline to the training-free phonology comparison.
+
 ## 5. Spectrogram experiment on GISLR_Stratified (CNN/ViT arm) — re-scoped 2026-09-24
 
 **User decision 2026-09-24: keep it, as a real experiment on `gislr-stratified`**
@@ -2570,6 +2594,11 @@ primary edge.
   canonicalization vs both).
 - [ ] Retrain with augmentation and compare the **train/val gap** before vs after,
   to confirm it reduces overfitting rather than just adding noise.
+
+- [ ] **2026-11-02 audit:** the main training config has no augmentation (`mirror_p: 0`, no `augment` key; only the 6
+  first-place-port runs carry `augment`) while train−test at the best epoch is 17.3 pt for the champion (24.5 for `bilstm`).
+  This remains the project's own top-ranked untested lever; the C4 augmenter (`sb.recognize.continuous.augment`) is reusable.
+  Run it under §7.6 with ≥ 3 seeds (see `research-state-assessment.md` §6).
 
 ### 7.5 Phase 5 — Handedness canonicalization
 
@@ -5280,6 +5309,18 @@ the framerate of the GISLR dataset". Findings, with sources:
   push fps down enough to erase the accuracy gain), needs the user's own camera check.
   If it regresses fps noticeably, drop back to 640×480 or try 960×540 as a middle
   ground.
+
+- [ ] **2026-11-02 audit — LEAKAGE RISK, headline invalid until re-run (Claude).** Run `1784447175` is the
+  **retired 90/10 split** (`legacy_split: True`, n_val 9,448; "0.7569 canonical" is a legacy number) so it trained on ~90% of
+  all 94,477 clips; GISLR-Sentences is built from the *current* `test.csv`. Two independent random partitions overlap in
+  ~90% of test clips. The repo has seen this exact failure (10 legacy runs read 0.847–0.872 on the current split,
+  `phonology-models.md` §5) and `evaluate_run` blocks it — but the sentence notebooks do not. Symptom: oracle GER 0.106
+  (≈89%/sign) vs the clean oracle's 0.221. So **B0 (0.106/0.089), the hybrid (0.189) and the ensemble (0.177), the
+  "record-then-recognize is worth building" recommendation and the deployed Record mode are unsupported.** Not yet verified
+  directly. **Next:** (1) intersect uids of the legacy val/train lists with `test.csv`; (2) re-run
+  `gislr.3.streaming.bilstm-wholeclip-eval.ipynb` with current-split `bilstm` ME_126 `1790347646` (0.7502, inference only);
+  (3) make `sb.recognize.sequences` refuse legacy-split checkpoints; (4) swap the web asset; (5) correct "bilstm is the
+  accuracy leader (0.7569)" in §4.1/§4.3/§16.2 and the bilstm-wholeclip report. Current-split `bilstm` (0.7502) is level with `gru` (p = 0.58).
 
 ### 16.3 Custom signs — research (16.3 here; model-side plan still filed as §12.4)
 
